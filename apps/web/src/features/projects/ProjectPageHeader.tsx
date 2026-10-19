@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router";
 import { ContentHeaderIdentitySkeleton, ContentHeaderLayout, ContentHeaderTitle, FixedPaneHeader } from "../../shared/ui";
 import { useT } from "../../shared/i18n";
-import { getProjectSettings } from "../fleet/peonApi";
+import type { ProjectSettings } from "../fleet/peonApi";
+import { useApiResource } from "../../shared/useApiResource";
 import { usePeon } from "../fleet/context";
 import { MOBILE_CONTENT_HEADER_ID } from "../sessions/mobileHeader";
 
@@ -80,20 +81,11 @@ export function ProjectPageHeader({
 }) {
   const { peon, base } = usePeon();
   const { key = "" } = useParams();
-  const [loadedProject, setLoadedProject] = useState<{ key: string; name: string } | null>(null);
+  const project = useApiResource<ProjectSettings>(name ? null : `${base}/projects/${encodeURIComponent(key)}/settings`);
   const [mobileHeaderNode, setMobileHeaderNode] = useState<HTMLElement | null>(null);
-  const loadedName = loadedProject?.key === key ? loadedProject.name : "";
+  const loadedName = project.data?.name ?? "";
   const title = name || loadedName || key;
-  const desktopLoading = !name && loadedProject?.key !== key;
-
-  useEffect(() => {
-    if (name) return;
-    let alive = true;
-    getProjectSettings(base, key)
-      .then((settings) => { if (alive) setLoadedProject({ key, name: settings.name }); })
-      .catch(() => { if (alive) setLoadedProject({ key, name: "" }); });
-    return () => { alive = false; };
-  }, [base, key, name]);
+  const desktopLoading = !name && project.loading;
 
   useEffect(() => {
     setMobileHeaderNode(document.getElementById(MOBILE_CONTENT_HEADER_ID));

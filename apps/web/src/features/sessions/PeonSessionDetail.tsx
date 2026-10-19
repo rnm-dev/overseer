@@ -6,13 +6,13 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { ArrowRight, GitFork, LoaderCircle, MoreHorizontal } from "lucide-react";
-import { api, ApiError, isPeonNeedsUpdate } from "../../shared/api";
+import { ApiError, isPeonNeedsUpdate } from "../../shared/api";
 import { shouldAcknowledgeAttention } from "./sessionAttentionRead";
 import { useI18n } from "../../shared/i18n";
 import { useLiveSocket } from "../../realtime/liveSocket";
 import { useAuth } from "../auth/auth";
 import { usePeon } from "../fleet/context";
-import { defaultModelId, modelLabel, providerForSession, reasoningEffortLabel, useModels } from "../settings/models";
+import { defaultModelId, modelLabel, providerForSession, reasoningEffortLabel, useModels } from "../fleet/modelsCatalog";
 import {
   flattenEvents,
   gapPaddingClass,
@@ -45,12 +45,15 @@ import { loadToolDisplayMode } from "./sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../realtime/peonSounds";
 import { PluginInquiryCard } from "./PluginInquiryCard";
 import { DropdownMenu, menuItemClass } from "../../shared/ui";
-import { sessionLineage } from "./sessionBranch";
 import { useSessionBranch } from "./useSessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./pluginInquiries";
-import { indexedRunAssumptionDelay, shouldSeedIndexedRun } from "./runStatus";
 import { SessionSharingPanel } from "./SessionSharingPanel";
-import { activeMentionQuery, insertMention, mentionsRouteToPeople, remapMentions, removeMention, CONTEXT_MESSAGES_CAPABILITY, type ComposerMention, type MentionPrincipal } from "./contextMentions";
+import { mentionsRouteToPeople, CONTEXT_MESSAGES_CAPABILITY } from "./contextMentions";
+import { cancelSession, deleteSession, markSessionAttentionRead, renameSession } from "./sessionApi";
+import { useSessionRunState } from "./useSessionRunState";
+import { useSessionMetadata } from "./useSessionMetadata";
+import { useComposerMentions, useMentionPicker } from "./useComposerMentions";
+import { readStoredJson, writeStoredValue } from "./storedValue";
 import { clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, type ComposerSelectionDraft, useComposerSelectionDraft } from "./drafts";
 import { createContinuationSession, lastUnexecutedUserPrompt, sessionContinuationFailure, type SessionContinuationFailure } from "./sessionContinuationRecovery";
 
@@ -100,22 +103,15 @@ function BranchMessageMenu({ branching, disabled, error, onBranch, t }: {
 }
 
 function storedOpenFilePanes(): Set<string> {
-  try {
-    const value = JSON.parse(window.localStorage.getItem(FILE_PANES_STORAGE_KEY) ?? "[]");
-    return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
-  } catch {
-    return new Set();
-  }
+  const value = readStoredJson(FILE_PANES_STORAGE_KEY);
+  return new Set(Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
 }
 
+// Storage may be disabled; the pane still works for the current page visit.
 function storeFilePaneState(pageKey: string, open: boolean) {
-  try {
-    const pages = storedOpenFilePanes();
-    if (open) pages.add(pageKey); else pages.delete(pageKey);
-    window.localStorage.setItem(FILE_PANES_STORAGE_KEY, JSON.stringify([...pages]));
-  } catch {
-    // Storage may be disabled; the pane still works for the current page visit.
-  }
+  const pages = storedOpenFilePanes();
+  if (open) pages.add(pageKey); else pages.delete(pageKey);
+  writeStoredValue(FILE_PANES_STORAGE_KEY, JSON.stringify([...pages]));
 }
 
 export function PeonSessionDetail() {
@@ -141,14 +137,6 @@ function PeonSessionDetailPage() {
   const currentSessionKeyRef = useRef(sessionKey);
   const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
   const [sharingOpen, setSharingOpen] = useState(false);
-  const [mentionPrincipals, setMentionPrincipals] = useState<MentionPrincipal[]>([]);
-  const [mentions, setMentions] = useState<ComposerMention[]>([]);
-  // Where the picker looks for its `@`, and where the caret is put back after a
-  // person is inserted into the middle of an already written sentence.
-  const [composerCaret, setComposerCaret] = useState<number | null>(null);
-  const [caretRequest, setCaretRequest] = useState<{ position: number; seq: number } | null>(null);
-  const caretSeqRef = useRef(0);
-  const [mentionAttentionIds, setMentionAttentionIds] = useState<Set<string>>(new Set());
   const attentionReadInFlightRef = useRef<string | null>(null);
   // Update during render, not in an effect: a request from the previous route can
   // settle in the small render→effect window and must not mutate the new session.
@@ -172,7 +160,7 @@ function PeonSessionDetailPage() {
     if (!sid || !shouldAcknowledgeAttention(attentionUnreadRef.current, document.visibilityState, document.hasFocus())) return;
     if (attentionReadInFlightRef.current === sessionKey) return;
     attentionReadInFlightRef.current = sessionKey;
-    void api(`${base}/sessions/${encodeURIComponent(sid)}/attention/read`, { method: "POST" }).catch(() => {
+    void markSessionAttentionRead(base, sid).catch(() => {
       if (attentionReadInFlightRef.current === sessionKey) attentionReadInFlightRef.current = null;
     });
   }, [base, sessionKey, sid]);
@@ -192,68 +180,33 @@ function PeonSessionDetailPage() {
     };
   }, [markAttentionRead, selectedSession?.attentionUnread]);
 
-  useEffect(() => {
-    if (!contextMessagesSupported) {
-      setMentionPrincipals([]);
-      setMentions([]);
-      setMentionAttentionIds(new Set());
-      return;
-    }
-    let alive = true;
-    void Promise.all([
-      api<{ principals?: MentionPrincipal[] }>(`${base}/sessions/${encodeURIComponent(sid)}/mention-principals`),
-      api<{ attention?: Array<{ eventId: string; unread: boolean }> }>(`${base}/sessions/${encodeURIComponent(sid)}/mention-attention`),
-    ]).then(([roster, attention]) => {
-      if (!alive) return;
-      setMentionPrincipals(roster.principals ?? []);
-      setMentionAttentionIds(new Set((attention.attention ?? []).filter((item) => item.unread).map((item) => item.eventId)));
-    }).catch(() => undefined);
-    const unsubscribe = subscribeMentionAttention((attention) => {
-      if (attention.peonId !== peon.peonId || attention.sessionId !== sid) return;
-      setMentionAttentionIds((current) => {
-        const next = new Set(current);
-        if (attention.unread) next.add(attention.eventId); else next.delete(attention.eventId);
-        return next;
-      });
-    });
-    return () => { alive = false; unsubscribe(); };
-  }, [base, contextMessagesSupported, peon.peonId, sid, subscribeMentionAttention]);
-
-  // Session title + inline rename.
-  const [title, setTitle] = useState<string | null>(null);
-  const [openingMessage, setOpeningMessage] = useState<string | null>(null);
-  const [projectKey, setProjectKey] = useState<string | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [projectRoot, setProjectRoot] = useState<string | null>(null);
-  const [loadedMetadataKey, setLoadedMetadataKey] = useState<string | null>(null);
-  const [turnCount, setTurnCount] = useState<number | null>(null);
-  const [sessionUsage, setSessionUsage] = useState<unknown>(null);
-  const [lineage, setLineage] = useState<{ sourceSessionId: string; relation: "branch" | "subsession"; title: string | null } | null>(null);
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [renameNote, setRenameNote] = useState<string | null>(null);
   const [recovering, setRecovering] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
-
-  // Sidebar mutations update the shared indexed summary immediately. Mirror a
-  // renamed selected session into the header without waiting for the next
-  // metadata refresh or durable catalog event.
-  const indexedTitle = selectedSession?.title;
-  useEffect(() => {
-    if (indexedTitle === undefined) return;
-    setTitle(indexedTitle);
-    if (!editing) setDraft(indexedTitle ?? "");
-  }, [editing, indexedTitle, sessionKey]);
-
-
-  // Session default model (null ⇒ follows the peon's global default). Comes
-  // from the session record; refetched once when a run ends (metaTick).
-  const [sessionModel, setSessionModel] = useState<string | null>(null);
-  const [sessionAgent, setSessionAgent] = useState<string | null>(null);
-  const [sessionReasoningEffort, setSessionReasoningEffort] = useState<string | null>(null);
-  const [sessionPermissionMode, setSessionPermissionMode] = useState<string | null>(null);
   const [metaTick, setMetaTick] = useState(0);
+  const refreshMetadata = useCallback(() => setMetaTick((value) => value + 1), []);
+  const runState = useSessionRunState({
+    sessionKey,
+    sid,
+    peonId: peon.peonId,
+    indexedStatus: selectedSession?.status,
+    onSessionRunningChange,
+    refreshMetadata,
+  });
+  const { running, runningModel, runningReasoningEffort, setRunning, clearObservedRun } = runState;
+  const { metadata, setTitle, editing, setEditing, draft, setDraft } = useSessionMetadata({
+    base,
+    sid,
+    sessionKey,
+    metaTick,
+    indexedTitle: selectedSession?.title,
+    runState,
+  });
+  const {
+    loadedKey: loadedMetadataKey, title, openingMessage, projectKey, projectId, projectRoot, turnCount,
+    usage: sessionUsage, lineage, agent: sessionAgent, model: sessionModel, reasoningEffort: sessionReasoningEffort,
+  } = metadata;
   // Pending selections live beside the composer text rather than becoming a
   // browser-wide preference. Empty means inherit; it never asks Peon to unpin.
   const selectionDraftKey = composerDraftKey(wsId, peon.peonId, sid);
@@ -294,21 +247,6 @@ function PeonSessionDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [deleteNote, setDeleteNote] = useState<string | null>(null);
 
-  // Whether a run is currently active — gates the Stop button. Seeded from the
-  // session record, flipped on by sending a followup, off by a `result` frame.
-  // Key active-run state to the session so navigating between session routes can
-  // never flash the previous session's indicator before the new metadata lands.
-  const [activeRun, setActiveRun] = useState<{ sessionKey: string; running: boolean; model: string | null; reasoningEffort: string | null; assumedAt: number | null }>(() => ({
-    sessionKey,
-    // The indexed summary is already on screen with the sidebar. Use it as the
-    // cache-first answer instead of hiding activity until the direct metadata
-    // request (or a transcript run signal) wins its independent request race.
-    running: selectedSession?.status === "running",
-    model: null,
-    reasoningEffort: null,
-    assumedAt: selectedSession?.status === "running" ? Date.now() : null,
-  }));
-  const running = activeRun.sessionKey === sessionKey && activeRun.running;
   const controlReadScope = user?.email.toLowerCase() ?? "";
   const pluginInquiries = usePluginInquiries(base, sid, pluginInquiriesSupported, running, controlReadScope);
   const refreshPluginInquiries = pluginInquiries.refresh;
@@ -328,83 +266,6 @@ function PeonSessionDetailPage() {
     disabled: liveWork,
     t,
   });
-  const runningModel = activeRun.sessionKey === sessionKey ? activeRun.model : null;
-  const runningReasoningEffort = activeRun.sessionKey === sessionKey ? activeRun.reasoningEffort : null;
-  const runRevisionRef = useRef<Map<string, number>>(new Map());
-  const observedRunMetadataRefreshRef = useRef<Set<string>>(new Set());
-  const metadataStatusRef = useRef<Map<string, string | null>>(new Map());
-  // A Peon that refuses a cancel with SESSION_NOT_RUNNING has told us something
-  // stronger than its own session record does: that record can be left at
-  // "running" by a run whose process vanished, and re-reading it would keep
-  // resurrecting the indicator we just cleared. So the refusal outranks the
-  // record until the session produces live work again.
-  const refutedRunRef = useRef<Set<string>>(new Set());
-  // A run this page only inferred from the transcript, with nothing having
-  // confirmed it. The inference reads "the newest event is not a result", which
-  // is also true of a turn whose process vanished, so it must never outlive the
-  // record read that was supposed to settle it.
-  const unconfirmedRunRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    // The sidebar page can finish hydrating after this route mounts. Promote
-    // its running summary only while no direct/live evidence has arrived; the
-    // metadata GET and tail remain authoritative and can immediately clear it.
-    if (!shouldSeedIndexedRun({
-      indexedStatus: selectedSession?.status,
-      metadataStatusKnown: metadataStatusRef.current.has(sessionKey),
-      runRevision: runRevisionRef.current.get(sessionKey) ?? 0,
-      refuted: refutedRunRef.current.has(sessionKey),
-    })) return;
-    setActiveRun((previous) => previous.sessionKey === sessionKey && previous.running
-      ? previous
-      : { sessionKey, running: true, model: null, reasoningEffort: null, assumedAt: Date.now() });
-  }, [selectedSession?.status, sessionKey]);
-  const setRunning = useCallback((next: boolean) => {
-    // Only a live signal — a sent follow-up or a tail frame — turns a run back
-    // on, and that is exactly what makes the Peon's record trustworthy again.
-    if (next) refutedRunRef.current.delete(sessionKey);
-    unconfirmedRunRef.current.delete(sessionKey);
-    runRevisionRef.current.set(sessionKey, (runRevisionRef.current.get(sessionKey) ?? 0) + 1);
-    setActiveRun((previous) => ({
-      sessionKey,
-      running: next,
-      model: next && previous.sessionKey === sessionKey ? previous.model : null,
-      reasoningEffort: next && previous.sessionKey === sessionKey ? previous.reasoningEffort : null,
-      assumedAt: null,
-    }));
-    onSessionRunningChange?.(peon.peonId, sid, next, Date.now());
-  }, [onSessionRunningChange, peon.peonId, sessionKey, sid]);
-  const refreshMetadataForObservedRun = useCallback(() => {
-    if (observedRunMetadataRefreshRef.current.has(sessionKey)) return;
-    observedRunMetadataRefreshRef.current.add(sessionKey);
-    setMetaTick((value) => value + 1);
-  }, [sessionKey]);
-  const onLiveRunningChange = useCallback((next: boolean) => {
-    if (next) refreshMetadataForObservedRun();
-    else observedRunMetadataRefreshRef.current.delete(sessionKey);
-    setRunning(next);
-  }, [refreshMetadataForObservedRun, sessionKey, setRunning]);
-  // Model and effort always travel together: they describe the same turn, and
-  // the activity indicator reports both.
-  const setRunningSelection = useCallback((model: string | null, reasoningEffort: string | null) => {
-    setActiveRun((previous) => ({
-      sessionKey,
-      running: previous.sessionKey === sessionKey && previous.running,
-      model,
-      reasoningEffort,
-      assumedAt: previous.sessionKey === sessionKey ? previous.assumedAt : null,
-    }));
-  }, [sessionKey]);
-  useEffect(() => {
-    if (activeRun.sessionKey !== sessionKey || !activeRun.running) return;
-    const delay = indexedRunAssumptionDelay(Date.now(), activeRun.assumedAt);
-    if (delay === null) return;
-    const timer = window.setTimeout(() => {
-      setActiveRun((current) => current.sessionKey === sessionKey && current.assumedAt !== null
-        ? { ...current, running: false, model: null, reasoningEffort: null, assumedAt: null }
-        : current);
-    }, delay);
-    return () => window.clearTimeout(timer);
-  }, [activeRun.assumedAt, activeRun.running, activeRun.sessionKey, sessionKey]);
   const [stopping, setStopping] = useState(false);
   const [stopNote, setStopNote] = useState<string | null>(null);
   const suppressCompletionSoundRef = useRef(false);
@@ -461,22 +322,8 @@ function PeonSessionDetailPage() {
       window.removeEventListener("resize", measure);
     };
   }, [composerNode]);
-  const onSnapshotRunning = useCallback(() => {
-    // A transcript whose last event is a run signal describes the same stuck
-    // record the Peon already refuted; it is not evidence of live work.
-    if (refutedRunRef.current.has(sessionKey)) return;
-    refreshMetadataForObservedRun();
-    unconfirmedRunRef.current.add(sessionKey);
-    setActiveRun((previous) => ({
-      sessionKey,
-      running: true,
-      model: previous.sessionKey === sessionKey ? previous.model : null,
-      reasoningEffort: previous.sessionKey === sessionKey ? previous.reasoningEffort : null,
-      assumedAt: previous.sessionKey === sessionKey ? previous.assumedAt : null,
-    }));
-  }, [refreshMetadataForObservedRun, sessionKey]);
   const onRunFinished = useCallback((event?: { type?: string; is_error?: boolean }) => {
-    observedRunMetadataRefreshRef.current.delete(sessionKey);
+    clearObservedRun();
     // Each completed turn may have changed project files, including a turn
     // followed immediately by queued work. Revalidate the open tree at this
     // boundary even when the overall session remains active.
@@ -491,7 +338,7 @@ function PeonSessionDetailPage() {
       return;
     }
     playPeonSound("complete");
-  }, [markAttentionRead, sessionKey, setRunning]);
+  }, [clearObservedRun, markAttentionRead, sessionKey, setRunning]);
   const onWorkStarted = useCallback(() => {
     suppressCompletionSoundRef.current = false;
     playPeonSound("start");
@@ -525,10 +372,10 @@ function PeonSessionDetailPage() {
     paginationSupported: transcriptPaginationSupported,
     running,
     subscribe,
-    metadataStatusRef,
+    metadataStatusRef: runState.metadataStatusRef,
     previewPinnedRef,
-    onRunningChange: onLiveRunningChange,
-    onSnapshotRunning,
+    onRunningChange: runState.onLiveRunningChange,
+    onSnapshotRunning: runState.onSnapshotRunning,
     onRunFinished,
     onAgentUpdate,
     onQueueChange,
@@ -617,14 +464,14 @@ function PeonSessionDetailPage() {
     [history, orderedLive],
   );
   const committedCommandIds = useMemo(() => new Set(visibleEvents.flatMap((event) => typeof event.commandId === "string" ? [event.commandId] : [])), [visibleEvents]);
-  useEffect(() => {
-    if (!contextMessagesSupported || mentionAttentionIds.size === 0 || document.visibilityState !== "visible") return;
-    const rendered = visibleEvents.flatMap((event) => typeof event.eventId === "string" && mentionAttentionIds.has(event.eventId) ? [event.eventId] : []);
-    if (rendered.length === 0) return;
-    void api(`${base}/sessions/${encodeURIComponent(sid)}/mention-attention/read`, { method: "POST", body: JSON.stringify({ eventIds: rendered.slice(0, 100) }) }).then(() => {
-      setMentionAttentionIds((current) => new Set([...current].filter((id) => !rendered.includes(id))));
-    }).catch(() => undefined);
-  }, [base, contextMessagesSupported, mentionAttentionIds, sid, visibleEvents]);
+  const { principals: mentionPrincipals, mentions, setMentions } = useComposerMentions({
+    base,
+    sid,
+    peonId: peon.peonId,
+    supported: contextMessagesSupported,
+    subscribeMentionAttention,
+    visibleEvents,
+  });
   // The composer's ghost retires as soon as this grows past what it captured.
   const userMessageCount = useMemo(
     () => visibleEvents.reduce((count, event) => count + (event.type === "user_message" ? 1 : 0), 0),
@@ -640,12 +487,8 @@ function PeonSessionDetailPage() {
     wsId,
     peonId: peon.peonId,
     t,
-    running,
-    runningModel,
-    runningReasoningEffort,
-    sessionModel,
-    sessionReasoningEffort,
-    sessionPermissionMode,
+    runState,
+    session: metadata,
     sessionProvider,
     overrideModel,
     overrideReasoningEffort,
@@ -658,8 +501,6 @@ function PeonSessionDetailPage() {
     replyTo,
     setReplyTo,
     onGhostCreated: handleGhostCreated,
-    setRunning,
-    setRunningSelection,
     setStopNote,
     onWorkStarted,
     onSelectionAccepted,
@@ -668,116 +509,21 @@ function PeonSessionDetailPage() {
     setMentions,
     committedCommandIds,
   });
-  const mentionQuery = contextMessagesSupported ? activeMentionQuery(input, composerCaret ?? input.length) : null;
-  const mentionSuggestions = useMemo(() => {
-    if (!mentionQuery) return [];
-    const query = mentionQuery.query.toLowerCase();
-    return mentionPrincipals.filter((principal) => principal.label.toLowerCase().includes(query)).slice(0, 8);
-  }, [mentionPrincipals, mentionQuery]);
-  const changeComposerInput = useCallback((value: string, caret?: number) => {
-    setComposerCaret(caret ?? null);
-    setInput(value);
-    setMentions((current) => remapMentions(input, value, current));
-  }, [input, setInput]);
-  const selectMention = useCallback((principal: MentionPrincipal) => {
-    const query = activeMentionQuery(input, composerCaret ?? input.length);
-    if (!query) return;
-    const selected = insertMention(input, query, principal, mentions);
-    const caret = query.startUtf16 + principal.label.length + 2;
-    setInput(selected.text);
-    setMentions(selected.mentions);
-    setComposerCaret(caret);
-    setCaretRequest({ position: caret, seq: caretSeqRef.current++ });
-  }, [composerCaret, input, mentions, setInput]);
-  const removeSelectedMention = useCallback((mention: ComposerMention) => {
-    const removed = removeMention(input, mentions, mention);
-    setInput(removed.text);
-    setMentions(removed.mentions);
-    setComposerCaret(mention.startUtf16);
-    setCaretRequest({ position: mention.startUtf16, seq: caretSeqRef.current++ });
-  }, [input, mentions, setInput]);
-
-
-  useEffect(() => {
-    let alive = true;
-    const runRevision = runRevisionRef.current.get(sessionKey) ?? 0;
-    api<{ title?: string | null; prompt?: string | null; promptPreview?: string | null; projectKey?: string | null; projectId?: string | null; projectRoot?: string | null; status?: string | null; agent?: string | null; backendSessionId?: string | null; model?: string | null; reasoningEffort?: string | null; permissionMode?: string | null; turnCount?: number | null; usage?: unknown; branchedFromSessionId?: string | null; parentSessionId?: string | null }>(
-      `${base}/sessions/${encodeURIComponent(sid)}`,
-    )
-      .then((s) => {
-        if (!alive) return;
-        metadataStatusRef.current.set(sessionKey, s.status ?? null);
-        setTitle(s.title ?? null);
-        setOpeningMessage(s.promptPreview?.trim() || s.prompt?.trim() || null);
-        setDraft(s.title ?? "");
-        setEditing(false);
-        setProjectKey(s.projectKey ?? null);
-        setProjectId(s.projectId ?? null);
-        setProjectRoot(s.projectRoot ?? null);
-        setTurnCount(typeof s.turnCount === "number" ? s.turnCount : null);
-        setSessionUsage(s.usage ?? null);
-        const source = sessionLineage(s);
-        setLineage(source ? { ...source, title: null } : null);
-        setSessionAgent(s.agent ?? null);
-        setSessionReasoningEffort(s.reasoningEffort ?? null);
-        setSessionPermissionMode(s.permissionMode ?? null);
-        // Do not let a metadata request that started before a local/live run
-        // transition overwrite that newer transition when its response arrives.
-        if ((runRevisionRef.current.get(sessionKey) ?? 0) === runRevision) {
-          const peonRunning = s.status === "running";
-          // A record still claiming a run the Peon itself refused stays refused.
-          if (!peonRunning || !refutedRunRef.current.has(sessionKey)) setRunning(peonRunning);
-          if (peonRunning) setRunningSelection(s.model ?? null, s.reasoningEffort ?? null);
-        }
-        setSessionModel(s.model ?? null);
-        setLoadedMetadataKey(sessionKey);
-      })
-      .catch(() => {
-        if (!alive) return;
-        // The record could not be read at all — a Peon this Overseer can no
-        // longer reach over HTTP answers nothing here. Silence is not evidence
-        // of live work, so withdraw a run only the transcript implied instead of
-        // leaving an indicator and a Stop button that can never succeed. Record
-        // the absent status too, so a snapshot landing later stays quiet.
-        metadataStatusRef.current.set(sessionKey, null);
-        if ((runRevisionRef.current.get(sessionKey) ?? 0) !== runRevision) return;
-        if (unconfirmedRunRef.current.has(sessionKey)) {
-          setRunning(false);
-        } else {
-          // An indexed cache seed is useful only while its direct confirmation
-          // is pending. A stated transport failure retires it before the TTL.
-          setActiveRun((current) => current.sessionKey === sessionKey && current.assumedAt !== null
-            ? { ...current, running: false, model: null, reasoningEffort: null, assumedAt: null }
-            : current);
-        }
-      });
-    return () => {
-      alive = false;
-    };
-  }, [base, sid, sessionKey, metaTick, setRunning, setRunningSelection]);
-
-  useEffect(() => {
-    if (!lineage?.sourceSessionId || lineage.title !== null) return;
-    let alive = true;
-    api<{ title?: string | null; promptPreview?: string | null; prompt?: string | null }>(`${base}/sessions/${encodeURIComponent(lineage.sourceSessionId)}`)
-      .then((source) => {
-        if (!alive) return;
-        setLineage((current) => current?.sourceSessionId === lineage.sourceSessionId
-          ? { ...current, title: source.title?.trim() || source.promptPreview?.trim() || source.prompt?.trim() || lineage.sourceSessionId }
-          : current);
-      })
-      .catch(() => {
-        if (alive) setLineage((current) => current?.sourceSessionId === lineage.sourceSessionId ? { ...current, title: lineage.sourceSessionId } : current);
-      });
-    return () => { alive = false; };
-  }, [base, lineage]);
+  const { mentionQuery, mentionSuggestions, changeComposerInput, selectMention, removeSelectedMention, caretRequest } = useMentionPicker({
+    supported: contextMessagesSupported,
+    principals: mentionPrincipals,
+    mentions,
+    setMentions,
+    input,
+    setInput,
+  });
 
   async function remove() {
     setDeleting(true);
     setDeleteNote(null);
     const nextSessionId = nextSessionAfterDeletion(orderedSessionIds, sid);
     try {
-      await api(`${base}/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" });
+      await deleteSession(base, sid);
       refreshSessionPins();
       onSessionDeleted?.(peon.peonId, sid);
       setConfirmDelete(false);
@@ -801,7 +547,7 @@ function PeonSessionDetailPage() {
     setStopNote(null);
     suppressCompletionSoundRef.current = true;
     try {
-      await api(`${base}/sessions/${encodeURIComponent(sid)}/cancel`, { method: "POST" });
+      await cancelSession(base, sid);
       setRunning(false);
       playPeonSound("stop");
     } catch (err) {
@@ -811,7 +557,7 @@ function PeonSessionDetailPage() {
       // Clear the stale indicator and refetch the peon's authoritative record
       // instead of leaving a stop button that can only ever fail again.
       if (outcome === "already-stopped") {
-        refutedRunRef.current.add(sessionKey);
+        runState.refuteRun();
         setRunning(false);
         setMetaTick((value) => value + 1);
       }
@@ -827,7 +573,7 @@ function PeonSessionDetailPage() {
     setRenameNote(null);
     const next = draft.trim() ? draft.trim() : null; // empty clears the title
     try {
-      await api(`${base}/sessions/${encodeURIComponent(sid)}`, { method: "PATCH", body: JSON.stringify({ title: next }) });
+      await renameSession(base, sid, next);
       setTitle(next);
       setDraft(next ?? "");
       setEditing(false);

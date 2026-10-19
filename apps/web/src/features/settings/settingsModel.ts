@@ -1,4 +1,4 @@
-import { effortsForModel, optionMatches, type ModelProvider } from "./models";
+import { effortsForModel, optionMatches, type ModelProvider } from "../fleet/modelsCatalog";
 
 const SETTINGS_PATCH_FIELDS = [
   "name",

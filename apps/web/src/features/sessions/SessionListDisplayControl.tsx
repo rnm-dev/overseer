@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, List, Minus, PanelsTopLeft, Plus } from "lucide-react";
 import { useT } from "../../shared/i18n";
+import { readStoredValue, writeStoredValue } from "./storedValue";
 import { SIDEBAR_SECTION_ACTION_CLASS, SidebarSectionHeader } from "../../shared/SidebarSectionHeader";
 
 export type SessionListDisplayMode = "grouped" | "flat";
@@ -17,40 +18,20 @@ export function normalizeSessionListProjectLimit(value: number): number {
 }
 
 export function loadSessionListDisplayMode(storage?: Pick<Storage, "getItem">): SessionListDisplayMode {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    return target?.getItem(SESSION_LIST_MODE_STORAGE_KEY) === "flat" ? "flat" : "grouped";
-  } catch {
-    return "grouped";
-  }
+  return readStoredValue(SESSION_LIST_MODE_STORAGE_KEY, storage) === "flat" ? "flat" : "grouped";
 }
 
 export function saveSessionListDisplayMode(mode: SessionListDisplayMode, storage?: Pick<Storage, "setItem">): void {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    target?.setItem(SESSION_LIST_MODE_STORAGE_KEY, mode);
-  } catch {
-    // A preference must not make the session list unusable when storage is blocked.
-  }
+  writeStoredValue(SESSION_LIST_MODE_STORAGE_KEY, mode, storage);
 }
 
 export function loadSessionListProjectLimit(storage?: Pick<Storage, "getItem">): number {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    const value = Number(target?.getItem(SESSION_LIST_LIMIT_STORAGE_KEY));
-    return Number.isInteger(value) && value >= SESSION_LIST_LIMIT_MIN && value <= SESSION_LIST_LIMIT_MAX ? value : 5;
-  } catch {
-    return 5;
-  }
+  const value = Number(readStoredValue(SESSION_LIST_LIMIT_STORAGE_KEY, storage));
+  return Number.isInteger(value) && value >= SESSION_LIST_LIMIT_MIN && value <= SESSION_LIST_LIMIT_MAX ? value : 5;
 }
 
 export function saveSessionListProjectLimit(limit: number, storage?: Pick<Storage, "setItem">): void {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    target?.setItem(SESSION_LIST_LIMIT_STORAGE_KEY, String(normalizeSessionListProjectLimit(limit)));
-  } catch {
-    // See saveSessionListDisplayMode.
-  }
+  writeStoredValue(SESSION_LIST_LIMIT_STORAGE_KEY, String(normalizeSessionListProjectLimit(limit)), storage);
 }
 
 export function displayMenuPosition(anchor: DOMRect, viewportWidth: number, viewportHeight: number) {

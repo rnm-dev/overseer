@@ -1,7 +1,9 @@
+import type { MessageKey } from "./en";
+
 // Russian catalog. Flat key->string; {var} placeholders interpolated by the
 // i18n provider. Keep keys in sync with the other locales in this folder.
 
-export const ru: Record<string, string> = {
+export const ru: Record<MessageKey, string> = {
   "providerLogin.logout": "Выйти",
   "providerLogin.loggingOut": "Выходим…",
   "providerLogin.logoutError": "Не удалось выйти. Завершите текущий вход и повторите попытку.",

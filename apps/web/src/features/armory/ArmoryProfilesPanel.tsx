@@ -1,28 +1,12 @@
-import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useState } from "react";
 import { ApiError } from "../../shared/api";
+import { useSingleFlight } from "../../shared/useSingleFlight";
+import { ArmoryFieldControl } from "./ArmoryFieldControl";
 import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { Badge, Button, Card, Dialog } from "../../shared/ui";
-import {
-  ArmoryActionGate,
-  armoryProfileReadiness,
-  clearSettledArmoryProfileValues,
-  configureArmoryProfile,
-  createArmoryProfile,
-  deleteArmoryProfile,
-  getArmoryProfileOperation,
-  matchingArmoryProfiles,
-  missingArmoryProfileFields,
-  profileOperationActive,
-  renameArmoryProfile,
-  validateArmoryProfileConfiguration,
-  verifyArmoryProfile,
-  type ArmoryConfiguration,
-  type ArmoryConfigurationField,
-  type ArmoryProfile,
-  type ArmoryProfileOperation,
-  type ArmoryProfileRequirement,
-  type ConfigurationErrors,
-} from "./armoryApi";
+import type { ArmoryConfiguration, ArmoryProfile, ArmoryProfileOperation, ArmoryProfileRequirement } from "./armoryTypes";
+import { armoryProfileReadiness, matchingArmoryProfiles, missingArmoryProfileFields, profileOperationActive, validateArmoryProfileConfiguration, type ConfigurationErrors } from "./armoryValidation";
+import { configureArmoryProfile, createArmoryProfile, deleteArmoryProfile, getArmoryProfileOperation, renameArmoryProfile, verifyArmoryProfile } from "./armoryClient";
 
 const POLL_INTERVAL_MS = 1_200;
 
@@ -30,46 +14,6 @@ function profileTone(profile: ArmoryProfile): "green" | "amber" | "red" | undefi
   if (profile.status === "verified") return "green";
   if (profile.status === "invalid") return "red";
   return "amber";
-}
-
-export function ProfileField({ field, value, configured, error, disabled, onValue }: {
-  field: ArmoryConfigurationField;
-  value: string;
-  configured: boolean;
-  error?: string;
-  disabled: boolean;
-  onValue: (value: string) => void;
-}) {
-  const id = useId();
-  const helpId = `${id}-help`;
-  const errorId = `${id}-error`;
-  const file = useRef<HTMLInputElement>(null);
-  const [userActivated, setUserActivated] = useState(false);
-  useEffect(() => { if (!value && file.current) file.current.value = ""; }, [value]);
-  const readFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selected = event.target.files?.[0];
-    if (!selected) return onValue("");
-    try { onValue(await selected.text()); } catch { onValue(""); }
-  };
-  const common = {
-    id,
-    disabled,
-    required: field.required && !configured,
-    "aria-invalid": Boolean(error),
-    "aria-describedby": [field.help ? helpId : "", error ? errorId : ""].filter(Boolean).join(" ") || undefined,
-  };
-  return <div className="grid gap-2 border-b border-edge pb-4 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] sm:gap-5">
-    <div><label className="font-display text-xs font-bold text-ink" htmlFor={id}>{field.label}{field.required && <span className="ml-1 text-warning-strong" aria-label="required">*</span>}</label>{field.help && <p id={helpId} className="mt-1 text-xs leading-relaxed text-ink-muted">{field.help}</p>}</div>
-    <div>
-      <div className="relative">
-        {field.type === "select" ? <select {...common} className="field w-full" value={value} onChange={(event) => onValue(event.target.value)}><option value="">Select…</option>{(field.options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>
-          : field.type === "file" ? <input {...common} ref={file} className="field w-full file:mr-3 file:border-0 file:bg-surface-hover file:px-3 file:py-1 file:text-ink" type="file" onChange={(event) => void readFile(event)} />
-            : <input {...common} className="field w-full" autoComplete={field.type === "secret" ? "new-password" : "off"} data-1p-ignore="true" data-lpignore="true" data-form-type="other" readOnly={!userActivated} onFocus={() => setUserActivated(true)} type={field.type === "secret" ? "password" : "text"} value={value} pattern={field.validation?.pattern} maxLength={field.validation?.maxLength} onChange={(event) => onValue(event.target.value)} />}
-        {configured && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2"><Badge>Configured</Badge></span>}
-      </div>
-      {error && <p id={errorId} role="alert" className="mt-1 text-xs text-danger">{error}</p>}
-    </div>
-  </div>;
 }
 
 function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
@@ -90,14 +34,14 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
   const [requestError, setRequestError] = useState<unknown>(null);
   const [pollingError, setPollingError] = useState<unknown>(null);
   const [pollAttempt, setPollAttempt] = useState(0);
-  const gate = useRef(new ArmoryActionGate());
+  const gate = useSingleFlight();
   const missingFields = missingArmoryProfileFields(profile, requirement);
   const readiness = armoryProfileReadiness(profile, requirement);
-  const busy = submitting || profileOperationActive(operation) || gate.current.locked();
+  const busy = submitting || profileOperationActive(operation) || gate.locked();
 
   useEffect(() => {
-    const actionGate = gate.current;
-    actionGate.clear();
+    const actionGate = gate;
+    actionGate.reset();
     setValues({});
     setErrors({});
     setOperation(null);
@@ -105,7 +49,7 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
     setRequestError(null);
     setPollingError(null);
     setName(profile.name);
-    return () => actionGate.clear();
+    return () => actionGate.reset();
   }, [base, profile.profileId, profile.name]);
 
   useEffect(() => {
@@ -132,41 +76,41 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
       setErrors(nextErrors);
       if (Object.keys(nextErrors).length > 0) return;
     }
-    const token = gate.current.begin();
+    const token = gate.begin();
     if (token === null) return;
     setSubmitting(true);
     setRequestError(null);
     try {
       if (action === "configure") {
         const accepted = await configureArmoryProfile(base, profile.profileId, values);
-        if (!gate.current.current(token)) return;
+        if (!gate.current(token)) return;
         setOperation(accepted);
         setPollingError(null);
         if (!profileOperationActive(accepted)) await onRefresh();
       } else if (action === "verify") {
         const accepted = await verifyArmoryProfile(base, profile.profileId);
-        if (!gate.current.current(token)) return;
+        if (!gate.current(token)) return;
         setOperation(accepted);
         setPollingError(null);
         if (!profileOperationActive(accepted)) await onRefresh();
       } else if (action === "rename") {
         await renameArmoryProfile(base, profile.profileId, name.trim());
-        if (!gate.current.current(token)) return;
+        if (!gate.current(token)) return;
         setRenaming(false);
         await onRefresh();
       } else {
         await deleteArmoryProfile(base, profile.profileId);
-        if (!gate.current.current(token)) return;
+        if (!gate.current(token)) return;
         setDeleting(false);
         await onRefresh();
       }
     } catch (error) {
-      if (gate.current.current(token)) setRequestError(error);
+      if (gate.current(token)) setRequestError(error);
     } finally {
       // All profile values are write-only, including ordinary text/select
       // fields. Scrub them after every settled configure attempt.
-      if (action === "configure") setValues(clearSettledArmoryProfileValues());
-      gate.current.finish(token);
+      if (action === "configure") setValues({});
+      gate.finish(token);
       setSubmitting(false);
     }
   };
@@ -183,7 +127,7 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
     <ArmoryIdentityRow identity={profile.identity} className="mt-4 border-t border-edge pt-4" />
     <div className="mt-4 flex flex-wrap gap-2"><Button type="button" size="sm" variant="secondary" disabled={busy} onClick={() => setEditingConfiguration((value) => !value)}>{editingConfiguration ? "Hide configuration" : "Configure"}</Button><Button type="button" size="sm" disabled={busy || missingFields.length > 0 || profile.status === "missing"} title={missingFields.length ? "Configure every required field before verifying." : undefined} onClick={() => void run("verify")}>Verify</Button></div>
     {editingConfiguration && <form className="mt-4 space-y-4 border-t border-edge pt-4" autoComplete="off" onSubmit={(event) => { event.preventDefault(); void run("configure"); }}>
-      {schema.fields.map((field) => <ProfileField key={field.id} field={field} value={values[field.id] ?? ""} configured={profile.configuredFields[field.id] === true} error={errors[field.id]} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
+      {schema.fields.map((field) => <ArmoryFieldControl key={field.id} variant="profile" field={field} value={values[field.id] ?? ""} configured={profile.configuredFields[field.id] === true} error={errors[field.id]} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
       {schema.hostWrites.length > 0 && <p className="border-l-2 border-warning bg-warning/5 px-3 py-2 text-xs text-warning-strong">This profile’s package handler declares host writes. Review the package documentation before submitting.</p>}
       <Button type="submit" disabled={busy}>Save write-only configuration</Button>
     </form>}
@@ -207,29 +151,29 @@ export function ArmoryProfilesPanel({ base, requirement, schema, profiles, loadi
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<unknown>(null);
-  const createGate = useRef(new ArmoryActionGate());
+  const createGate = useSingleFlight();
   const compatible = matchingArmoryProfiles(profiles, requirement);
   const mismatchedCount = profiles.length - compatible.length;
   useEffect(() => {
-    const gate = createGate.current;
-    gate.clear();
+    const gate = createGate;
+    gate.reset();
     setCreating(false);
     setCreateError(null);
     setName("");
-    return () => gate.clear();
+    return () => gate.reset();
   }, [base, requirement.type]);
   const create = async () => {
     if (creating || !name.trim()) return;
-    const token = createGate.current.begin();
+    const token = createGate.begin();
     if (token === null) return;
     setCreating(true); setCreateError(null);
     try {
       await createArmoryProfile(base, requirement.type, name.trim());
-      if (!createGate.current.current(token)) return;
+      if (!createGate.current(token)) return;
       setName("");
       await onRefresh();
-    } catch (reason) { if (createGate.current.current(token)) setCreateError(reason); }
-    finally { if (createGate.current.finish(token)) setCreating(false); }
+    } catch (reason) { if (createGate.current(token)) setCreateError(reason); }
+    finally { if (createGate.finish(token)) setCreating(false); }
   };
 
   return <section className="space-y-4" aria-labelledby="armory-profiles-title">

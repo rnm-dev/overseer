@@ -2,7 +2,8 @@ import { useEffect, useState, type Dispatch, type KeyboardEvent, type SetStateAc
 import { createPortal } from "react-dom";
 import { useT } from "../../shared/i18n";
 import { Composer, supportsDesktopComposerFocus } from "./Composer";
-import { ModelSelect, ReasoningEffortSelect, composerDefaultEffortId, effectiveModelId, inheritedModelId, isReasoningEffortValid, reasoningEffortsForEffectiveModel, type ModelProvider, type ModelsCatalog } from "../settings/models";
+import { composerDefaultEffortId, effectiveModelId, inheritedModelId, isReasoningEffortValid, reasoningEffortsForEffectiveModel, type ModelProvider, type ModelsCatalog } from "../fleet/modelsCatalog";
+import { ModelSelect, ReasoningEffortSelect } from "../settings/models";
 import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
 import type { MessageAttachment } from "./parsing";

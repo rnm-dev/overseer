@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_DETAIL_RULE_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, editDiff, editFileName, editOperation, editStats, editStatsFromInput, isCompactUserMessage, isOwnMessageAuthor, isOwnParticipantAuthor, simpleToolFileName, simpleToolKind, userMessageAvatar } from "./messageParts";
+import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_DETAIL_RULE_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, isCompactUserMessage, isOwnMessageAuthor, isOwnParticipantAuthor, userMessageAvatar } from "./messageParts";
+import { editDiff, editFileName, editOperation, editStats, editStatsFromInput } from "./toolEdit";
+import { simpleToolFileName, simpleToolKind } from "./simpleTools";
 import { flattenEvents, gapClass, gapPaddingClass, toolHasOutputSection } from "./parsing";
 
 const t = ((key: string) => key) as Parameters<typeof ItemView>[0]["t"];

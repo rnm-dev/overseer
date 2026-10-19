@@ -3,7 +3,7 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nProvider } from "../../shared/i18n";
-import { ModelUsageDetails } from "./PeonStats";
+import { ModelUsageDetails } from "./ProviderUsage";
 import type { ByModel } from "./statsModel";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;

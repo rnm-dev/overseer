@@ -1,32 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router";
 import { ApiError, api } from "../../shared/api";
+import { useRequestScope } from "../../shared/useApiResource";
+import { useSingleFlight } from "../../shared/useSingleFlight";
 import { Badge, Button, Card } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
-import { ProfileField } from "./ArmoryProfilesPanel";
+import { ArmoryFieldControl } from "./ArmoryFieldControl";
 import { ProjectPageHeader } from "../projects/ProjectPageHeader";
 import { ProjectTabs } from "../projects/ProjectTabs";
 import type { ProjectDetail } from "../fleet/peonApi";
-import {
-  ArmoryActionGate,
-  ArmoryRequestGate,
-  clearSettledArmoryProfileValues,
-  configureArmoryProfile,
-  createArmoryProfile,
-  getArmoryConfiguration,
-  getArmoryPackage,
-  getArmoryProfileOperation,
-  profileOperationActive,
-  setArmoryProjectAssignment,
-  supportsArmoryProjectPackages,
-  validateArmoryConfiguration,
-  verifyArmoryProfile,
-  type ArmoryConfiguration,
-  type ArmoryPackageSummary,
-  type ArmoryProfileOperation,
-  type ArmoryProfileRequirement,
-  type ConfigurationErrors,
-} from "./armoryApi";
+import type { ArmoryConfiguration, ArmoryPackageSummary, ArmoryProfileOperation, ArmoryProfileRequirement } from "./armoryTypes";
+import { profileOperationActive, supportsArmoryProjectPackages, validateArmoryConfiguration, type ConfigurationErrors } from "./armoryValidation";
+import { configureArmoryProfile, createArmoryProfile, getArmoryConfiguration, getArmoryPackage, getArmoryProfileOperation, setArmoryProjectAssignment, verifyArmoryProfile } from "./armoryClient";
 
 const POLL_INTERVAL_MS = 1_200;
 const MAX_POLLS = 150;
@@ -67,13 +52,13 @@ export function ProjectArmoryProfileNew() {
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<unknown>(null);
-  const gate = useRef(new ArmoryRequestGate());
-  const action = useRef(new ArmoryActionGate());
+  const gate = useRequestScope();
+  const action = useSingleFlight();
 
   const requirement: ArmoryProfileRequirement | null = item?.installed?.profileRequirement ?? null;
 
   const load = useCallback(async () => {
-    const token = gate.current.begin();
+    const token = gate.begin();
     setLoading(true); setLoadError(null);
     try {
       const detail = await api<ProjectDetail>(`${base}/projects/${encodeURIComponent(key)}`);
@@ -82,21 +67,21 @@ export function ProjectArmoryProfileNew() {
         getArmoryPackage(base, packageId),
         getArmoryConfiguration(base, packageId).catch(() => null),
       ]);
-      if (!gate.current.current(token)) return;
+      if (!gate.current(token)) return;
       setProjectId(detail.projectId);
       setItem(packageDetail.package);
       setSchema(configuration);
-    } catch (reason) { if (gate.current.current(token)) setLoadError(reason); }
-    finally { if (gate.current.current(token)) setLoading(false); }
+    } catch (reason) { if (gate.current(token)) setLoadError(reason); }
+    finally { if (gate.current(token)) setLoading(false); }
   }, [base, key, packageId]);
 
   useEffect(() => {
-    const requestGate = gate.current;
-    const actionGate = action.current;
+    const requestGate = gate;
+    const actionGate = action;
     setProjectId(null); setItem(null); setSchema(null); setName(""); setValues({}); setErrors({});
     setLoadError(null); setSubmitError(null); setProgress(null); setSubmitting(false);
     if (capable && peon.online && packageId) void load(); else setLoading(false);
-    return () => { requestGate.clear(); actionGate.clear(); };
+    return () => { requestGate.clear(); actionGate.reset(); };
   }, [capable, load, packageId, peon.online]);
 
   const submit = async () => {
@@ -104,33 +89,33 @@ export function ProjectArmoryProfileNew() {
     const validation = validateArmoryConfiguration(schema, values);
     setErrors(validation);
     if (Object.keys(validation).length > 0) return;
-    const token = action.current.begin();
+    const token = action.begin();
     if (token === null) return;
     setSubmitting(true); setSubmitError(null); setProgress("Creating profile…");
     try {
       const profile = await createArmoryProfile(base, requirement.type, name.trim());
       setProgress("Saving write-only configuration…");
       const configured = await settleProfileOperation(base, await configureArmoryProfile(base, profile.profileId, values));
-      if (!action.current.current(token)) return;
+      if (!action.current(token)) return;
       if (configured.status !== "succeeded") {
         throw new ApiError(409, configured.code ?? "PROFILE_CONFIGURATION_FAILED", "Peon could not store this profile’s configuration.");
       }
       setProgress("Verifying profile…");
       const verified = await settleProfileOperation(base, await verifyArmoryProfile(base, profile.profileId));
-      if (!action.current.current(token)) return;
+      if (!action.current(token)) return;
       if (verified.status !== "succeeded") {
         throw new ApiError(409, verified.code ?? "PROFILE_NOT_VERIFIED", "The profile was created but could not be verified.");
       }
       setProgress("Assigning to this project…");
       await setArmoryProjectAssignment(base, projectId, packageId, profile.profileId);
-      if (!action.current.current(token)) return;
+      if (!action.current(token)) return;
       navigate(toolsLink, { replace: true });
-    } catch (reason) { if (action.current.current(token)) { setSubmitError(reason); setProgress(null); } }
+    } catch (reason) { if (action.current(token)) { setSubmitError(reason); setProgress(null); } }
     finally {
       // Every submitted profile value is write-only, including plain text and
       // select fields. Scrub them after a settled attempt.
-      setValues(clearSettledArmoryProfileValues());
-      if (action.current.finish(token)) setSubmitting(false);
+      setValues({});
+      if (action.finish(token)) setSubmitting(false);
     }
   };
 
@@ -148,7 +133,7 @@ export function ProjectArmoryProfileNew() {
       <p className="mt-1 text-sm text-ink-muted">The profile belongs to this Peon and can be reused by compatible packages and projects. Values are write-only: they are stored on the Peon and never shown again. Once verified, it is assigned to this project automatically.</p>
       <form className="mt-5 space-y-4" autoComplete="off" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         <label className="block"><span className="mb-1 block font-display text-xs font-bold text-ink">Profile name<span className="ml-1 text-warning-strong" aria-label="required">*</span></span><input className="field w-full" maxLength={80} autoFocus disabled={submitting} value={name} placeholder="Production Google" onChange={(event) => setName(event.target.value)} /></label>
-        {schema.fields.map((field) => <ProfileField key={field.id} field={field} value={values[field.id] ?? ""} configured={false} error={errors[field.id]} disabled={submitting} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
+        {schema.fields.map((field) => <ArmoryFieldControl key={field.id} variant="profile" field={field} value={values[field.id] ?? ""} configured={false} error={errors[field.id]} disabled={submitting} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
         {schema.hostWrites.length > 0 && <p className="border-l-2 border-warning bg-warning/5 px-3 py-2 text-xs text-warning-strong">This package’s handler declares host writes. Review the package documentation before submitting.</p>}
         <div className="flex flex-wrap items-center gap-2">
           <Button type="submit" disabled={submitting || !name.trim()}>{submitting ? "Working…" : "Create and assign profile"}</Button>

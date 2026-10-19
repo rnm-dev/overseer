@@ -1,15 +1,12 @@
-import { lazy, Suspense, useEffect, useState } from "react";
-import { Navigate, Route, Routes, useNavigate, useOutletContext, useParams } from "react-router";
-import { api } from "../shared/api";
+import { lazy, Suspense } from "react";
+import { Navigate, Outlet, Route, Routes, useParams } from "react-router";
+import { PeonSessionsEmpty } from "../features/sessions/PeonSessionsEmpty";
 import { useAuth } from "../features/auth/auth";
 import { useT } from "../shared/i18n";
 import { loginRouteTarget } from "../features/auth/nativeLoginMode";
 import { WorkspaceProvider } from "../features/workspaces/workspace";
 import { LiveSocketProvider } from "../realtime/liveSocket";
-import { AppLayout } from "../shared/AppLayout";
 import { peonSettingsPath } from "../features/settings/settingsNavigation";
-import type { PeonContext } from "../features/fleet/context";
-import type { IndexedSessionLite } from "../features/sessions/sessionList";
 
 const Login = lazy(() => import("../features/auth/Login").then((m) => ({ default: m.Login })));
 const Dashboard = lazy(() => import("../features/workspaces/Dashboard").then((m) => ({ default: m.Dashboard })));
@@ -65,44 +62,6 @@ function BackendUnavailable({ onRetry }: { onRetry: () => Promise<void> }) {
   );
 }
 
-function PeonSessionsEmpty() {
-  const t = useT();
-  const navigate = useNavigate();
-  const { peon, wsId } = useOutletContext<PeonContext>();
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    const query = new URLSearchParams({
-      peonId: peon.peonId,
-      mine: "true",
-      limit: "1",
-      offset: "0",
-    });
-    api<{ sessions: IndexedSessionLite[] }>(`/workspaces/${encodeURIComponent(wsId)}/sessions?${query}`)
-      .then((result) => {
-        if (!active) return;
-        const sessionId = result.sessions?.[0]?.sessionId;
-        if (sessionId) navigate(encodeURIComponent(sessionId), { replace: true });
-        else setLoading(false);
-      })
-      .catch(() => {
-        if (active) setLoading(false);
-      });
-    return () => { active = false; };
-  }, [navigate, peon.peonId, wsId]);
-
-  if (loading) return <div className="grid min-h-[55vh] place-items-center"><div className="loading-spinner" /></div>;
-  return (
-    <div className="grid min-h-[55vh] place-items-center text-center">
-      <div>
-        <h1 className="font-display text-xl font-bold text-ink">{t("peon.tab.sessions")}</h1>
-        <p className="mt-2 font-mono text-sm text-ink-faint">{t("sessions.choose")}</p>
-      </div>
-    </div>
-  );
-}
-
 export function App() {
   const { user, ready, unavailable, retry } = useAuth();
 
@@ -132,7 +91,10 @@ export function App() {
           user ? (
             <WorkspaceProvider>
               <LiveSocketProvider>
-                <AppLayout />
+                {/* Thin authed shell: the fleet dashboard and the peon view each own their layout. */}
+                <div className="flex min-h-screen flex-col">
+                  <Outlet />
+                </div>
               </LiveSocketProvider>
             </WorkspaceProvider>
           ) : (

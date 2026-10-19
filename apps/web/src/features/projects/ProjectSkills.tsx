@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { ApiError } from "../../shared/api";
+import { useApiResource } from "../../shared/useApiResource";
 import { Card } from "../../shared/ui";
 import { useT } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
-import { getProjectSkills, type ProjectSkill } from "../fleet/peonApi";
+import type { ProjectSkill, ProjectSkillsResponse } from "../fleet/peonApi";
 import { ProjectPageHeader } from "./ProjectPageHeader";
 import { ProjectTabs } from "./ProjectTabs";
 
@@ -33,34 +33,22 @@ function validSkill(value: unknown): value is ProjectSkill {
     && (skill.path === undefined || skill.path === null || typeof skill.path === "string");
 }
 
+function skillsState(result: ProjectSkillsResponse | null, error: unknown, loading: boolean, t: ReturnType<typeof useT>): SkillsState {
+  if (loading) return { kind: "loading" };
+  if (error) {
+    const kind = projectSkillsErrorKind(error);
+    return kind === "error" ? { kind, message: error instanceof Error ? error.message : t("error.loadFailed") } : { kind };
+  }
+  if (!result || !Array.isArray(result.skills) || !result.skills.every(validSkill)) return { kind: "error", message: t("proj.skills.invalid") };
+  return { kind: "ready", skills: result.skills };
+}
+
 export function ProjectSkills() {
   const t = useT();
   const { key = "" } = useParams();
   const { peon, base } = usePeon();
-  const [state, setState] = useState<SkillsState>({ kind: "loading" });
-
-  useEffect(() => {
-    if (!peon.online) return;
-    let alive = true;
-    setState({ kind: "loading" });
-    getProjectSkills(base, key)
-      .then((result) => {
-        if (!alive) return;
-        if (!result || !Array.isArray(result.skills) || !result.skills.every(validSkill)) {
-          setState({ kind: "error", message: t("proj.skills.invalid") });
-          return;
-        }
-        setState({ kind: "ready", skills: result.skills });
-      })
-      .catch((error: unknown) => {
-        if (!alive) return;
-        const kind = projectSkillsErrorKind(error);
-        setState(kind === "error"
-          ? { kind, message: error instanceof Error ? error.message : t("error.loadFailed") }
-          : { kind });
-      });
-    return () => { alive = false; };
-  }, [base, key, peon.online, t]);
+  const skills = useApiResource<ProjectSkillsResponse>(peon.online ? `${base}/projects/${encodeURIComponent(key)}/skills` : null, [], { cache: "no-store" });
+  const state = skillsState(skills.data, skills.error, skills.loading, t);
 
   return <div className="space-y-3">
     <ProjectPageHeader />

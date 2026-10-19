@@ -22,11 +22,11 @@ test("AI statistics request and render user and project analytics", () => {
   assert.match(source, /peon\.stats\.attributionNote/);
   assert.match(source, /STATS_REFRESH_INTERVAL_MS = 15_000/);
   assert.match(source, /document\.visibilityState === "visible"/);
-  assert.match(source, /stats\?period=\$\{period\}`,[^\n]+cache: "no-store"/);
+  assert.match(source, /stats\?period=\$\{period\}`[^\n]+cache: "no-store"/);
 });
 
 test("provider cards expose quota diagnostics even when limits are unavailable", () => {
-  const source = readFileSync(new URL("./PeonStats.tsx", import.meta.url), "utf8");
+  const source = readFileSync(new URL("./ProviderUsage.tsx", import.meta.url), "utf8");
 
   assert.match(source, /quota\.error \?\? quota\.data\?\.error \?\? null/);
   assert.doesNotMatch(source, /status === ["']error["'] \? quota\.data\.error/);

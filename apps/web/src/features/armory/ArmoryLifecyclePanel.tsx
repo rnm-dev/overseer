@@ -1,19 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../../shared/api";
+import { useSingleFlight } from "../../shared/useSingleFlight";
 import { Badge, Button, Card, Dialog } from "../../shared/ui";
-import {
-  ArmoryActionGate,
-  armoryOperationProgress,
-  getArmoryOperation,
-  installArmoryPackage,
-  operationActive,
-  setArmoryPackageEnabled,
-  uninstallArmoryPackage,
-  updateArmoryPackage,
-  type ArmoryCatalogVersion,
-  type ArmoryOperation,
-  type InstalledPackage,
-} from "./armoryApi";
+import type { ArmoryCatalogVersion, ArmoryOperation, InstalledPackage } from "./armoryTypes";
+import { armoryOperationProgress, operationActive } from "./armoryValidation";
+import { getArmoryOperation, installArmoryPackage, setArmoryPackageEnabled, uninstallArmoryPackage, updateArmoryPackage } from "./armoryClient";
 
 const POLL_INTERVAL_MS = 1_000;
 export const UNINSTALL_PRESERVATION_COPY = "This removes the package runtime. Credentials, managed home, configuration, and ownership metadata are preserved.";
@@ -57,17 +48,17 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
   const [selectedVersion, setSelectedVersion] = useState(latestVersion ?? versions[0]?.version ?? "");
   const [uninstallOpen, setUninstallOpen] = useState(false);
   const refreshRef = useRef(onRefresh);
-  const actionGate = useRef(new ArmoryActionGate());
+  const actionGate = useSingleFlight();
   refreshRef.current = onRefresh;
 
   useEffect(() => {
-    const gate = actionGate.current;
-    gate.clear();
+    const gate = actionGate;
+    gate.reset();
     setOperation(null);
     setError(null);
     setSubmitting(false);
     setUninstallOpen(false);
-    return () => gate.clear();
+    return () => gate.reset();
   }, [base, packageId]);
 
   useEffect(() => {
@@ -114,7 +105,7 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
 
   const begin = async (action: "install" | "update" | "uninstall" | "enable" | "disable") => {
     if (busy) return;
-    const actionToken = actionGate.current.begin();
+    const actionToken = actionGate.begin();
     if (actionToken === null) return;
     setSubmitting(true);
     setError(null);
@@ -126,14 +117,14 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
         : action === "uninstall"
           ? await uninstallArmoryPackage(base, packageId)
           : await setArmoryPackageEnabled(base, packageId, action === "enable");
-      if (!actionGate.current.current(actionToken)) return;
+      if (!actionGate.current(actionToken)) return;
       setOperation(response.operation);
       setUninstallOpen(false);
       if (!operationActive(response.operation)) await onRefresh();
     } catch (reason) {
-      if (actionGate.current.current(actionToken)) setError(reason);
+      if (actionGate.current(actionToken)) setError(reason);
     } finally {
-      if (actionGate.current.finish(actionToken)) setSubmitting(false);
+      if (actionGate.finish(actionToken)) setSubmitting(false);
     }
   };
 

@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
-import { api, ApiError, isPeonNeedsUpdate, json } from "../../shared/api";
+import { api, ApiError, isPeonNeedsUpdate } from "../../shared/api";
+import { postContextMessage, postFollowup } from "./sessionApi";
 import type { Translate } from "../../shared/i18n";
 import { useNotifications } from "../../shared/notifications";
 import { composerDraftKey, saveComposerDraft, useCarriedAttachments, useComposerDraft, useComposerDraftFiles, type ComposerSelectionDraft } from "./drafts";
 import { attachmentUploadPath } from "../projects/fileLinks";
-import { effectiveModelId, isReasoningEffortValid, optionMatches, type ModelProvider, type ModelsCatalog } from "../settings/models";
+import { effectiveModelId, isReasoningEffortValid, optionMatches, type ModelProvider, type ModelsCatalog } from "../fleet/modelsCatalog";
 import type { MessageAttachment } from "./parsing";
 import { replyIdentity, type SelectedTextReply } from "./selectedTextReply";
 import { createQueueReconciler, draftWithQueuedItem, enqueueSessionFollowup, getSessionQueue, removeSessionQueueItem, removeWaitingQueueItem, pruneSteeredQueueItems, steerSessionQueueItem, sendWaitingQueueItemNow, visibleQueueItems, type QueueActivityTracker, type QueueItem } from "./queue";
 import { createSubmissionGate } from "./submissionGate";
 import { mentionWire, type ComposerMention } from "./contextMentions";
+import type { SessionRunState } from "./useSessionRunState";
+import type { SessionMetadata } from "./useSessionMetadata";
 
 const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const DEFAULT_FILE_ROOT = "/tmp/peon-files";
@@ -49,37 +52,35 @@ export function composerGhostVisible(ghost: ComposerGhost, userMessageCount: num
 }
 
 export class FollowupRequestIdentity {
-  private readonly ids = new Map<string, string>();
-  private readonly selections = new Map<string, SubmittedSelection>();
+  private readonly entries = new Map<string, { id: string; selection?: SubmittedSelection }>();
 
   constructor(private readonly createId: () => string = () => crypto.randomUUID()) {}
 
+  private entryFor(identity: string): { id: string; selection?: SubmittedSelection } {
+    let entry = this.entries.get(identity);
+    if (!entry) {
+      entry = { id: this.createId() };
+      this.entries.set(identity, entry);
+    }
+    return entry;
+  }
+
   forPayload(identity: string): string {
-    const existing = this.ids.get(identity);
-    if (existing) return existing;
-    const id = this.createId();
-    this.ids.set(identity, id);
-    return id;
+    return this.entryFor(identity).id;
   }
 
   selectionFor(identity: string, fresh: SubmittedSelection): { id: string; selection: SubmittedSelection } {
-    const id = this.forPayload(identity);
-    const selection = this.selections.get(identity);
-    if (selection) return { id, selection };
-    this.selections.set(identity, fresh);
-    return { id, selection: fresh };
+    const entry = this.entryFor(identity);
+    entry.selection ??= fresh;
+    return { id: entry.id, selection: entry.selection };
   }
 
   clear(expectedId?: string): void {
     if (!expectedId) {
-      this.ids.clear();
-      this.selections.clear();
+      this.entries.clear();
       return;
     }
-    for (const [identity, id] of this.ids) if (id === expectedId) {
-      this.ids.delete(identity);
-      this.selections.delete(identity);
-    }
+    for (const [identity, entry] of this.entries) if (entry.id === expectedId) this.entries.delete(identity);
   }
 }
 
@@ -130,13 +131,11 @@ interface Args {
   wsId: string;
   peonId: string;
   t: Translate;
-  running: boolean;
-  runningModel: string | null;
-  runningReasoningEffort: string | null;
-  sessionModel: string | null;
+  /** The page's run state; sends flip it optimistically and roll it back. */
+  runState: Pick<SessionRunState, "running" | "runningModel" | "runningReasoningEffort" | "setRunning" | "setRunningSelection">;
+  /** The session record's defaults. */
+  session: Pick<SessionMetadata, "model" | "reasoningEffort" | "permissionMode">;
   sessionProvider: ModelProvider | null;
-  sessionReasoningEffort: string | null;
-  sessionPermissionMode: string | null;
   overrideModel: string;
   overrideReasoningEffort: string;
   catalog: ModelsCatalog | null;
@@ -148,8 +147,6 @@ interface Args {
   replyTo: SelectedTextReply | null;
   setReplyTo: Dispatch<SetStateAction<SelectedTextReply | null>>;
   onGhostCreated: () => void;
-  setRunning: (running: boolean) => void;
-  setRunningSelection: (model: string | null, reasoningEffort: string | null) => void;
   setStopNote: Dispatch<SetStateAction<string | null>>;
   onWorkStarted: () => void;
   onSelectionAccepted: (selection: { model: string; reasoningEffort: string }) => void;
@@ -160,16 +157,16 @@ interface Args {
 }
 
 export function useSessionComposer({
-  base, sid, sessionKey, wsId, peonId, t, running, runningModel,
-  runningReasoningEffort, sessionModel, sessionProvider, sessionReasoningEffort,
-  sessionPermissionMode, overrideModel,
+  base, sid, sessionKey, wsId, peonId, t, runState, session, sessionProvider, overrideModel,
   overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
   queueActivity, controlReadScope, userMessageCount,
   replyTo, setReplyTo,
   onGhostCreated,
-  setRunning, setRunningSelection, setStopNote, onWorkStarted, onSelectionAccepted, onQueuedSelectionRestored,
+  setStopNote, onWorkStarted, onSelectionAccepted, onQueuedSelectionRestored,
   mentions, setMentions, committedCommandIds,
 }: Args) {
+  const { running, runningModel, runningReasoningEffort, setRunning, setRunningSelection } = runState;
+  const { model: sessionModel, reasoningEffort: sessionReasoningEffort, permissionMode: sessionPermissionMode } = session;
   const { notifyError } = useNotifications();
   const draftKey = composerDraftKey(wsId, peonId, sid);
   const [input, setInput] = useComposerDraft(draftKey);
@@ -355,10 +352,8 @@ export function useSessionComposer({
       if (pendingMentions.length) body.mentions = mentionWire(pendingMentions);
       if (submittedSelection.model) body.model = submittedSelection.model; // becomes the session default after acceptance
       if (submittedSelection.reasoningEffort) body.reasoningEffort = submittedSelection.reasoningEffort;
-      const request = json(body);
-      request.headers = { "Peon-Request-Id": clientId };
       followupAttempted = true;
-      await api(`${base}/sessions/${encodeURIComponent(sid)}/followup`, request);
+      await postFollowup(base, sid, body, clientId);
       clearRequestId(clientId);
       onSelectionAccepted(draftSelection);
       setMentions([]);
@@ -418,9 +413,7 @@ export function useSessionComposer({
     try {
       const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
       for (const file of pending) attachments.push({ type: isImage(file) ? "image" : "file", ...await uploadFile(file) });
-      const request = json({ text, ...(attachments.length ? { attachments } : {}), ...(pendingMentions.length ? { mentions: mentionWire(pendingMentions) } : {}) });
-      request.headers = { "Peon-Request-Id": commandId };
-      await api(`${base}/sessions/${encodeURIComponent(sid)}/context-messages`, request);
+      await postContextMessage(base, sid, { text, ...(attachments.length ? { attachments } : {}), ...(pendingMentions.length ? { mentions: mentionWire(pendingMentions) } : {}) }, commandId);
       clearRequestId(commandId);
     } catch (error) {
       if (currentSessionKeyRef.current === sessionKey && followupWasRefused(error)) {

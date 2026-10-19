@@ -91,13 +91,13 @@ test("clearing attachment drafts preserves a new-session text draft", async () =
 
 // The point of the imperative clear: a composer that navigates away on submit
 // unmounts before its persistence effect could run.
-test("clearComposerDraft removes the text and the attachments", async () => {
-  const { clearComposerDraft, composerDraftKey, saveComposerDraft } = await import("./drafts");
+test("clearComposerDraftContent removes the text and the attachments", async () => {
+  const { clearComposerDraftContent, composerDraftKey, saveComposerDraft } = await import("./drafts");
   const key = composerDraftKey("ws", "peon", "cleared");
 
   saveComposerDraft(key, "sent", [new File(["x"], "a.txt")]);
   await settled();
-  clearComposerDraft(key);
+  clearComposerDraftContent(key);
   await settled();
 
   assert.equal(localStorage.getItem(key), null);

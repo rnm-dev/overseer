@@ -1,7 +1,7 @@
 // English catalog. Flat key->string; {var} placeholders interpolated by the
 // i18n provider. Keep keys in sync with the other locales in this folder.
 
-export const en: Record<string, string> = {
+export const en = {
   "providerLogin.logout": "Log out",
   "providerLogin.loggingOut": "Signing out…",
   "providerLogin.logoutError": "Could not sign out. Finish any active sign-in and retry.",
@@ -700,4 +700,6 @@ export const en: Record<string, string> = {
   "error.joinFailed": "couldn't join workspace",
   "error.connectionFailed": "connection failed",
   "error.couldntAdd": "couldn't add peon",
-};
+} as const;
+
+export type MessageKey = keyof typeof en;

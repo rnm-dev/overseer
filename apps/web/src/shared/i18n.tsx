@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
-import { en } from "./locales/en";
+import { en, type MessageKey } from "./locales/en";
 import { ru } from "./locales/ru";
 
 // Lightweight, dependency-free i18n. A locale is a flat key->string catalog;
@@ -10,7 +10,10 @@ import { ru } from "./locales/ru";
 
 export type Locale = "en" | "ru";
 
+// ru is typed Record<MessageKey, string>, so catalogs stay in key parity with en.
 type Catalog = Record<string, string>;
+
+export type { MessageKey };
 
 const catalogs: Record<Locale, Catalog> = { en, ru };
 

@@ -1,5 +1,5 @@
 import { Badge, Button, Card } from "../../shared/ui";
-import type { ArmoryMcpDetails, ArmoryMcpInputProperty, ArmoryMcpTool } from "./armoryApi";
+import type { ArmoryMcpDetails, ArmoryMcpInputProperty, ArmoryMcpTool } from "./armoryTypes";
 
 function propertyType(property: ArmoryMcpInputProperty): string {
   if (Array.isArray(property.type)) return property.type.join(" | ");

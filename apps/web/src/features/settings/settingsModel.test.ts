@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ModelProvider } from "./models";
-import { effortsForModel } from "./models";
+import type { ModelProvider } from "../fleet/modelsCatalog";
+import { effortsForModel } from "../fleet/modelsCatalog";
 import { buildSettingsPayload, resolveDefaultModel, resolveDefaultReasoningEffort } from "./settingsModel";
 
 const codex: ModelProvider = {

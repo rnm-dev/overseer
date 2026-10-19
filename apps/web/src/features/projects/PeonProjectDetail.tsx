@@ -1,7 +1,7 @@
 import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { Link, useParams } from "react-router";
-import { api } from "../../shared/api";
+import { useApiResource } from "../../shared/useApiResource";
 import { SessionSidebarList } from "../sessions/SessionSidebarList";
 import { useT } from "../../shared/i18n";
 import type { PresenceUser } from "../../realtime/liveSocket";
@@ -63,24 +63,12 @@ export function ProjectRecentSessions({
   paginationSupported?: boolean;
 }) {
   const t = useT();
-  const [projectPage, setProjectPage] = useState<SessionLite[] | null>(null);
-  const [projectPageError, setProjectPageError] = useState(false);
-
-  useEffect(() => {
-    if (!wsId || !peonId || !projectKey) return;
-    let alive = true;
-    setProjectPage(null);
-    setProjectPageError(false);
-    api<{ sessions: IndexedSessionLite[] }>(
-      `/workspaces/${encodeURIComponent(wsId)}/sessions?peonId=${encodeURIComponent(peonId)}`
-      + `&projectKey=${encodeURIComponent(projectKey)}&limit=${RECENT_PROJECT_SESSION_LIMIT}`,
-    )
-      .then((result) => alive && setProjectPage((result.sessions ?? []).map(sessionFromIndex)))
-      .catch(() => alive && setProjectPageError(true));
-    return () => {
-      alive = false;
-    };
-  }, [peonId, projectKey, wsId]);
+  const projectPageResource = useApiResource<{ sessions: IndexedSessionLite[] }>(wsId && peonId && projectKey
+    ? `/workspaces/${encodeURIComponent(wsId)}/sessions?peonId=${encodeURIComponent(peonId)}`
+      + `&projectKey=${encodeURIComponent(projectKey)}&limit=${RECENT_PROJECT_SESSION_LIMIT}`
+    : null);
+  const projectPage = useMemo(() => projectPageResource.data ? (projectPageResource.data.sessions ?? []).map(sessionFromIndex) : null, [projectPageResource.data]);
+  const projectPageError = Boolean(projectPageResource.error);
 
   const sessionPins = useSessionPins(wsId, peonId);
   const recent = orderPinnedSessions(recentProjectSessions(sessions, projectKey, RECENT_PROJECT_SESSION_LIMIT, projectPage ?? []), sessionPins.pins.filter((session) => session.projectKey === projectKey), peonId);
@@ -145,20 +133,8 @@ export function PeonProjectDetail() {
   const liveProject = peonContext.projects?.find((project) => project.key === key && !project.deleted);
   const newSessionTo = `/peons/${encodeURIComponent(peon.peonId)}/sessions/new?project=${encodeURIComponent(key)}`;
 
-  const [detail, setDetail] = useState<ProjectDetail | null>(null);
-  const [detailErr, setDetailErr] = useState(false);
-
-  useEffect(() => {
-    let alive = true;
-    setDetailErr(false);
-    setDetail(null);
-    api<ProjectDetail>(`${base}/projects/${encodeURIComponent(key)}`)
-      .then((d) => alive && setDetail(d))
-      .catch(() => alive && setDetailErr(true));
-    return () => {
-      alive = false;
-    };
-  }, [base, key]);
+  const { data: detail, error: detailError } = useApiResource<ProjectDetail>(`${base}/projects/${encodeURIComponent(key)}`);
+  const detailErr = Boolean(detailError);
 
   return (
     <div className="space-y-3">

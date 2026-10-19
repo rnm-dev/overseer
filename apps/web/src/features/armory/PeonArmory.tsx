@@ -2,35 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Cpu, ExternalLink, Package as PackageIcon, RefreshCw, Search } from "lucide-react";
 import { Link, useParams } from "react-router";
 import { api, ApiError } from "../../shared/api";
+import { useRequestScope } from "../../shared/useApiResource";
 import { Badge, Button, Card } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
 import { ArmoryConfigurationPanel } from "./ArmoryConfigurationPanel";
 import { ArmoryMcpPanel } from "./ArmoryMcpPanel";
 import { ArmoryLifecyclePanel } from "./ArmoryLifecyclePanel";
 import { ArmoryProfilesPanel } from "./ArmoryProfilesPanel";
-import {
-  ARMORY_SEARCH_DEBOUNCE_MS,
-  activeArmoryCapabilities,
-  ArmoryRequestGate,
-  getArmoryConfiguration,
-  getArmoryInventory,
-  getArmoryMcp,
-  getArmoryPackage,
-  getArmoryProfiles,
-  getArmorySettings,
-  isMcpCapable,
-  refreshArmory,
-  supportsArmoryProjectPackages,
-  type ArmoryConfiguration,
-  type ArmoryInventoryResponse,
-  type ArmoryMcpDetails,
-  type ArmoryPackageDetailResponse,
-  type ArmoryPackageSummary,
-  type ArmoryProfile,
-  type ArmoryRegistry,
-  type ArmorySettings,
-  type ArmoryView,
-} from "./armoryApi";
+import { ARMORY_SEARCH_DEBOUNCE_MS, type ArmoryConfiguration, type ArmoryInventoryResponse, type ArmoryMcpDetails, type ArmoryPackageDetailResponse, type ArmoryPackageSummary, type ArmoryProfile, type ArmoryRegistry, type ArmorySettings, type ArmoryView } from "./armoryTypes";
+import { activeArmoryCapabilities, isMcpCapable, supportsArmoryProjectPackages } from "./armoryValidation";
+import { getArmoryConfiguration, getArmoryInventory, getArmoryMcp, getArmoryPackage, getArmoryProfiles, getArmorySettings, refreshArmory } from "./armoryClient";
 
 function ErrorNotice({ error, retry }: { error: unknown; retry?: () => void }) {
   const candidate = error as Partial<ApiError> | null;
@@ -184,7 +165,7 @@ function MarketplaceList() {
   const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
   const refreshTimer = useRef<number | null>(null);
   const refreshController = useRef<AbortController | null>(null);
-  const gate = useRef(new ArmoryRequestGate());
+  const gate = useRequestScope();
   const controller = useRef<AbortController | null>(null);
   const projectPackages = supportsArmoryProjectPackages(peon.capabilities);
 
@@ -197,24 +178,24 @@ function MarketplaceList() {
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
-    const token = gate.current.begin();
+    const token = gate.begin();
     if (append) setLoadingMore(true);
     else setLoading(true);
     if (!append) setError(null);
     try {
       const result = await getArmoryInventory(base, { q: debouncedQuery, view, cursor }, (path) => api(path, { signal: abort.signal }));
-      if (!gate.current.current(token)) return;
+      if (!gate.current(token)) return;
       setInventory((previous) => append && previous ? { ...result, packages: [...previous.packages, ...result.packages] } : result);
       setError(null);
     } catch (err) {
-      if (!abort.signal.aborted && gate.current.current(token)) setError(err);
+      if (!abort.signal.aborted && gate.current(token)) setError(err);
     } finally {
-      if (gate.current.current(token)) { setLoading(false); setLoadingMore(false); }
+      if (gate.current(token)) { setLoading(false); setLoadingMore(false); }
     }
   }, [base, debouncedQuery, view]);
 
   useEffect(() => {
-    const requestGate = gate.current;
+    const requestGate = gate;
     setInventory(null);
     setError(null);
     if (!peon.online) { setLoading(false); return () => requestGate.clear(); }
@@ -240,7 +221,7 @@ function MarketplaceList() {
     const abort = new AbortController();
     refreshController.current = abort;
     controller.current?.abort();
-    gate.current.clear();
+    gate.clear();
     setLoading(false);
     setRefreshState("refreshing");
     try {
@@ -323,14 +304,14 @@ function PackageDetail({ packageId }: { packageId: string }) {
   const [profiles, setProfiles] = useState<ArmoryProfile[]>([]);
   const [profilesError, setProfilesError] = useState<unknown>(null);
   const [profilesLoading, setProfilesLoading] = useState(false);
-  const gate = useRef(new ArmoryRequestGate());
+  const gate = useRequestScope();
   const controller = useRef<AbortController | null>(null);
   const projectPackages = supportsArmoryProjectPackages(peon.capabilities);
   const load = useCallback(async (quiet = false) => {
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
-    const token = gate.current.begin();
+    const token = gate.begin();
     if (!quiet) { setDetail(null); setConfiguration(null); setMcp(null); setProfiles([]); setError(null); }
     setConfigurationError(null);
     setMcpError(null);
@@ -338,34 +319,34 @@ function PackageDetail({ packageId }: { packageId: string }) {
     try {
       const request = <T,>(path: string) => api<T>(path, { signal: abort.signal });
       const value = await getArmoryPackage(base, packageId, request);
-      if (!gate.current.current(token)) return;
+      if (!gate.current(token)) return;
       setDetail(value);
       if (projectPackages) {
         setProfilesLoading(true);
-        try { const result = await getArmoryProfiles(base, request); if (gate.current.current(token)) setProfiles(result.profiles); }
-        catch (err) { if (!abort.signal.aborted && gate.current.current(token)) setProfilesError(err); }
-        finally { if (gate.current.current(token)) setProfilesLoading(false); }
+        try { const result = await getArmoryProfiles(base, request); if (gate.current(token)) setProfiles(result.profiles); }
+        catch (err) { if (!abort.signal.aborted && gate.current(token)) setProfilesError(err); }
+        finally { if (gate.current(token)) setProfilesLoading(false); }
       }
       const mcpCapable = isMcpCapable(value.package) || isMcpCapable(value.catalog);
       if (mcpCapable) {
         setMcpLoading(true);
-        try { const result = await getArmoryMcp(base, packageId, request); if (gate.current.current(token)) setMcp(result); }
-        catch (err) { if (!abort.signal.aborted && gate.current.current(token)) setMcpError(err); }
-        finally { if (gate.current.current(token)) setMcpLoading(false); }
+        try { const result = await getArmoryMcp(base, packageId, request); if (gate.current(token)) setMcp(result); }
+        catch (err) { if (!abort.signal.aborted && gate.current(token)) setMcpError(err); }
+        finally { if (gate.current(token)) setMcpLoading(false); }
       } else {
         setMcp(null);
         setMcpLoading(false);
         setTab("overview");
       }
       if (value.package.installed) {
-        try { const config = await getArmoryConfiguration(base, packageId, request); if (gate.current.current(token)) setConfiguration(config); }
-        catch (err) { if (!abort.signal.aborted && gate.current.current(token)) setConfigurationError(err); }
+        try { const config = await getArmoryConfiguration(base, packageId, request); if (gate.current(token)) setConfiguration(config); }
+        catch (err) { if (!abort.signal.aborted && gate.current(token)) setConfigurationError(err); }
       } else setConfiguration(null);
-    } catch (err) { if (!abort.signal.aborted && gate.current.current(token)) setError(err); }
+    } catch (err) { if (!abort.signal.aborted && gate.current(token)) setError(err); }
   }, [base, packageId, projectPackages]);
   const refresh = useCallback(() => load(true), [load]);
   useEffect(() => {
-    const requestGate = gate.current;
+    const requestGate = gate;
     if (peon.online) void load();
     return () => { controller.current?.abort(); requestGate.clear(); };
   }, [load, peon.online]);

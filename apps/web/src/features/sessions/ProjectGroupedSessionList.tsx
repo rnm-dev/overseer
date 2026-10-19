@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { readStoredJson, writeStoredValue } from "./storedValue";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Link } from "react-router";
 import { useT } from "../../shared/i18n";
@@ -138,24 +139,12 @@ export function groupSessionsByProject(projects: ProjectLite[], sessions: Sessio
 }
 
 export function loadExpandedProjectGroups(storage?: Pick<Storage, "getItem">): string[] | null {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    const raw = target?.getItem(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.every((value) => typeof value === "string") ? parsed : null;
-  } catch {
-    return null;
-  }
+  const parsed = readStoredJson(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY, storage);
+  return Array.isArray(parsed) && parsed.every((value) => typeof value === "string") ? parsed : null;
 }
 
 export function saveExpandedProjectGroups(groups: string[], storage?: Pick<Storage, "setItem">): void {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    target?.setItem(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY, JSON.stringify(groups));
-  } catch {
-    // Restricted storage must not affect navigation.
-  }
+  writeStoredValue(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY, JSON.stringify(groups), storage);
 }
 
 export function ProjectGroupedSessionList({

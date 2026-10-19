@@ -7,31 +7,9 @@ import { ApiError } from "../../shared/api";
 import { ArmoryLifecyclePanel } from "./ArmoryLifecyclePanel";
 import { ArmoryProfilesPanel } from "./ArmoryProfilesPanel";
 import { ADD_PROFILE_OPTION, ENABLED_OPTION, ProjectPackageAssignmentCard, UNASSIGNMENT_CONTEXT_COPY } from "./ProjectArmoryPackages";
-import {
-  ARMORY_PROJECT_PACKAGES_CAPABILITY,
-  ArmoryRequestGate,
-  armoryProfileReadiness,
-  clearSettledArmoryProfileValues,
-  configureArmoryProfile,
-  createArmoryProfile,
-  deleteArmoryProfile,
-  getArmoryProfileOperation,
-  getArmoryProfiles,
-  getArmoryProjectAssignments,
-  matchingArmoryProfiles,
-  missingArmoryProfileFields,
-  profileOperationActive,
-  removeArmoryProjectAssignment,
-  renameArmoryProfile,
-  setArmoryProjectAssignment,
-  supportsArmoryProjectPackages,
-  validateArmoryProfileConfiguration,
-  verifyArmoryProfile,
-  type ArmoryConfiguration,
-  type ArmoryPackageSummary,
-  type ArmoryProfile,
-  type ArmoryProfileRequirement,
-} from "./armoryApi";
+import { ARMORY_PROJECT_PACKAGES_CAPABILITY, type ArmoryConfiguration, type ArmoryPackageSummary, type ArmoryProfile, type ArmoryProfileRequirement } from "./armoryTypes";
+import { armoryProfileReadiness, matchingArmoryProfiles, missingArmoryProfileFields, profileOperationActive, supportsArmoryProjectPackages, validateArmoryProfileConfiguration } from "./armoryValidation";
+import { configureArmoryProfile, createArmoryProfile, deleteArmoryProfile, getArmoryProfileOperation, getArmoryProfiles, getArmoryProjectAssignments, removeArmoryProjectAssignment, renameArmoryProfile, setArmoryProjectAssignment, verifyArmoryProfile } from "./armoryClient";
 
 const profileId = "57ba5e9e-3ed2-4a92-919f-9f60ee69a450";
 const projectId = "87b68e30-a923-48b4-9a58-f561a2390083";
@@ -102,12 +80,11 @@ test("typed profile and assignment clients use only the capability routes and ke
   assert.doesNotMatch(JSON.stringify(configured), new RegExp(secret));
 });
 
-test("profile configuration failures are fixed/redacted and all settled form values are discarded", async () => {
+test("profile configuration failures are fixed/redacted", async () => {
   const secret = "must-not-survive";
   const request = async <T>(): Promise<T> => { throw new ApiError(400, secret, `Rejected ${secret}`); };
   await assert.rejects(() => configureArmoryProfile("/p", profileId, { serviceAccountJson: secret }, request), (error: ApiError) =>
     error.code === "PROFILE_CONFIGURATION_REJECTED" && error.message === "Peon rejected the profile configuration request." && !JSON.stringify(error).includes(secret));
-  assert.deepEqual(clearSettledArmoryProfileValues(), {});
 });
 
 test("profile compatibility is exact and readiness reports missing, unverified, invalid, and mismatched states", () => {
@@ -122,17 +99,10 @@ test("profile compatibility is exact and readiness reports missing, unverified, 
   assert.equal(validateArmoryProfileConfiguration(schema, missing, {}).serviceAccountJson, "Service account JSON is required.");
 });
 
-test("capability gating is exact and request generations reject stale profile/assignment responses", () => {
+test("capability gating is exact", () => {
   assert.equal(supportsArmoryProjectPackages([ARMORY_PROJECT_PACKAGES_CAPABILITY]), true);
   assert.equal(supportsArmoryProjectPackages(["armory-project-packages-v2"]), false);
   assert.equal(supportsArmoryProjectPackages([]), false);
-  const gate = new ArmoryRequestGate();
-  const oldProject = gate.begin();
-  const newProject = gate.begin();
-  assert.equal(gate.current(oldProject), false);
-  assert.equal(gate.current(newProject), true);
-  gate.clear();
-  assert.equal(gate.current(newProject), false);
 });
 
 test("capable package lifecycle preserves install/update/uninstall without rendering activation controls", () => {

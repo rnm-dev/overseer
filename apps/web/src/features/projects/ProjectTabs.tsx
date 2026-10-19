@@ -3,7 +3,7 @@ import { useParams } from "react-router";
 import { RouteTabs, type RouteTab } from "../../shared/RouteTabs";
 import { useT } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
-import { supportsArmoryProjectPackages } from "../armory/armoryApi";
+import { supportsArmoryProjectPackages } from "../armory/armoryValidation";
 import { api } from "../../shared/api";
 
 export function ProjectTabs() {

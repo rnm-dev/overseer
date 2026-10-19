@@ -1,26 +1,20 @@
 import { ProjectFileSubscriptions } from "./projectFileSubscriptions";
 import { ResourceSubscriptions } from "./resourceSubscriptions";
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { api } from "../shared/api";
 import { useWorkspace } from "../features/workspaces/workspace";
 import { useAuth } from "../features/auth/auth";
 import { useLocation } from "react-router";
 import { presenceLocationForPath, presenceLocationKey, reconcileLocalPresence } from "./presence";
-import { audioClientId, setAudioClaimSender, setAudioPrimary } from "./audioFocus";
+import { setAudioClaimSender, setAudioPrimary } from "./audioFocus";
 import { documentPresence } from "../features/sessions/sessionAttentionRead";
 import { socketWorkspaceForPath } from "./socketWorkspace";
+import { createWorkspaceSocket, type WorkspaceSocket } from "./workspaceSocket";
 import { parsePeonProjection, parsePeonProjections } from "../features/workspaces/workspacePeons";
 
 // The selected workspace transport: resumable live events, presence, and session
 // tails. Fleet-dashboard workspaces use the same protocol via workspaceLive.ts.
 // See apps/server/src/adapters/liveSocket.ts for the server side.
 // author: Viktor
-
-// Liveness watchdog: ping every PING_MS; if nothing at all arrives for STALE_MS,
-// the socket is a zombie (looks OPEN, silently dead — common behind proxies /
-// on mobile) so tear it down and resume. STALE_MS allows ~2 missed pongs.
-const PING_MS = 10_000;
-const STALE_MS = 25_000;
 
 export interface TailFrame {
   event: string | null;
@@ -74,6 +68,16 @@ export interface MentionAttentionLiveEvent {
   updatedAt: number;
 }
 type TailMsg = { event?: string | null; id?: string | null; data?: string };
+type TailHandler = { peonId: string; onFrame: (f: TailFrame) => void; resumeEnabled: boolean; lastEventId: string | null };
+// Fan-out channels: server message type -> payload delivered to subscribers.
+interface ChannelEvents {
+  session: SessionLiveEvent;
+  project: ProjectLiveEvent;
+  attention: AttentionLiveEvent;
+  mention_attention: MentionAttentionLiveEvent;
+}
+// Channels whose application the server wants acknowledged via `resource:applied`.
+const ACKED_CHANNELS = new Set<keyof ChannelEvents>(["session", "project"]);
 
 interface LiveSocketValue {
   subscribeFiles: ProjectFileSubscriptions["subscribe"];
@@ -108,18 +112,34 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
 
   const [fileSubscriptions] = useState(() => new ProjectFileSubscriptions());
   const [resourceSubscriptions] = useState(() => new ResourceSubscriptions());
-  const sockRef = useRef<WebSocket | null>(null);
+  const sockRef = useRef<WorkspaceSocket | null>(null);
   const readyRef = useRef(false); // authenticated workspace snapshot received
   const cursorsRef = useRef<Map<string, number>>(new Map()); // per-workspace resume cursor
-  const tailHandlers = useRef<Map<string, { peonId: string; onFrame: (f: TailFrame) => void; resumeEnabled: boolean; lastEventId: string | null }>>(new Map());
-  const sessionHandlers = useRef<Set<(session: SessionLiveEvent) => void>>(new Set());
-  const projectHandlers = useRef<Set<(project: ProjectLiveEvent) => void>>(new Set());
-  const attentionHandlers = useRef<Set<(attention: AttentionLiveEvent) => void>>(new Set());
-  const mentionAttentionHandlers = useRef<Set<(attention: MentionAttentionLiveEvent) => void>>(new Set());
+  const tailHandlers = useRef<Map<string, TailHandler>>(new Map());
+  const channelHandlers = useRef<{ [K in keyof ChannelEvents]: Set<(event: ChannelEvents[K]) => void> }>({
+    session: new Set(),
+    project: new Set(),
+    attention: new Set(),
+    mention_attention: new Set(),
+  });
   // Per-session backoff for tail auto-resubscribe (tailEnd/tailError) — separate
   // from the socket-level backoff so one flaky session tail can't affect others.
   const tailBackoff = useRef<Map<string, number>>(new Map());
   const tailRetryTimers = useRef<Map<string, number>>(new Map());
+
+  const clearTailRetry = (sessionId: string) => {
+    const timer = tailRetryTimers.current.get(sessionId);
+    if (timer) {
+      window.clearTimeout(timer);
+      tailRetryTimers.current.delete(sessionId);
+    }
+    tailBackoff.current.delete(sessionId);
+  };
+  // Only send if the handshake completed; the post-handshake snapshot flushes
+  // pending subscriptions.
+  const sendReady = (message: unknown) => readyRef.current && (sockRef.current?.send(message) ?? false);
+  const sendSubscribe = (sessionId: string, h: TailHandler) =>
+    sockRef.current?.send({ type: "subscribe", peonId: h.peonId, sessionId, ...(h.lastEventId ? { lastEventId: h.lastEventId } : {}) });
   const routePresence = useMemo(() => presenceLocationForPath(pathname), [pathname]);
   // The route says where the operator is; documentPresence says whether they are
   // actually looking. Both travel with presence so the server can tell a watched
@@ -150,35 +170,15 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   desiredPresenceRef.current = desiredPresence;
 
   useEffect(() => {
-    if (!wsId) {
+    const markDisconnected = () => {
       readyRef.current = false;
       fileSubscriptions.connect(null);
       resourceSubscriptions.connect(null);
-      setPresence([]);
-      return;
-    }
-    if (!userEmail) {
-      readyRef.current = false;
-      fileSubscriptions.connect(null);
-      resourceSubscriptions.connect(null);
-      setPresence([]);
-      return;
-    }
-
-    let closed = false;
-    let retry: number | null = null;
-    let backoff = 1000;
-    let lastRecvAt = Date.now(); // when we last heard ANYTHING from the server
-    let connectStartedAt = 0;
-    let lastResumeAt = 0; // debounce gap-resume requests so repeated syncs don't spam
-    let connectionGeneration = 0;
-    let ticketPending = false;
-
-    // Fresh workspace ⇒ clear the view until its snapshot lands.
-    readyRef.current = false;
-    fileSubscriptions.connect(null);
-    resourceSubscriptions.connect(null);
+    };
+    // Fresh workspace (or none) ⇒ clear the view until its snapshot lands.
+    markDisconnected();
     setPresence([]);
+    if (!wsId || !userEmail) return;
     setAcknowledgedPresenceVersion(-1);
 
     const acceptPresence = (next: PresenceEntry[]) => {
@@ -193,126 +193,27 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
       }
     };
 
-    const connect = async () => {
-      if (closed || ticketPending) return;
-      // A delayed retry, focus event, and online event can all arrive in the same
-      // turn. Only one of them gets to create the next transport.
-      const currentSocket = sockRef.current;
-      if (currentSocket && (currentSocket.readyState === WebSocket.CONNECTING || currentSocket.readyState === WebSocket.OPEN)) return;
-      ticketPending = true;
-      let ticket: string;
-      try {
-        ({ ticket } = await api<{ ticket: string }>("/auth/ws-ticket", { method: "POST" }));
-      } catch {
-        ticketPending = false;
-        if (!closed && !retry) retry = window.setTimeout(() => { retry = null; void connect(); }, backoff);
-        backoff = Math.min(backoff * 2, 10_000);
-        return;
-      }
-      ticketPending = false;
-      if (closed) return;
-      const url = `${location.origin.replace(/^http/, "ws")}/api/ws?ticket=${encodeURIComponent(ticket)}`;
-      const ws = new WebSocket(url);
-      const generation = ++connectionGeneration;
-      sockRef.current = ws;
-      connectStartedAt = Date.now();
-      lastRecvAt = Date.now();
-
-      ws.onopen = () => {
-        if (closed || sockRef.current !== ws || generation !== connectionGeneration) return ws.close();
-        readyRef.current = false;
-        fileSubscriptions.connect(null);
-        resourceSubscriptions.connect(null);
-        lastRecvAt = Date.now();
-        // clientId travels with hello so every socket of this tab shares one
-        // entry in the operator's audio stack.
-        ws.send(JSON.stringify({ type: "hello", workspaceId: wsId, cursor: cursorsRef.current.get(wsId) ?? 0, clientId: audioClientId() }));
-        // A fresh socket supersedes pending per-tail retries. Subscriptions are
-        // flushed only after `snapshot`, which is the server's explicit proof that
-        // authentication + workspace initialization completed.
-        for (const timer of tailRetryTimers.current.values()) window.clearTimeout(timer);
-        tailRetryTimers.current.clear();
-        tailBackoff.current.clear();
-      };
-      ws.onclose = () => {
-        // A retired socket must never mark its replacement disconnected or arm a
-        // second retry. This is especially important after focus/pageshow races.
-        if (sockRef.current !== ws || generation !== connectionGeneration) return;
-        readyRef.current = false;
-        fileSubscriptions.connect(null);
-        resourceSubscriptions.connect(null);
-        sockRef.current = null;
-        if (closed) return;
-        if (retry) window.clearTimeout(retry);
-        // Jitter prevents every open dashboard reconnecting in lockstep after an
-        // overseer/proxy restart.
-        const delay = Math.round(backoff * (0.8 + Math.random() * 0.4));
-        retry = window.setTimeout(() => {
-          retry = null;
-          void connect();
-        }, delay);
-        backoff = Math.min(backoff * 2, 10_000);
-      };
-      ws.onerror = () => {
-        if (sockRef.current === ws && generation === connectionGeneration) ws.close();
-      };
-      ws.onmessage = (ev) => {
-        if (closed || sockRef.current !== ws || generation !== connectionGeneration) return;
-        lastRecvAt = Date.now(); // any frame (incl. pong) proves the link is alive
-        let msg: Record<string, unknown>;
-        try {
-          msg = JSON.parse(ev.data);
-        } catch {
-          return;
-        }
-        if (msg.type === "pong") return; // heartbeat ack — liveness already recorded
-        handle(msg);
-      };
-    };
-
-    // Force-replace the current socket immediately (skipping backoff). Detach the
-    // old socket's handlers first so a late onclose from the discarded one can't
-    // also schedule a competing reconnect.
-    const reconnectNow = () => {
-      if (closed) return;
-      readyRef.current = false;
-      fileSubscriptions.connect(null);
-      resourceSubscriptions.connect(null);
-      const old = sockRef.current;
-      if (old) {
-        sockRef.current = null;
-        old.onopen = old.onclose = old.onerror = old.onmessage = null;
-        try {
-          old.close();
-        } catch {
-          /* already closing */
-        }
-      }
-      if (retry) {
-        window.clearTimeout(retry);
-        retry = null;
-      }
-      void connect();
-    };
-
+    const getCursor = () => cursorsRef.current.get(wsId) ?? 0;
     const bump = (cursor: unknown) => {
       const c = Number(cursor) || 0;
-      if (c > 0) cursorsRef.current.set(wsId, Math.max(c, cursorsRef.current.get(wsId) ?? 0));
+      if (c > 0) cursorsRef.current.set(wsId, Math.max(c, getCursor()));
     };
 
-    // Gap self-heal: the server's periodic `sync` reports the newest cursor for this
-    // workspace. If it's ahead of what we've applied, deltas went missing while the
-    // socket stayed open (a live pong can't detect this) — ask to replay the gap
-    // over the same socket, no reconnect, no lost tails. Debounced: a resume bumps
-    // our cursor, so the next sync sees us caught up; the guard only matters if
-    // syncs stack up while a replay is still in flight.
-    const requestResume = () => {
-      const now = Date.now();
-      if (now - lastResumeAt < 3000) return;
-      const ws = sockRef.current;
-      if (ws?.readyState !== WebSocket.OPEN) return;
-      lastResumeAt = now;
-      ws.send(JSON.stringify({ type: "resume", cursor: cursorsRef.current.get(wsId) ?? 0 }));
+    const tailHandlerFor = (msg: Record<string, unknown>) => {
+      const sid = String(msg.sessionId ?? "");
+      const handler = tailHandlers.current.get(sid);
+      if (!handler || (msg.peonId && msg.peonId !== handler.peonId)) return null;
+      return { sid, handler };
+    };
+
+    const dispatchChannel = <K extends keyof ChannelEvents>(kind: K, msg: Record<string, unknown>) => {
+      bump(msg.cursor);
+      if (!msg.payload || typeof msg.payload !== "object") return;
+      const handlers = channelHandlers.current[kind];
+      const applied = handlers.size > 0;
+      for (const handler of handlers) handler(msg.payload as ChannelEvents[K]);
+      const cursor = Number(msg.cursor) || 0;
+      if (ACKED_CHANNELS.has(kind) && applied && cursor > 0) transport.send({ type: "resource:applied", kind, cursor });
     };
 
     const handle = (msg: Record<string, unknown>) => {
@@ -331,24 +232,19 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           // TCP open is not enough to call a connection healthy: auth or the
           // snapshot query can still fail immediately. Reset retry pressure only
           // after the full application handshake succeeds.
-          backoff = 1000;
-          const presence = (msg.presence as PresenceEntry[]) ?? [];
-          acceptPresence(presence);
+          transport.resetBackoff();
+          acceptPresence((msg.presence as PresenceEntry[]) ?? []);
           for (const peon of parsePeonProjections(msg.peonPresence)) updatePeon(wsId, peon);
           cursorsRef.current.set(wsId, Number(msg.cursor) || 0);
           // `snapshot` is the handshake-ready barrier. Sending subscriptions here
           // (not in onopen) works with slow auth/DB lookups and older servers that
           // did not serialize hello + subscribe messages.
-          const ws = sockRef.current;
-          if (ws?.readyState === WebSocket.OPEN) {
-            fileSubscriptions.connect((message) => ws.send(JSON.stringify(message)),
-              Array.isArray(msg.capabilities) && msg.capabilities.includes("project-directory-watch-v1"));
-            resourceSubscriptions.connect((message) => ws.send(JSON.stringify(message)),
-              Array.isArray(msg.capabilities) && msg.capabilities.includes("resource-usage-v1"));
-            for (const [sessionId, h] of tailHandlers.current) {
-              ws.send(JSON.stringify({ type: "subscribe", peonId: h.peonId, sessionId, ...(h.lastEventId ? { lastEventId: h.lastEventId } : {}) }));
-            }
-            ws.send(JSON.stringify({ type: "presence:set", ...desiredPresenceRef.current }));
+          if (transport.isOpen()) {
+            const capabilities = Array.isArray(msg.capabilities) ? msg.capabilities : [];
+            fileSubscriptions.connect((message) => transport.send(message), capabilities.includes("project-directory-watch-v1"));
+            resourceSubscriptions.connect((message) => transport.send(message), capabilities.includes("resource-usage-v1"));
+            for (const [sessionId, h] of tailHandlers.current) sendSubscribe(sessionId, h);
+            transport.send({ type: "presence:set", ...desiredPresenceRef.current });
           }
           break;
         }
@@ -360,7 +256,7 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
         }
         case "sync": {
           // Server's newest cursor for this workspace — resume if we've fallen behind.
-          if ((Number(msg.cursor) || 0) > (cursorsRef.current.get(wsId) ?? 0)) requestResume();
+          if ((Number(msg.cursor) || 0) > getCursor()) transport.requestResume();
           break;
         }
         case "peon": {
@@ -368,49 +264,15 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           const peon = parsePeonProjection(msg.payload);
           if (peon) updatePeon(wsId, peon);
           const cursor = Number(msg.cursor) || 0;
-          if (peon && cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
-            sockRef.current.send(JSON.stringify({ type: "resource:applied", kind: "peon", cursor }));
-          }
+          if (peon && cursor > 0) transport.send({ type: "resource:applied", kind: "peon", cursor });
           break;
         }
-        case "session": {
-          bump(msg.cursor);
-          if (msg.payload && typeof msg.payload === "object") {
-            const applied = sessionHandlers.current.size > 0;
-            for (const onSession of sessionHandlers.current) onSession(msg.payload as SessionLiveEvent);
-            const cursor = Number(msg.cursor) || 0;
-            if (applied && cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
-              sockRef.current.send(JSON.stringify({ type: "resource:applied", kind: "session", cursor }));
-            }
-          }
+        case "session":
+        case "project":
+        case "attention":
+        case "mention_attention":
+          dispatchChannel(msg.type, msg);
           break;
-        }
-        case "project": {
-          bump(msg.cursor);
-          if (msg.payload && typeof msg.payload === "object") {
-            const applied = projectHandlers.current.size > 0;
-            for (const onProject of projectHandlers.current) onProject(msg.payload as ProjectLiveEvent);
-            const cursor = Number(msg.cursor) || 0;
-            if (applied && cursor > 0 && sockRef.current?.readyState === WebSocket.OPEN) {
-              sockRef.current.send(JSON.stringify({ type: "resource:applied", kind: "project", cursor }));
-            }
-          }
-          break;
-        }
-        case "attention": {
-          bump(msg.cursor);
-          if (msg.payload && typeof msg.payload === "object") {
-            for (const onAttention of attentionHandlers.current) onAttention(msg.payload as AttentionLiveEvent);
-          }
-          break;
-        }
-        case "mention_attention": {
-          bump(msg.cursor);
-          if (msg.payload && typeof msg.payload === "object") {
-            for (const onAttention of mentionAttentionHandlers.current) onAttention(msg.payload as MentionAttentionLiveEvent);
-          }
-          break;
-        }
         case "presence": {
           acceptPresence((msg.presence as PresenceEntry[]) ?? []);
           break;
@@ -422,158 +284,94 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
           break;
         }
         case "presenceRetry": {
-          window.setTimeout(() => {
-            if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) {
-              sockRef.current.send(JSON.stringify({ type: "presence:set", ...desiredPresenceRef.current }));
-            }
-          }, 1000);
+          window.setTimeout(() => sendReady({ type: "presence:set", ...desiredPresenceRef.current }), 1000);
           break;
         }
         case "tail": {
-          const sid = String(msg.sessionId ?? "");
-          const handler = tailHandlers.current.get(sid);
-          if (!handler || (msg.peonId && msg.peonId !== handler.peonId)) break;
-          const timer = tailRetryTimers.current.get(sid);
-          if (timer) {
-            window.clearTimeout(timer);
-            tailRetryTimers.current.delete(sid);
-          }
-          tailBackoff.current.delete(sid); // live data flowing again — reset backoff
-          const frameId = (msg as TailMsg).id ?? null;
-          if (handler.resumeEnabled && frameId) handler.lastEventId = frameId;
-          handler.onFrame({ event: (msg as TailMsg).event ?? null, id: frameId, data: (msg as TailMsg).data ?? "" });
+          const target = tailHandlerFor(msg);
+          if (!target) break;
+          clearTailRetry(target.sid); // live data flowing again — reset backoff
+          const frame = msg as TailMsg;
+          const frameId = frame.id ?? null;
+          if (target.handler.resumeEnabled && frameId) target.handler.lastEventId = frameId;
+          target.handler.onFrame({ event: frame.event ?? null, id: frameId, data: frame.data ?? "" });
           break;
         }
         case "tailReady": {
-          const sid = String(msg.sessionId ?? "");
-          const handler = tailHandlers.current.get(sid);
-          if (!handler || (msg.peonId && msg.peonId !== handler.peonId)) break;
-          const timer = tailRetryTimers.current.get(sid);
-          if (timer) {
-            window.clearTimeout(timer);
-            tailRetryTimers.current.delete(sid);
-          }
-          tailBackoff.current.delete(sid);
-          handler.onFrame({ event: "tailReady", id: null, data: "" });
+          const target = tailHandlerFor(msg);
+          if (!target) break;
+          clearTailRetry(target.sid);
+          target.handler.onFrame({ event: "tailReady", id: null, data: "" });
           break;
         }
         case "tailEnd":
         case "tailError": {
-          const sid = String(msg.sessionId ?? "");
-          const handler = tailHandlers.current.get(sid);
-          if (handler && (!msg.peonId || msg.peonId === handler.peonId)) {
-            // Old servers emitted tailError immediately followed by tailEnd for the
-            // same stream. One pending retry means this terminal generation is
-            // already handled; do not notify twice or spawn overlapping timers.
-            if (tailRetryTimers.current.has(sid)) break;
-            handler.onFrame({ event: msg.type, id: null, data: String(msg.error ?? "") });
-            if (msg.retryable === false) {
-              tailBackoff.current.delete(sid);
-              break;
-            }
-            // A session tail can drop (peon restart, transient network blip) while the
-            // session itself is still very much alive — auto-resubscribe with its own
-            // backoff so the operator's view self-heals without a full page reload or
-            // a full socket reconnect. Stops once the caller unsubscribes (handler removed).
-            const delay = tailBackoff.current.get(sid) ?? 1000;
-            tailBackoff.current.set(sid, Math.min(delay * 2, 10_000));
-            const timer = window.setTimeout(() => {
-              tailRetryTimers.current.delete(sid);
-              if (tailHandlers.current.get(sid) !== handler) return; // unsubscribed since
-              if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) sockRef.current.send(JSON.stringify({ type: "subscribe", peonId: handler.peonId, sessionId: sid, ...(handler.lastEventId ? { lastEventId: handler.lastEventId } : {}) }));
-            }, delay);
-            tailRetryTimers.current.set(sid, timer);
+          const target = tailHandlerFor(msg);
+          if (!target) break;
+          const { sid, handler } = target;
+          // Old servers emitted tailError immediately followed by tailEnd for the
+          // same stream. One pending retry means this terminal generation is
+          // already handled; do not notify twice or spawn overlapping timers.
+          if (tailRetryTimers.current.has(sid)) break;
+          handler.onFrame({ event: msg.type, id: null, data: String(msg.error ?? "") });
+          if (msg.retryable === false) {
+            tailBackoff.current.delete(sid);
+            break;
           }
+          // A session tail can drop (peon restart, transient network blip) while the
+          // session itself is still very much alive — auto-resubscribe with its own
+          // backoff so the operator's view self-heals without a full page reload or
+          // a full socket reconnect. Stops once the caller unsubscribes (handler removed).
+          const delay = tailBackoff.current.get(sid) ?? 1000;
+          tailBackoff.current.set(sid, Math.min(delay * 2, 10_000));
+          const timer = window.setTimeout(() => {
+            tailRetryTimers.current.delete(sid);
+            if (tailHandlers.current.get(sid) !== handler) return; // unsubscribed since
+            if (readyRef.current) sendSubscribe(sid, handler);
+          }, delay);
+          tailRetryTimers.current.set(sid, timer);
           break;
         }
       }
     };
 
-    // Liveness watchdog — the core of "always connected". Every tick: if the socket
-    // is open but has heard nothing for STALE_MS it's a zombie (looks alive, silently
-    // dead) → replace it; otherwise ping so a healthy link keeps producing traffic.
-    // A non-open socket is already handled by onclose's scheduled reconnect.
-    const heartbeat = window.setInterval(() => {
-      if (closed) return;
-      const ws = sockRef.current;
-      if (ws?.readyState === WebSocket.CONNECTING) {
-        if (Date.now() - connectStartedAt > STALE_MS) reconnectNow();
-        return;
-      }
-      // `close()` starts a handshake that browsers are allowed to leave in
-      // CLOSING indefinitely. Waiting only for `onclose` is the classic desktop
-      // zombie: no socket, no retry, and updates resume only after F5.
-      if (ws?.readyState === WebSocket.CLOSING || ws?.readyState === WebSocket.CLOSED) return reconnectNow();
-      if (!ws) {
-        if (retry === null) void connect();
-        return;
-      }
-      if (ws.readyState !== WebSocket.OPEN) return;
-      if (Date.now() - lastRecvAt > STALE_MS) return reconnectNow();
-      try {
-        ws.send(JSON.stringify({ type: "ping" }));
-      } catch {
-        reconnectNow();
-      }
-    }, PING_MS);
-
-    // Recheck the instant connectivity is likely back: the OS reports the network
-    // up, or the tab regains focus (a backgrounded/suspended tab is the biggest
-    // cause of a zombie socket — timers freeze, so the watchdog above can't fire
-    // and the connection may be long dead before onclose ever does). If the socket
-    // isn't provably fresh, replace it now instead of waiting for the next tick.
-    const kick = () => {
-      if (closed) return;
-      const ws = sockRef.current;
-      if (ws?.readyState === WebSocket.CONNECTING && Date.now() - connectStartedAt <= STALE_MS) return;
-      if (!ws || ws.readyState !== WebSocket.OPEN || Date.now() - lastRecvAt > PING_MS) return reconnectNow();
-      try {
-        ws.send(JSON.stringify({ type: "ping" }));
-      } catch {
-        reconnectNow();
-      }
-    };
-    const onVisible = () => document.visibilityState === "visible" && kick();
     const retryTimers = tailRetryTimers.current;
     const tailBackoffs = tailBackoff.current;
-    window.addEventListener("online", kick);
-    window.addEventListener("focus", kick);
-    window.addEventListener("pageshow", kick); // bfcache restore — timers were frozen
-    document.addEventListener("visibilitychange", onVisible);
-
-    // A gesture on this page (starting or stopping a run) claims the sound for
-    // this client; the overseer moves it to the top of the operator's stack.
-    setAudioClaimSender(() => {
-      const ws = sockRef.current;
-      if (readyRef.current && ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "audio:claim" }));
-    });
-
-    void connect();
-    return () => {
-      closed = true;
-      readyRef.current = false;
-      fileSubscriptions.connect(null);
-      resourceSubscriptions.connect(null);
-      setAudioClaimSender(null);
-      window.clearInterval(heartbeat);
-      window.removeEventListener("online", kick);
-      window.removeEventListener("focus", kick);
-      window.removeEventListener("pageshow", kick);
-      document.removeEventListener("visibilitychange", onVisible);
-      if (retry) window.clearTimeout(retry);
+    const clearAllTailRetries = () => {
       for (const timer of retryTimers.values()) window.clearTimeout(timer);
       retryTimers.clear();
       tailBackoffs.clear();
-      sockRef.current?.close();
+    };
+
+    const transport = createWorkspaceSocket({
+      workspaceId: wsId,
+      getCursor,
+      onMessage: handle,
+      onDisconnected: markDisconnected,
+      // A fresh socket supersedes pending per-tail retries. Subscriptions are
+      // flushed only after `snapshot`, which is the server's explicit proof that
+      // authentication + workspace initialization completed.
+      onOpen: () => {
+        markDisconnected();
+        clearAllTailRetries();
+      },
+    });
+    sockRef.current = transport;
+
+    // A gesture on this page (starting or stopping a run) claims the sound for
+    // this client; the overseer moves it to the top of the operator's stack.
+    setAudioClaimSender(() => void sendReady({ type: "audio:claim" }));
+
+    return () => {
+      setAudioClaimSender(null);
+      transport.stop();
+      clearAllTailRetries();
       sockRef.current = null;
     };
-  }, [wsId, userEmail, updatePeon, fileSubscriptions]);
+  }, [wsId, userEmail, updatePeon, fileSubscriptions, resourceSubscriptions]);
 
   useEffect(() => {
-    const ws = sockRef.current;
-    if (readyRef.current && ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: "presence:set", ...desiredPresence }));
-    }
+    sendReady({ type: "presence:set", ...desiredPresence });
   }, [desiredPresence]);
 
   // Route presence belongs to this socket. Publishing the same route through an
@@ -584,54 +382,37 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
   const subscribe = useMemo(
     () => (peonId: string, sessionId: string, onFrame: (f: TailFrame) => void, lastEventId?: string | null) => {
       const previous = tailHandlers.current.get(sessionId);
-      const handler = { peonId, onFrame, resumeEnabled: lastEventId !== undefined, lastEventId: lastEventId ?? null };
+      const handler: TailHandler = { peonId, onFrame, resumeEnabled: lastEventId !== undefined, lastEventId: lastEventId ?? null };
       tailHandlers.current.set(sessionId, handler);
-      const timer = tailRetryTimers.current.get(sessionId);
-      if (timer) {
-        window.clearTimeout(timer);
-        tailRetryTimers.current.delete(sessionId);
-      }
-      tailBackoff.current.delete(sessionId);
-      // Only send if the socket is already open; a CONNECTING socket would throw
-      // InvalidStateError. The post-handshake snapshot flushes pending subscriptions.
-      if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) {
-        if (previous && previous.peonId !== peonId) sockRef.current.send(JSON.stringify({ type: "unsubscribe", sessionId }));
-        sockRef.current.send(JSON.stringify({ type: "subscribe", peonId, sessionId, ...(handler.lastEventId ? { lastEventId: handler.lastEventId } : {}) }));
+      clearTailRetry(sessionId);
+      if (readyRef.current && sockRef.current?.isOpen()) {
+        if (previous && previous.peonId !== peonId) sockRef.current.send({ type: "unsubscribe", sessionId });
+        sendSubscribe(sessionId, handler);
       }
       return () => {
         // An older subscriber cleanup must not delete/unsubscribe a newer handler
         // that reused the same session id.
         if (tailHandlers.current.get(sessionId) !== handler) return;
         tailHandlers.current.delete(sessionId);
-        tailBackoff.current.delete(sessionId);
-        const timer = tailRetryTimers.current.get(sessionId);
-        if (timer) {
-          window.clearTimeout(timer);
-          tailRetryTimers.current.delete(sessionId);
-        }
-        if (readyRef.current && sockRef.current?.readyState === WebSocket.OPEN) sockRef.current.send(JSON.stringify({ type: "unsubscribe", sessionId }));
+        clearTailRetry(sessionId);
+        sendReady({ type: "unsubscribe", sessionId });
       };
     },
     [],
   );
 
-  const subscribeSessions = useMemo(() => (onSession: (session: SessionLiveEvent) => void) => {
-    sessionHandlers.current.add(onSession);
-    return () => sessionHandlers.current.delete(onSession);
-  }, []);
-
-  const subscribeProjects = useMemo(() => (onProject: (project: ProjectLiveEvent) => void) => {
-    projectHandlers.current.add(onProject);
-    return () => projectHandlers.current.delete(onProject);
-  }, []);
-
-  const subscribeAttention = useMemo(() => (onAttention: (attention: AttentionLiveEvent) => void) => {
-    attentionHandlers.current.add(onAttention);
-    return () => attentionHandlers.current.delete(onAttention);
-  }, []);
-  const subscribeMentionAttention = useMemo(() => (onAttention: (attention: MentionAttentionLiveEvent) => void) => {
-    mentionAttentionHandlers.current.add(onAttention);
-    return () => mentionAttentionHandlers.current.delete(onAttention);
+  const channelSubscribers = useMemo(() => {
+    const subscriber = <K extends keyof ChannelEvents>(kind: K) => (handler: (event: ChannelEvents[K]) => void) => {
+      const handlers = channelHandlers.current[kind] as Set<(event: ChannelEvents[K]) => void>;
+      handlers.add(handler);
+      return () => void handlers.delete(handler);
+    };
+    return {
+      subscribeSessions: subscriber("session"),
+      subscribeProjects: subscriber("project"),
+      subscribeAttention: subscriber("attention"),
+      subscribeMentionAttention: subscriber("mention_attention"),
+    };
   }, []);
 
   const withLocalUser = useMemo(() => {
@@ -664,7 +445,17 @@ export function LiveSocketProvider({ children }: { children: ReactNode }) {
 
   const viewersForWorkspace = useMemo(() => () => withLocalUser(presence, true), [presence, withLocalUser]);
 
-  return <Ctx.Provider value={{ subscribeFiles: fileSubscriptions.subscribe, subscribeResources: resourceSubscriptions.subscribe, viewersFor, viewersForPeon, viewersForWorkspace, subscribe, subscribeSessions, subscribeProjects, subscribeAttention, subscribeMentionAttention }}>{children}</Ctx.Provider>;
+  const value = useMemo<LiveSocketValue>(() => ({
+    subscribeFiles: fileSubscriptions.subscribe,
+    subscribeResources: resourceSubscriptions.subscribe,
+    viewersFor,
+    viewersForPeon,
+    viewersForWorkspace,
+    subscribe,
+    ...channelSubscribers,
+  }), [fileSubscriptions, resourceSubscriptions, viewersFor, viewersForPeon, viewersForWorkspace, subscribe, channelSubscribers]);
+
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useLiveSocket(): LiveSocketValue {

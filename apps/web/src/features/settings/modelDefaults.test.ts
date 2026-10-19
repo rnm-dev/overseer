@@ -1,17 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  composerDefaultEffortId,
-  defaultProviderForCatalog,
-  effectiveModelId,
-  inheritedModelId,
-  isReasoningEffortValid,
-  pickerDisplayName,
-  pickerEntries,
-  reasoningEffortsForEffectiveModel,
-  type CatalogOption,
-  type ModelsCatalog,
-} from "./models";
+import { composerDefaultEffortId, defaultProviderForCatalog, effectiveModelId, inheritedModelId, isReasoningEffortValid, pickerDisplayName, pickerEntries, reasoningEffortsForEffectiveModel, type CatalogOption, type ModelsCatalog } from "../fleet/modelsCatalog";
 
 const catalog = (defaultModel: string | null): ModelsCatalog => ({
   defaultAgent: "claude-code",

@@ -1,27 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { ApiError, api } from "../../shared/api";
+import { useRequestScope } from "../../shared/useApiResource";
 import { Badge, Button, Card } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
 import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { ProjectPageHeader } from "../projects/ProjectPageHeader";
 import { ProjectTabs } from "../projects/ProjectTabs";
 import type { ProjectDetail } from "../fleet/peonApi";
-import {
-  ArmoryRequestGate,
-  armoryProfileReadiness,
-  getArmoryInventory,
-  getArmoryProfiles,
-  getArmoryProjectAssignments,
-  matchingArmoryProfiles,
-  missingArmoryProfileFields,
-  removeArmoryProjectAssignment,
-  setArmoryProjectAssignment,
-  supportsArmoryProjectPackages,
-  type ArmoryPackageSummary,
-  type ArmoryProfile,
-  type ArmoryProjectAssignment,
-} from "./armoryApi";
+import type { ArmoryPackageSummary, ArmoryProfile, ArmoryProjectAssignment } from "./armoryTypes";
+import { armoryProfileReadiness, matchingArmoryProfiles, missingArmoryProfileFields, supportsArmoryProjectPackages } from "./armoryValidation";
+import { getArmoryInventory, getArmoryProfiles, getArmoryProjectAssignments, removeArmoryProjectAssignment, setArmoryProjectAssignment } from "./armoryClient";
 
 export const UNASSIGNMENT_CONTEXT_COPY = "Removing an assignment excludes this package’s tools and instructions from future turns and can reduce context and token use. An active turn does not change.";
 
@@ -114,12 +103,12 @@ export function ProjectArmoryPackages() {
   const [loading, setLoading] = useState(capable && peon.online);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState<Set<string>>(new Set());
-  const gate = useRef(new ArmoryRequestGate());
+  const gate = useRequestScope();
   const scope = useRef(`${base}:${key}`);
   scope.current = `${base}:${key}`;
 
   const load = useCallback(async () => {
-    const token = gate.current.begin();
+    const token = gate.begin();
     setLoading(true); setError(null);
     try {
       const detail = await api<ProjectDetail>(`${base}/projects/${encodeURIComponent(key)}`);
@@ -129,17 +118,17 @@ export function ProjectArmoryPackages() {
         getArmoryProfiles(base),
         getArmoryProjectAssignments(base, detail.projectId),
       ]);
-      if (!gate.current.current(token)) return;
+      if (!gate.current(token)) return;
       setProjectId(detail.projectId);
       setPackages(inventory.packages.filter((item) => item.installed !== null));
       setProfiles(profileList.profiles);
       setAssignments(assignmentList.assignments);
-    } catch (reason) { if (gate.current.current(token)) setError(reason); }
-    finally { if (gate.current.current(token)) setLoading(false); }
+    } catch (reason) { if (gate.current(token)) setError(reason); }
+    finally { if (gate.current(token)) setLoading(false); }
   }, [base, key]);
 
   useEffect(() => {
-    const requestGate = gate.current;
+    const requestGate = gate;
     setProjectId(null); setPackages([]); setProfiles([]); setAssignments([]); setError(null); setBusy(new Set());
     if (capable && peon.online) void load(); else setLoading(false);
     return () => requestGate.clear();

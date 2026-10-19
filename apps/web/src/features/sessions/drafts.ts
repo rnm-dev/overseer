@@ -139,11 +139,6 @@ export function saveComposerDraft(key: string, value: string, files: File[], car
   void writeDraftFiles(key, files);
 }
 
-export function clearComposerDraft(key: string): void {
-  saveComposerDraft(key, "", NO_FILES);
-  writeComposerSelectionDraft(key, EMPTY_SELECTION);
-}
-
 // Content is cleared immediately after an accepted send. Selection has its own
 // conditional clear so an operator changing model/effort while the request is
 // in flight does not lose the next message they were preparing.
@@ -154,7 +149,7 @@ export function clearComposerDraftContent(key: string): void {
 // A new-session form deliberately does not revive file attachments. Unlike
 // text, files are an explicit send-time choice: restoring them makes a prior
 // paste look like the browser has pasted the current system clipboard. Keep
-// this separate from clearComposerDraft so its text draft can still survive.
+// this separate from clearComposerDraftContent so its text draft can still survive.
 export function clearComposerDraftFiles(key: string): void {
   void writeDraftFiles(key, NO_FILES);
 }

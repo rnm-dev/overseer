@@ -8,34 +8,9 @@ import { ArmoryConfigurationPanel } from "./ArmoryConfigurationPanel";
 import { ArmoryMcpPanel } from "./ArmoryMcpPanel";
 import { ArmoryLifecyclePanel, UNINSTALL_PRESERVATION_COPY } from "./ArmoryLifecyclePanel";
 import { isPackageReady, PackageCard } from "./PeonArmory";
-import {
-  ARMORY_SEARCH_DEBOUNCE_MS,
-  ArmoryActionGate,
-  activeArmoryCapabilities,
-  armoryOperationProgress,
-  ArmoryRequestGate,
-  clearAcceptedTransientValues,
-  deleteArmoryConfiguration,
-  getArmoryConfiguration,
-  getArmoryInventory,
-  getArmoryMcp,
-  getArmoryOperation,
-  getArmoryPackage,
-  getArmorySettings,
-  isMcpCapable,
-  inventoryPath,
-  installArmoryPackage,
-  operationActive,
-  refreshArmory,
-  setArmoryPackageEnabled,
-  submitArmoryConfiguration,
-  uninstallArmoryPackage,
-  updateArmoryPackage,
-  validateArmoryConfiguration,
-  type ArmoryConfiguration,
-  type ArmoryOperation,
-  type InstalledPackage,
-} from "./armoryApi";
+import { ARMORY_SEARCH_DEBOUNCE_MS, type ArmoryConfiguration, type ArmoryOperation, type InstalledPackage } from "./armoryTypes";
+import { activeArmoryCapabilities, armoryOperationProgress, clearAcceptedTransientValues, isMcpCapable, operationActive, validateArmoryConfiguration } from "./armoryValidation";
+import { deleteArmoryConfiguration, getArmoryConfiguration, getArmoryInventory, getArmoryMcp, getArmoryOperation, getArmoryPackage, getArmorySettings, inventoryPath, installArmoryPackage, refreshArmory, setArmoryPackageEnabled, submitArmoryConfiguration, uninstallArmoryPackage, updateArmoryPackage } from "./armoryClient";
 
 const installed: InstalledPackage = {
   id: "heroboard", version: "1.0.0", enabled: false, state: "needs_configuration",
@@ -109,21 +84,42 @@ test("uninstalled package cards reserve the same CPU position with warnings on i
   assert.ok(markup.indexOf("Update available") < markup.indexOf("lucide-cpu"));
 });
 
-test("available/installed filters, search, and pagination use scoped GET paths", async () => {
-  const calls: Array<{ path: string; options?: RequestInit }> = [];
-  const request = async <T>(path: string, options?: RequestInit) => { calls.push({ path, options }); return {} as T; };
-  await getArmoryInventory("/peon-a", { q: "git tools", view: "available" }, request);
-  await getArmoryInventory("/peon-a", { view: "installed", cursor: "opaque+/cursor==" }, request);
-  assert.equal(calls[0].path, "/peon-a/armory/packages?q=git+tools&limit=24");
-  assert.equal(calls[1].path, "/peon-a/armory/packages?installed=true&limit=24&cursor=opaque%2B%2Fcursor%3D%3D");
-  assert.ok(calls.every((call) => call.options?.method === undefined));
-});
+type Recorded = { path: string; options?: RequestInit };
+const id = "rnm/dev tools";
+const enc = "rnm%2Fdev%20tools";
+// [label, client call, expected path, method, JSON body (undefined = bodyless)]
+const PATH_CASES: Array<[string, (request: <T>(path: string, options?: RequestInit) => Promise<T>) => Promise<unknown>, string, string | undefined, unknown]> = [
+  ["available search", (r) => getArmoryInventory("/peon-a", { q: "git tools", view: "available" }, r), "/peon-a/armory/packages?q=git+tools&limit=24", undefined, undefined],
+  ["installed opaque cursor", (r) => getArmoryInventory("/peon-a", { view: "installed", cursor: "opaque+/cursor==" }, r), "/peon-a/armory/packages?installed=true&limit=24&cursor=opaque%2B%2Fcursor%3D%3D", undefined, undefined],
+  ["catalog refresh", (r) => refreshArmory("/peon-a", r), "/peon-a/armory/refresh", "POST", undefined],
+  ["detail", (r) => getArmoryPackage("/p", id, r), `/p/armory/packages/${enc}`, undefined, undefined],
+  ["configuration", (r) => getArmoryConfiguration("/p", id, r), `/p/armory/packages/${enc}/configuration`, undefined, undefined],
+  ["MCP discovery", (r) => getArmoryMcp("/p", id, r), `/p/armory/packages/${enc}/mcp`, undefined, undefined],
+  ["policy", (r) => getArmorySettings("/p", r), "/p/armory/settings", undefined, undefined],
+  ["enable", (r) => setArmoryPackageEnabled("/p", id, true, r), `/p/armory/packages/${enc}/enable`, "POST", undefined],
+  ["disable", (r) => setArmoryPackageEnabled("/p", id, false, r), `/p/armory/packages/${enc}/disable`, "POST", undefined],
+  ["install latest", (r) => installArmoryPackage("/selected-peon", id, null, r), `/selected-peon/armory/packages/${enc}/install`, "POST", {}],
+  ["install pinned", (r) => installArmoryPackage("/selected-peon", id, "1.2.3", r), `/selected-peon/armory/packages/${enc}/install`, "POST", { version: "1.2.3" }],
+  ["update latest", (r) => updateArmoryPackage("/selected-peon", id, null, r), `/selected-peon/armory/packages/${enc}/update`, "POST", {}],
+  ["update pinned", (r) => updateArmoryPackage("/selected-peon", id, "2.0.0", r), `/selected-peon/armory/packages/${enc}/update`, "POST", { version: "2.0.0" }],
+  ["uninstall", (r) => uninstallArmoryPackage("/selected-peon", id, r), `/selected-peon/armory/packages/${enc}`, "DELETE", {}],
+];
 
-test("catalog refresh uses the scoped bodyless POST endpoint", async () => {
-  const calls: Array<{ path: string; options?: RequestInit }> = [];
-  const request = async <T>(path: string, options?: RequestInit) => { calls.push({ path, options }); return {} as T; };
-  await refreshArmory("/peon-a", request);
-  assert.deepEqual(calls, [{ path: "/peon-a/armory/refresh", options: { method: "POST" } }]);
+for (const [label, call, path, method, body] of PATH_CASES) {
+  test(`armory client request: ${label}`, async () => {
+    const calls: Recorded[] = [];
+    await call(async <T>(requestPath: string, options?: RequestInit) => { calls.push({ path: requestPath, options }); return { operation: {} } as T; });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].path, path);
+    assert.equal(calls[0].options?.method, method);
+    if (body === undefined) assert.equal(calls[0].options?.body, undefined);
+    else assert.deepEqual(JSON.parse(String(calls[0].options?.body)), body);
+    assert.doesNotMatch(`${calls[0].path} ${String(calls[0].options?.body)}`, /purge/);
+  });
+}
+
+test("uninstall copy promises preservation", () => {
+  assert.match(UNINSTALL_PRESERVATION_COPY, /Credentials, managed home, configuration, and ownership metadata are preserved/);
 });
 
 test("pagination cursors stay opaque and reset when omitted", () => {
@@ -131,46 +127,8 @@ test("pagination cursors stay opaque and reset when omitted", () => {
   assert.equal(inventoryPath("/p", { q: "next" }), "/p/armory/packages?q=next&limit=24");
 });
 
-test("request gate rejects stale cross-query and cross-Peon results", () => {
-  const gate = new ArmoryRequestGate();
-  const oldPeonSearch = gate.begin();
-  const newPeonSearch = gate.begin();
-  assert.equal(gate.current(oldPeonSearch), false);
-  assert.equal(gate.current(newPeonSearch), true);
-  gate.clear();
-  assert.equal(gate.current(newPeonSearch), false);
+test("search debounce stays at 300ms", () => {
   assert.equal(ARMORY_SEARCH_DEBOUNCE_MS, 300);
-});
-
-test("lifecycle action gate synchronously rejects double submits and stale Peon responses", () => {
-  const gate = new ArmoryActionGate();
-  const first = gate.begin();
-  assert.equal(typeof first, "number");
-  assert.equal(gate.begin(), null);
-  assert.equal(gate.current(first!), true);
-  gate.clear();
-  assert.equal(gate.current(first!), false);
-  const nextPeon = gate.begin();
-  assert.equal(typeof nextPeon, "number");
-  assert.equal(gate.finish(first!), false);
-  assert.equal(gate.current(nextPeon!), true);
-  assert.equal(gate.finish(nextPeon!), true);
-});
-
-test("detail, configuration, MCP discovery, and policy clients emit no mutation requests", async () => {
-  const calls: Array<{ path: string; options?: RequestInit }> = [];
-  const request = async <T>(path: string, options?: RequestInit) => { calls.push({ path, options }); return {} as T; };
-  await getArmoryPackage("/p", "rnm/dev tools", request);
-  await getArmoryConfiguration("/p", "rnm/dev tools", request);
-  await getArmoryMcp("/p", "rnm/dev tools", request);
-  await getArmorySettings("/p", request);
-  assert.deepEqual(calls.map((call) => call.path), [
-    "/p/armory/packages/rnm%2Fdev%20tools",
-    "/p/armory/packages/rnm%2Fdev%20tools/configuration",
-    "/p/armory/packages/rnm%2Fdev%20tools/mcp",
-    "/p/armory/settings",
-  ]);
-  assert.ok(calls.every((call) => !call.options?.method));
 });
 
 test("MCP capability is opt-in and live discovery renders exact tool documentation", () => {
@@ -321,37 +279,6 @@ test("managed deletion omits host flags while explicit host deletion sends both 
   assert.deepEqual(JSON.parse(String(calls[0].options?.body)), {});
   assert.deepEqual(JSON.parse(String(calls[1].options?.body)), { includeHost: true, confirmHostWrites: true });
   assert.ok(calls.every((call) => call.options?.method === "DELETE"));
-});
-
-test("package enable and disable actions use scoped bodyless POST requests", async () => {
-  const calls: Array<{ path: string; options?: RequestInit }> = [];
-  const request = async <T>(path: string, options?: RequestInit) => { calls.push({ path, options }); return { operation: {} } as T; };
-  await setArmoryPackageEnabled("/p", "rnm/dev tools", true, request);
-  await setArmoryPackageEnabled("/p", "rnm/dev tools", false, request);
-  assert.deepEqual(calls.map((call) => call.path), [
-    "/p/armory/packages/rnm%2Fdev%20tools/enable",
-    "/p/armory/packages/rnm%2Fdev%20tools/disable",
-  ]);
-  assert.ok(calls.every((call) => call.options?.method === "POST" && call.options.body === undefined));
-});
-
-test("install, durable update, and ordinary uninstall use exact scoped lifecycle requests", async () => {
-  const calls: Array<{ path: string; options?: RequestInit }> = [];
-  const request = async <T>(path: string, options?: RequestInit) => { calls.push({ path, options }); return { operation: {} } as T; };
-  await installArmoryPackage("/selected-peon", "rnm/dev tools", null, request);
-  await installArmoryPackage("/selected-peon", "rnm/dev tools", "1.2.3", request);
-  await updateArmoryPackage("/selected-peon", "rnm/dev tools", null, request);
-  await updateArmoryPackage("/selected-peon", "rnm/dev tools", "2.0.0", request);
-  await uninstallArmoryPackage("/selected-peon", "rnm/dev tools", request);
-  assert.deepEqual(calls.map(({ path, options }) => [path, options?.method, JSON.parse(String(options?.body))]), [
-    ["/selected-peon/armory/packages/rnm%2Fdev%20tools/install", "POST", {}],
-    ["/selected-peon/armory/packages/rnm%2Fdev%20tools/install", "POST", { version: "1.2.3" }],
-    ["/selected-peon/armory/packages/rnm%2Fdev%20tools/update", "POST", {}],
-    ["/selected-peon/armory/packages/rnm%2Fdev%20tools/update", "POST", { version: "2.0.0" }],
-    ["/selected-peon/armory/packages/rnm%2Fdev%20tools", "DELETE", {}],
-  ]);
-  assert.ok(calls.every((call) => !call.path.includes("purge") && !String(call.options?.body).includes("purge")));
-  assert.match(UNINSTALL_PRESERVATION_COPY, /Credentials, managed home, configuration, and ownership metadata are preserved/);
 });
 
 test("lifecycle mutations preserve stable Peon conflict codes", async () => {

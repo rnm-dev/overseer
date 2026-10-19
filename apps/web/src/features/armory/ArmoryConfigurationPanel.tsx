@@ -1,22 +1,12 @@
-import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Pencil } from "lucide-react";
 import { ApiError, api } from "../../shared/api";
+import { ArmoryFieldControl } from "./ArmoryFieldControl";
 import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { Badge, Button, Card, Dialog } from "../../shared/ui";
-import {
-  armoryOperationProgress,
-  clearAcceptedTransientValues,
-  deleteArmoryConfiguration,
-  getArmoryOperation,
-  operationActive,
-  submitArmoryConfiguration,
-  validateArmoryConfiguration,
-  type ArmoryConfiguration,
-  type ArmoryConfigurationField,
-  type ArmoryOperation,
-  type ConfigurationErrors,
-  type InstalledPackage,
-} from "./armoryApi";
+import type { ArmoryConfiguration, ArmoryOperation, InstalledPackage } from "./armoryTypes";
+import { armoryOperationProgress, clearAcceptedTransientValues, operationActive, validateArmoryConfiguration, type ConfigurationErrors } from "./armoryValidation";
+import { deleteArmoryConfiguration, getArmoryOperation, submitArmoryConfiguration } from "./armoryClient";
 
 const POLL_INTERVAL_MS = 1500;
 const MAX_POLL_ATTEMPTS = 160;
@@ -27,76 +17,6 @@ function statusPresentation(status: InstalledPackage["configurationStatus"]): { 
   if (status === "verified") return { label: "Verified", detail: "Configuration is ready and has passed verification.", tone: "green" };
   if (status === "invalid") return { label: "Invalid", detail: "The latest configure or verification attempt failed.", tone: "red" };
   return { label: "Not required", detail: "No configuration is required for this package.", tone: "neutral" };
-}
-
-function FieldControl({ packageId, field, value, error, configured, disabled, onValue }: {
-  packageId: string;
-  field: ArmoryConfigurationField;
-  value: string;
-  error?: string;
-  configured: boolean;
-  disabled: boolean;
-  onValue: (value: string) => void;
-}) {
-  const id = useId();
-  const helpId = `${id}-help`;
-  const errorId = `${id}-error`;
-  const describedBy = [field.help ? helpId : "", error ? errorId : ""].filter(Boolean).join(" ") || undefined;
-  const common = { id, disabled, required: field.required, "aria-describedby": describedBy, "aria-invalid": Boolean(error) };
-  const fileInput = useRef<HTMLInputElement>(null);
-  const hasBadges = configured;
-  const [userActivated, setUserActivated] = useState(false);
-  const fieldName = `armory-config-${packageId}-${field.id}`;
-
-  useEffect(() => { if (!value && fileInput.current) fileInput.current.value = ""; }, [value]);
-
-  const readFile = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) { onValue(""); return; }
-    try { onValue(await file.text()); }
-    catch { onValue(""); }
-  };
-
-  return (
-    <div className="grid gap-2 border-b border-edge pb-5 last:border-b-0 last:pb-0 sm:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] sm:gap-6">
-      <div>
-        <label htmlFor={id} className="font-display text-xs font-bold text-ink">{field.label}{field.required && <span className="ml-1 text-warning-strong" aria-label="required">*</span>}</label>
-        {field.help && <p id={helpId} className="mt-1.5 text-xs leading-relaxed text-ink-muted">{field.help}</p>}
-      </div>
-      <div className="min-w-0">
-        <div className="relative">
-          {field.type === "select" ? (
-            <select {...common} name={fieldName} autoComplete="off" className={`field w-full ${hasBadges ? "pr-44" : ""}`} value={value} onChange={(event) => onValue(event.target.value)}>
-              <option value="">Select…</option>
-              {(field.options ?? []).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-            </select>
-          ) : field.type === "file" ? (
-            <input {...common} ref={fileInput} name={fieldName} autoComplete="off" className={`field w-full file:mr-3 file:border-0 file:bg-surface-hover file:px-3 file:py-1 file:text-ink ${hasBadges ? "pr-40" : ""}`} type="file" onChange={(event) => void readFile(event)} />
-          ) : (
-            <input
-              {...common}
-              name={fieldName}
-              autoComplete={field.type === "secret" ? "new-password" : "off"}
-              data-1p-ignore="true"
-              data-lpignore="true"
-              data-form-type="other"
-              readOnly={!userActivated}
-              onFocus={() => setUserActivated(true)}
-              className={`field w-full ${hasBadges ? "pr-40" : ""}`}
-              type={field.type === "secret" ? "password" : "text"}
-              value={value}
-              onChange={(event) => onValue(event.target.value)}
-              pattern={field.validation?.pattern}
-              maxLength={field.validation?.maxLength}
-            />
-          )}
-          {hasBadges && <div className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 gap-1.5 ${field.type === "select" ? "right-8" : "right-3"}`}><Badge>Configured</Badge></div>}
-        </div>
-        {field.validation && <p className="mt-1 font-mono text-[0.68rem] text-ink-faint">{field.validation.maxLength !== undefined ? `Maximum ${field.validation.maxLength} characters. ` : ""}{field.validation.pattern ? "A package-defined format is required." : ""}</p>}
-        {error && <p id={errorId} role="alert" className="mt-1 text-xs text-danger">{error}</p>}
-      </div>
-    </div>
-  );
 }
 
 function OperationProgress({ operation, pollingError, onRetry }: { operation: ArmoryOperation; pollingError: unknown; onRetry: () => void }) {
@@ -267,7 +187,7 @@ export function ArmoryConfigurationPanel({ base, packageId, installed, schema, s
         <ArmoryIdentityRow identity={schema.identity} className="mt-5 border-t border-edge pt-5" />
       </Card>}
       {schema && schema.fields.length > 0 && (!configured || editing || operationActive(operation)) && <Card className="p-5"><ArmoryIdentityRow identity={schema.identity} className="mb-5 border-b border-edge pb-5" /><form className="space-y-5" onSubmit={(event) => { event.preventDefault(); void submit(); }} autoComplete="off">
-        {schema.fields.map((field) => <FieldControl key={field.id} packageId={packageId} field={field} value={values[field.id] ?? ""} error={errors[field.id]} configured={schema.configured[field.id] === true} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
+        {schema.fields.map((field) => <ArmoryFieldControl key={field.id} variant="package" name={`armory-config-${packageId}-${field.id}`} field={field} value={values[field.id] ?? ""} error={errors[field.id]} configured={schema.configured[field.id] === true} disabled={busy} onValue={(value) => { setValues((current) => ({ ...current, [field.id]: value })); setErrors((current) => { const next = { ...current }; delete next[field.id]; return next; }); }} />)}
         {schema.hostWrites.length > 0 && <Card className="border-warning/50 bg-warning/[0.03] p-4"><h3 className="font-display text-sm font-bold text-warning-strong">Host writes</h3><p className="mt-2 text-sm text-ink-muted">This package may write outside its managed Armory home at these exact paths:</p><ul className="mt-2 space-y-1 font-mono text-xs text-ink">{schema.hostWrites.map((path) => <li key={path} className="break-all">{path}</li>)}</ul><label className="mt-3 flex items-start gap-2 text-sm text-ink"><input type="checkbox" className="mt-0.5 accent-accent" checked={hostConfirmed} disabled={busy} onChange={(event) => { setHostConfirmed(event.target.checked); setErrors((current) => { const next = { ...current }; delete next.$hostWrites; return next; }); }} />I confirm these host-write paths.</label>{errors.$hostWrites && <p role="alert" className="mt-2 text-xs text-danger">{errors.$hostWrites}</p>}</Card>}
         {Boolean(requestError) && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 border-l-2 border-danger bg-danger/5 p-3 text-sm text-danger"><span>Peon rejected the configuration.</span>{operationConflict && <Button type="button" size="sm" variant="secondary" onClick={() => { setRequestError(null); void onRefresh(); }}>Refresh operation status</Button>}</div>}
         <div className="flex flex-wrap gap-3"><Button type="submit" disabled={busy}>{submitting ? "Submitting…" : "Save configuration"}</Button>{configured && editing && <Button type="button" variant="secondary" disabled={busy} onClick={() => { setEditing(false); setValues({}); setErrors({}); setHostConfirmed(false); }}>Cancel</Button>}<Button type="button" variant="secondary" aria-haspopup="dialog" disabled={busy} onClick={() => setDeleteOpen(true)}>Delete configuration</Button></div>

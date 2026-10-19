@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "../../shared/ui";
-import type { ArmoryProfileIdentity } from "./armoryApi";
+import type { ArmoryProfileIdentity } from "./armoryTypes";
 
 // Stored profile values are write-only, but the address the credential acts as
 // is not a secret — it is the thing an operator has to paste into Google to

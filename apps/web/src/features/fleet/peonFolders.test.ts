@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ApiError } from "../../shared/api";
-import { en } from "../../shared/locales/en";
+import { en, type MessageKey } from "../../shared/locales/en";
 import { ru } from "../../shared/locales/ru";
 import { createPeonFolderSource, folderErrorKey, listNearestPeonFolder, parentPath, type PeonFolderListing } from "./peonFolders";
 
@@ -72,7 +72,7 @@ test("every folder-listing failure maps to a stable operator message", () => {
   assert.equal(folderErrorKey(new ApiError(500, "INTERNAL", "x")), "error.loadFailed");
   assert.equal(folderErrorKey(new Error("boom")), "error.loadFailed");
 
-  const keys = [
+  const keys: MessageKey[] = [
     "pathSelector.unsupported", "pathSelector.offline", "pathSelector.timeout", "pathSelector.forbidden",
     "pathSelector.missing", "pathSelector.notDirectory", "pathSelector.invalidPath", "pathSelector.busy",
     "pathSelector.tooLarge", "error.loadFailed",
