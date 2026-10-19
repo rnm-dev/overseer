@@ -31,7 +31,8 @@ commits, or both; `eventId` deduplication reduces both to one client row.
 
 The client normally supplies the newest `eventId` from the HTTP page and Peon
 replays strictly after it. A missing or unknown boundary replays at most the
-newest 50 committed events. The live stream is never an unbounded history
+newest 50 committed events. Replay walks the transcript index backward from
+the newest row, so its cost follows the gap, not the transcript size. The live stream is never an unbounded history
 endpoint; older or disjoint history is reconciled through HTTP pagination.
 
 Delivery is deliberately **at least once**. There is no transcript ACK,

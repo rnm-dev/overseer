@@ -9,7 +9,7 @@ import { DaemonConfigurationState, settings, type SettingsPatchError } from "./s
 import {
   sessionArtifactInventory,
   flushTranscript,
-  readCommittedTranscriptEntries,
+  readCommittedTranscriptTail,
   subscribeTranscriptCommits,
   type SessionCatalogReader,
   type SessionTranscriptEventContract,
@@ -37,7 +37,7 @@ import { applyUpdate, checkUpdate, updateOperationStatus } from "./updates/updat
 import type { QuotaProvider } from "./providers/providerQuota.js";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
 import { AtomicFileUpload, type FileAccessContract, FileAccessService, moveProjectFile } from "./files/index.js";
-import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
+import { DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT, parseTranscriptPageRequest, parseTranscriptResumeEventId, TranscriptPaginationError } from "./sessions/index.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { attachProjectRoutes, type SessionProjectReader } from "./http/fleet/projects.js";
 import { attachSessionRoutes, type FleetSessionService, type FleetSessionRouterDeps } from "./http/fleet/sessions.js";
@@ -776,12 +776,12 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
       else send("event", payload.entry.event, payload.entry.id);
     });
 
-    let transcript: ReturnType<typeof readCommittedTranscriptEntries>;
+    let replay: Awaited<ReturnType<typeof readCommittedTranscriptTail>>;
     try {
       // Capture everything accepted before this request, then read only disk
       // rows. Commits racing the read are buffered by the listener above.
       await flushTranscript(id);
-      transcript = readCommittedTranscriptEntries(id, record.agent);
+      replay = await readCommittedTranscriptTail(id, record.agent, resumeEventId, DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT);
     } catch (error) {
       cleanup();
       return fail(res, 503, "TRANSCRIPT_UNAVAILABLE", error instanceof Error ? error.message : "transcript unavailable");
@@ -806,8 +806,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     sessions.on("change", onChange);
 
     // Replay after subscribing, then drain commits that raced the disk read.
-    const startAt = transcriptResumeIndex(transcript, resumeEventId);
-    for (let i = startAt; i < transcript.length; i++) send("event", transcript[i].event, transcript[i].id);
+    for (const entry of replay) send("event", entry.event, entry.id);
     for (const entry of pending) {
       if (!sent.has(entry.id)) send("event", entry.event, entry.id);
     }

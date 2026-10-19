@@ -13,7 +13,7 @@ import { buildAugmentedPrompt, buildSystemPrompt } from "./sessionPrompts.js";
 import { acknowledgeContextClaim, claimContext, releaseContextClaim, withParticipantContext } from "./contextMessages.js";
 import { buildReplyPrompt } from "./replyTo.js";
 import { sessionWarnings } from "./sessionWarnings.js";
-import { appendTranscriptEvent, assistantEventText, persistSummary, previewText, readTranscript, sessionsDir, } from "./sessionArtifacts.js";
+import { appendTranscriptEvent, assistantEventText, persistSummary, previewText, sessionsDir, } from "./sessionArtifacts.js";
 import { isAgentPreviewArtifact, previewPathsFromAgentEvent, sessionPreviewDir } from "./preview.js";
 import { MAX_TRANSIENT_TURN_RETRIES, TRANSIENT_TURN_RETRY_DELAYS_MS, explicitFailureReason, isTransientTurnFailure, resultFailureReason, } from "./turnFailure.js";
 import { WARNING_COOLDOWN_MS, sessionState } from "./state.js";
@@ -335,8 +335,6 @@ export function runProcess(...args) {
     }
 }
 function launchProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], turnRetryAttempt = 0, appendPromptToTranscript = true, replyTo, attribution) {
-    // Seed the live transcript cache before accepting a resume event.
-    readTranscript(record.id, record.agent);
     // The CLI's own stream-json output never echoes back what it was asked —
     // only its side of the conversation (thinking, tool calls, results). This
     // synthetic event is what makes the transcript show the human side too,

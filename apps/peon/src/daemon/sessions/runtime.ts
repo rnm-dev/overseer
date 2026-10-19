@@ -28,7 +28,6 @@ import {
   assistantEventText,
   persistSummary,
   previewText,
-  readTranscript,
   sessionsDir,
 } from "./sessionArtifacts.js";
 import { isAgentPreviewArtifact, previewPathsFromAgentEvent, sessionPreviewDir } from "./preview.js";
@@ -446,9 +445,6 @@ function launchProcess(
   replyTo?: ReplyTo,
   attribution?: MessageAttribution,
 ): boolean {
-  // Seed the live transcript cache before accepting a resume event.
-  readTranscript(record.id, record.agent);
-
   // The CLI's own stream-json output never echoes back what it was asked —
   // only its side of the conversation (thinking, tool calls, results). This
   // synthetic event is what makes the transcript show the human side too,

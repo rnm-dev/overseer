@@ -29,7 +29,9 @@ The stable invariants are:
   acknowledged and a replay produces at most one visible effect.
 - **SCA-GAP-EPOCH-RECOVERY** and **SCA-GENERATION-FENCE** — gaps, lost cursors,
   epoch rollover and replaced sockets force a bounded snapshot; late frames
-  cannot mutate or ACK.
+  cannot mutate or ACK. Because Overseer applies only `seq === ack + 1`, Peon
+  never coalesces queued session events: folding an unsent event into a newer
+  one skips a seq, and that gap costs a full resnapshot.
 - **SCA-ORPHAN-LIVENESS** — Peon reconciles `status: running` against its live,
   resume-pending and steer-pending registries before list, page, detail or Stop
   returns. It also fences and interrupts registry entries whose durable summary

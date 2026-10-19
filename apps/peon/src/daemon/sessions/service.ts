@@ -29,6 +29,7 @@ import {
   flushTranscript,
   persistSummary,
   previewText,
+  findTranscriptEntry,
   readTranscriptEntries,
   readTranscriptPage,
   sessionsDir,
@@ -661,10 +662,10 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     if (!replyTo) return undefined;
     const record = sessionState.records.get(id);
     if (!record) throw new Error("unknown session");
-    const entry = readTranscriptEntries(id, record.agent).find((candidate) => candidate.id === replyTo.eventId);
+    const entry = findTranscriptEntry(id, record.agent, replyTo.eventId);
     if (!entry) {
       for (const other of sessionState.records.values()) {
-        if (other.id !== id && readTranscriptEntries(other.id, other.agent).some((candidate) => candidate.id === replyTo.eventId)) {
+        if (other.id !== id && findTranscriptEntry(other.id, other.agent, replyTo.eventId)) {
           throw new ReplyToError("REPLY_SOURCE_WRONG_SESSION", "replyTo.eventId belongs to a different session");
         }
       }
@@ -880,6 +881,9 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     const agent = sessionState.records.get(id)?.agent ?? "claude-code";
     const page = await readTranscriptPage(id, agent, options);
     const anchors = messageThreadAnchors(id);
+    // The reader built these events for this response (concurrent identical
+    // requests share one read-only page); only anchored ones need a new object.
+    if (anchors.size === 0) return page;
     return {
       ...page,
       events: page.events.map((event) => withMessageThreadAnchor(event, event.eventId, anchors) as AgentEvent & { eventId: string }),

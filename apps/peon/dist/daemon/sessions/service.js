@@ -8,7 +8,7 @@ import { settings } from "../settings/index.js";
 import { buildAugmentedPrompt } from "./sessionPrompts.js";
 import { paginateSessions } from "./sessionPagination.js";
 import { statsForPeriod as calculateStatsForPeriod } from "./sessionStats.js";
-import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, previewText, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
+import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, previewText, findTranscriptEntry, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
 import { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, } from "./constants.js";
 import { sessionPreviewDir } from "./preview.js";
 import { appendPreviewEvent, appendUserTurn, finalizeSession as finalize, runProcess, scheduleQueuedDispatch, rememberReceipt, rememberSteeredItem, } from "./runtime.js";
@@ -539,10 +539,10 @@ export const sessions = {
         const record = sessionState.records.get(id);
         if (!record)
             throw new Error("unknown session");
-        const entry = readTranscriptEntries(id, record.agent).find((candidate) => candidate.id === replyTo.eventId);
+        const entry = findTranscriptEntry(id, record.agent, replyTo.eventId);
         if (!entry) {
             for (const other of sessionState.records.values()) {
-                if (other.id !== id && readTranscriptEntries(other.id, other.agent).some((candidate) => candidate.id === replyTo.eventId)) {
+                if (other.id !== id && findTranscriptEntry(other.id, other.agent, replyTo.eventId)) {
                     throw new ReplyToError("REPLY_SOURCE_WRONG_SESSION", "replyTo.eventId belongs to a different session");
                 }
             }
@@ -748,6 +748,10 @@ export const sessions = {
         const agent = sessionState.records.get(id)?.agent ?? "claude-code";
         const page = await readTranscriptPage(id, agent, options);
         const anchors = messageThreadAnchors(id);
+        // The reader built these events for this response (concurrent identical
+        // requests share one read-only page); only anchored ones need a new object.
+        if (anchors.size === 0)
+            return page;
         return {
             ...page,
             events: page.events.map((event) => withMessageThreadAnchor(event, event.eventId, anchors)),

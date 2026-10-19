@@ -210,7 +210,17 @@ export function listThreads(sessionId) {
 /** Compact, read-time metadata attached to source transcript messages. The
  * sidecar remains authoritative; transcript JSONL is never rewritten. */
 export function messageThreadAnchors(sessionId) {
-    return new Map(readState(sessionId).threads.map((thread) => [thread.anchorEventId, {
+    let state;
+    try {
+        state = readState(sessionId);
+    }
+    catch (error) {
+        // Anchors only decorate history. A damaged sidecar must not make the
+        // transcript itself unreadable; the thread routes still report it.
+        console.error(`message threads: skipping anchors for session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+        return new Map();
+    }
+    return new Map(state.threads.map((thread) => [thread.anchorEventId, {
             threadId: thread.id,
             messageCount: thread.messages.length,
             activityStatus: thread.invokeState === "started" ? "active" : "discussion",

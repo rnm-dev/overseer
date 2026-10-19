@@ -6,7 +6,7 @@ import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
 import express from "express";
 import { DaemonConfigurationState, settings } from "./settings/index.js";
-import { sessionArtifactInventory, flushTranscript, readCommittedTranscriptEntries, subscribeTranscriptCommits, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY, sessions, toPublicSessionRecord, } from "./sessions/index.js";
+import { sessionArtifactInventory, flushTranscript, readCommittedTranscriptTail, subscribeTranscriptCommits, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY, sessions, toPublicSessionRecord, } from "./sessions/index.js";
 import { createProjectService, projectStore } from "./projects/index.js";
 import { pairing } from "./identity/pairing.js";
 import { ensurePeonId } from "./identity/peonIdentity.js";
@@ -18,7 +18,7 @@ import { updateChecker } from "./updates/updateChecker.js";
 import { applyUpdate, checkUpdate, updateOperationStatus } from "./updates/updateOperations.js";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter } from "./armory/index.js";
 import { FileAccessService } from "./files/index.js";
-import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
+import { DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT, parseTranscriptPageRequest, parseTranscriptResumeEventId, TranscriptPaginationError } from "./sessions/index.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { attachProjectRoutes } from "./http/fleet/projects.js";
 import { attachSessionRoutes } from "./http/fleet/sessions.js";
@@ -673,12 +673,12 @@ export function createAgentRouter(options = {}) {
             else
                 send("event", payload.entry.event, payload.entry.id);
         });
-        let transcript;
+        let replay;
         try {
             // Capture everything accepted before this request, then read only disk
             // rows. Commits racing the read are buffered by the listener above.
             await flushTranscript(id);
-            transcript = readCommittedTranscriptEntries(id, record.agent);
+            replay = await readCommittedTranscriptTail(id, record.agent, resumeEventId, DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT);
         }
         catch (error) {
             cleanup();
@@ -703,9 +703,8 @@ export function createAgentRouter(options = {}) {
         };
         sessions.on("change", onChange);
         // Replay after subscribing, then drain commits that raced the disk read.
-        const startAt = transcriptResumeIndex(transcript, resumeEventId);
-        for (let i = startAt; i < transcript.length; i++)
-            send("event", transcript[i].event, transcript[i].id);
+        for (const entry of replay)
+            send("event", entry.event, entry.id);
         for (const entry of pending) {
             if (!sent.has(entry.id))
                 send("event", entry.event, entry.id);
