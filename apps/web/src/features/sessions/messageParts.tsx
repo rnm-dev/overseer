@@ -12,7 +12,7 @@ import type { SelectedTextReply } from "./selectedTextReply";
 import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
 import type { ComposerMention, MentionPrincipal } from "./contextMentions";
 import { editDiff, editFileName, editOperation, editStats, editStatsFromInput, type EditOperation } from "./toolEdit";
-import { simpleToolFileName, simpleToolKind, simpleToolLabel, type SimpleToolKind } from "./simpleTools";
+import { simpleToolFileName, simpleToolKind, type SimpleToolKind } from "./simpleTools";
 
 // The transcript render atoms: one component per Item kind, plus the Markdown
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
@@ -201,7 +201,7 @@ function ToolRow({ name, input, result, t, simple = false }: { name?: string; in
   const operation = isEdit ? editOperation(input) : null;
   const stats = isEdit ? editStatsFromInput(input) : null;
   const activityKind = simpleToolKind(name);
-  const activityLabel = simpleToolLabel(name, t);
+  const activityLabel = t(`session.chat.activity.${activityKind}`);
   const activityFile = simpleToolFileName(name, input);
   const activityText = activityFile ? `${activityLabel} · ${activityFile}` : activityLabel;
   const activityStatus = failed

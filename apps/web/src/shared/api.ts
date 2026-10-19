@@ -1,16 +1,5 @@
 // Thin fetch wrapper for the Overseer /api surface. Web authentication rides in
 // a same-origin HttpOnly cookie; native clients continue to use bearer tokens.
-// The legacy localStorage helpers remain only for the one-release migration.
-
-const TOKEN_KEY = "overseer_token";
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-export function setToken(token: string | null): void {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-}
 
 export class ApiError extends Error {
   constructor(
@@ -87,15 +76,6 @@ export function apiUpload<T = unknown>(path: string, body: Blob, opts: {
     });
     request.send(body);
   });
-}
-
-export async function migrateLegacyWebSession(token: string): Promise<void> {
-  const res = await fetch("/api/auth/web-session", {
-    method: "POST",
-    credentials: "same-origin",
-    headers: { authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new ApiError(res.status, "WEB_SESSION_MIGRATION_FAILED", "Could not migrate the existing web session");
 }
 
 export const json = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });

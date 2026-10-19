@@ -8,8 +8,10 @@ import { ArmoryLifecyclePanel } from "./ArmoryLifecyclePanel";
 import { ArmoryProfilesPanel } from "./ArmoryProfilesPanel";
 import { ADD_PROFILE_OPTION, ENABLED_OPTION, ProjectPackageAssignmentCard, UNASSIGNMENT_CONTEXT_COPY } from "./ProjectArmoryPackages";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY, type ArmoryConfiguration, type ArmoryPackageSummary, type ArmoryProfile, type ArmoryProfileRequirement } from "./armoryTypes";
-import { armoryProfileReadiness, matchingArmoryProfiles, missingArmoryProfileFields, profileOperationActive, supportsArmoryProjectPackages, validateArmoryProfileConfiguration } from "./armoryValidation";
-import { configureArmoryProfile, createArmoryProfile, deleteArmoryProfile, getArmoryProfileOperation, getArmoryProfiles, getArmoryProjectAssignments, removeArmoryProjectAssignment, renameArmoryProfile, setArmoryProjectAssignment, verifyArmoryProfile } from "./armoryClient";
+import { armoryProfileReadiness, matchingArmoryProfiles, missingArmoryProfileFields, operationActive, supportsArmoryProjectPackages, validateArmoryProfileConfiguration } from "./armoryValidation";
+import { setArmoryRequestForTests, configureArmoryProfile, createArmoryProfile, deleteArmoryProfile, getArmoryProfileOperation, getArmoryProfiles, getArmoryProjectAssignments, removeArmoryProjectAssignment, renameArmoryProfile, setArmoryProjectAssignment, verifyArmoryProfile } from "./armoryClient";
+
+test.afterEach(() => setArmoryRequestForTests());
 
 const profileId = "57ba5e9e-3ed2-4a92-919f-9f60ee69a450";
 const projectId = "87b68e30-a923-48b4-9a58-f561a2390083";
@@ -53,18 +55,19 @@ test("typed profile and assignment clients use only the capability routes and ke
     if (path.includes("/assignments")) return { projectId, packageId: "google-drive", profileId: null } as T;
     return verified as T;
   };
+  setArmoryRequestForTests(request);
   const secret = "profile-secret-never-render";
-  await getArmoryProfiles("/p", request);
-  await createArmoryProfile("/p", requirement.type, "Shared Google", request);
-  await renameArmoryProfile("/p", profileId, "Renamed", request);
-  await deleteArmoryProfile("/p", profileId, request);
-  const configured = await configureArmoryProfile("/p", profileId, { serviceAccountJson: secret }, request);
-  await verifyArmoryProfile("/p", profileId, request);
-  await getArmoryProfileOperation("/p", operationId, request);
-  await getArmoryProjectAssignments("/p", projectId, request);
-  await setArmoryProjectAssignment("/p", projectId, "google-drive", profileId, request);
-  await setArmoryProjectAssignment("/p", projectId, "filesystem-tools", null, request);
-  await removeArmoryProjectAssignment("/p", projectId, "google-drive", request);
+  await getArmoryProfiles("/p");
+  await createArmoryProfile("/p", requirement.type, "Shared Google");
+  await renameArmoryProfile("/p", profileId, "Renamed");
+  await deleteArmoryProfile("/p", profileId);
+  const configured = await configureArmoryProfile("/p", profileId, { serviceAccountJson: secret });
+  await verifyArmoryProfile("/p", profileId);
+  await getArmoryProfileOperation("/p", operationId);
+  await getArmoryProjectAssignments("/p", projectId);
+  await setArmoryProjectAssignment("/p", projectId, "google-drive", profileId);
+  await setArmoryProjectAssignment("/p", projectId, "filesystem-tools", null);
+  await removeArmoryProjectAssignment("/p", projectId, "google-drive");
 
   assert.deepEqual(calls.map(({ path, options }) => [path, options?.method]), [
     ["/p/armory/profiles", undefined], ["/p/armory/profiles", "POST"],
@@ -83,7 +86,8 @@ test("typed profile and assignment clients use only the capability routes and ke
 test("profile configuration failures are fixed/redacted", async () => {
   const secret = "must-not-survive";
   const request = async <T>(): Promise<T> => { throw new ApiError(400, secret, `Rejected ${secret}`); };
-  await assert.rejects(() => configureArmoryProfile("/p", profileId, { serviceAccountJson: secret }, request), (error: ApiError) =>
+  setArmoryRequestForTests(request);
+  await assert.rejects(() => configureArmoryProfile("/p", profileId, { serviceAccountJson: secret }), (error: ApiError) =>
     error.code === "PROFILE_CONFIGURATION_REJECTED" && error.message === "Peon rejected the profile configuration request." && !JSON.stringify(error).includes(secret));
 });
 
@@ -178,10 +182,10 @@ test("credential-free packages assign null without a fake profile and unassignme
 });
 
 test("profile operation states distinguish active, success, and stable terminal failure", () => {
-  assert.equal(profileOperationActive({ operationId, kind: "profile_configure", status: "queued", code: null }), true);
-  assert.equal(profileOperationActive({ operationId, kind: "profile_verify", status: "running", code: null }), true);
-  assert.equal(profileOperationActive({ operationId, kind: "profile_verify", status: "succeeded", code: null }), false);
-  assert.equal(profileOperationActive({ operationId, kind: "profile_verify", status: "failed", code: "PROFILE_NOT_VERIFIED" }), false);
+  assert.equal(operationActive({ status: "queued" }), true);
+  assert.equal(operationActive({ status: "running" }), true);
+  assert.equal(operationActive({ status: "succeeded" }), false);
+  assert.equal(operationActive({ status: "failed" }), false);
 });
 
 test("the service account address is shown and copyable wherever package configuration is", () => {

@@ -1,12 +1,11 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Outlet, Route, Routes, useParams } from "react-router";
+import { Navigate, Outlet, Route, Routes } from "react-router";
 import { PeonSessionsEmpty } from "../features/sessions/PeonSessionsEmpty";
 import { useAuth } from "../features/auth/auth";
 import { useT } from "../shared/i18n";
 import { loginRouteTarget } from "../features/auth/nativeLoginMode";
 import { WorkspaceProvider } from "../features/workspaces/workspace";
 import { LiveSocketProvider } from "../realtime/liveSocket";
-import { peonSettingsPath } from "../features/settings/settingsNavigation";
 
 const Login = lazy(() => import("../features/auth/Login").then((m) => ({ default: m.Login })));
 const Dashboard = lazy(() => import("../features/workspaces/Dashboard").then((m) => ({ default: m.Dashboard })));
@@ -18,9 +17,7 @@ const PeonNewSession = lazy(() => import("../features/sessions/PeonNewSession").
 const PeonSessionDetail = lazy(() => import("../features/sessions/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
 const PeonProjectDetail = lazy(() => import("../features/projects/PeonProjectDetail").then((m) => ({ default: m.PeonProjectDetail })));
 const PeonStats = lazy(() => import("../features/stats/PeonStats").then((m) => ({ default: m.PeonStats })));
-const loadPeonSettingsRoutes = () => import("../features/settings/peonSettingsRoutes");
-const PeonSettingsLayout = lazy(() => loadPeonSettingsRoutes().then((m) => ({ default: m.PeonSettingsLayout })));
-const PeonArmory = lazy(() => loadPeonSettingsRoutes().then((m) => ({ default: m.PeonArmory })));
+const PeonSettingsLayout = lazy(() => import("../features/settings/PeonSettingsLayout").then((m) => ({ default: m.PeonSettingsLayout })));
 const Members = lazy(() => import("../features/workspaces/Members").then((m) => ({ default: m.Members })));
 const WorkspaceDashboard = lazy(() => import("../features/workspaces/WorkspaceDashboard").then((m) => ({ default: m.WorkspaceDashboard })));
 const WorkspaceSessions = lazy(() => import("../features/workspaces/WorkspaceSessions").then((m) => ({ default: m.WorkspaceSessions })));
@@ -31,11 +28,6 @@ const ProjectSkills = lazy(() => import("../features/projects/ProjectSkills").th
 const ProjectArmoryPackages = lazy(() => import("../features/armory/ProjectArmoryPackages").then((m) => ({ default: m.ProjectArmoryPackages })));
 const ProjectArmoryProfileNew = lazy(() => import("../features/armory/ProjectArmoryProfileNew").then((m) => ({ default: m.ProjectArmoryProfileNew })));
 const ProjectSettings = lazy(() => import("../features/projects/ProjectSettings").then((m) => ({ default: m.ProjectSettings })));
-
-function LegacyPeonArmoryRedirect() {
-  const { peonId = "", packageId } = useParams();
-  return <Navigate to={peonSettingsPath(peonId, "armory", packageId)} replace />;
-}
 
 function Loading() {
   const t = useT();
@@ -113,27 +105,22 @@ export function App() {
         </Route>
         <Route path="peons/:peonId" element={<PeonDetail />}>
           <Route index element={<Navigate to="sessions" replace />} />
-          <Route path="overview" element={<Navigate to="../sessions" relative="path" replace />} />
           <Route path="sessions" element={<PeonSessionsEmpty />} />
           <Route path="sessions/new" element={<PeonNewSession />} />
           <Route path="sessions/:sid" element={<PeonSessionDetail />} />
-          <Route path="projects" element={<Navigate to="../sessions" relative="path" replace />} />
           <Route path="projects/:key" element={<PeonProjectDetail />} />
           <Route path="projects/:key/files" element={<ProjectFileBrowser />} />
           <Route path="projects/:key/skills" element={<ProjectSkills />} />
           <Route path="projects/:key/tools" element={<ProjectArmoryPackages />} />
           <Route path="projects/:key/tools/new-profile" element={<ProjectArmoryProfileNew />} />
-          <Route path="projects/:key/packages" element={<Navigate to="../tools" relative="path" replace />} />
           <Route path="projects/:key/members" element={<ProjectMembers />} />
           <Route path="projects/:key/settings" element={<ProjectSettings />} />
           <Route path="stats" element={<PeonStats />} />
-          <Route path="armory" element={<LegacyPeonArmoryRedirect />} />
-          <Route path="armory/:packageId" element={<LegacyPeonArmoryRedirect />} />
           <Route path="settings" element={<PeonSettingsLayout />}>
             {/* General and Agent render from the layout's persistent PeonSettings. */}
             <Route index element={null} />
             <Route path="agent" element={null} />
-            <Route path="armory/:packageId?" element={<PeonArmory />} />
+            <Route path="armory/:packageId?" element={null} />
           </Route>
         </Route>
       </Route>

@@ -29,7 +29,7 @@ import { MobilePaneIdentity } from "../sessions/mobileHeader";
 import { nextSessionAfterDeletion } from "../sessions/nextSession";
 import { sessionRouteShellClass } from "../sessions/sessionViewport";
 import { prefetchTranscriptSnapshot } from "../sessions/transcriptSnapshotCache";
-import { isProjectPath, sessionListRequestPath } from "./sessionListApi";
+import { isProjectPath, sessionListRequestPath } from "./peonApi";
 import { useResizableSidebar } from "./useResizableSidebar";
 import { useWorkingTitle } from "./useWorkingTitle";
 

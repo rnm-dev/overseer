@@ -23,8 +23,6 @@ export interface WorkspaceSocketOptions {
   onMessage: (msg: Record<string, unknown>) => void;
   /** The current socket was lost, replaced, or the transport stopped. */
   onDisconnected?: () => void;
-  /** The watchdog or a wake event found the link not provably healthy. */
-  onUnhealthy?: () => void;
 }
 
 export interface WorkspaceSocket {
@@ -39,7 +37,7 @@ export interface WorkspaceSocket {
 }
 
 export function createWorkspaceSocket(options: WorkspaceSocketOptions): WorkspaceSocket {
-  const { workspaceId, getCursor, onOpen, onMessage, onDisconnected, onUnhealthy } = options;
+  const { workspaceId, getCursor, onOpen, onMessage, onDisconnected } = options;
   let socket: WebSocket | null = null;
   let closed = false;
   let retry: number | null = null;
@@ -47,7 +45,6 @@ export function createWorkspaceSocket(options: WorkspaceSocketOptions): Workspac
   let lastRecvAt = Date.now(); // when we last heard ANYTHING from the server
   let connectStartedAt = 0;
   let lastResumeAt = 0; // debounce gap-resume requests so repeated syncs don't spam
-  let connectionGeneration = 0;
   let ticketPending = false;
 
   const isOpen = () => socket?.readyState === WebSocket.OPEN;
@@ -87,8 +84,7 @@ export function createWorkspaceSocket(options: WorkspaceSocketOptions): Workspac
     ticketPending = false;
     if (closed) return;
     const ws = new WebSocket(`${location.origin.replace(/^http/, "ws")}/api/ws?ticket=${encodeURIComponent(ticket)}`);
-    const generation = ++connectionGeneration;
-    const current = () => !closed && socket === ws && generation === connectionGeneration;
+    const current = () => !closed && socket === ws;
     socket = ws;
     connectStartedAt = Date.now();
     lastRecvAt = Date.now();
@@ -104,14 +100,14 @@ export function createWorkspaceSocket(options: WorkspaceSocketOptions): Workspac
     ws.onclose = () => {
       // A retired socket must never mark its replacement disconnected or arm a
       // second retry. This is especially important after focus/pageshow races.
-      if (socket !== ws || generation !== connectionGeneration) return;
+      if (socket !== ws) return;
       socket = null;
       onDisconnected?.();
       if (closed) return;
       scheduleRetry(true);
     };
     ws.onerror = () => {
-      if (socket === ws && generation === connectionGeneration) ws.close();
+      if (socket === ws) ws.close();
     };
     ws.onmessage = (ev) => {
       if (!current()) return;
@@ -133,16 +129,11 @@ export function createWorkspaceSocket(options: WorkspaceSocketOptions): Workspac
   const reconnectNow = () => {
     if (closed) return;
     onDisconnected?.();
-    onUnhealthy?.();
     const old = socket;
     if (old) {
       socket = null;
       old.onopen = old.onclose = old.onerror = old.onmessage = null;
-      try {
-        old.close();
-      } catch {
-        /* already closing */
-      }
+      old.close();
     }
     if (retry) {
       window.clearTimeout(retry);
@@ -174,11 +165,9 @@ export function createWorkspaceSocket(options: WorkspaceSocketOptions): Workspac
     // zombie: no socket, no retry, and updates resume only after F5.
     if (ws?.readyState === WebSocket.CLOSING || ws?.readyState === WebSocket.CLOSED) return reconnectNow();
     if (!ws) {
-      onUnhealthy?.();
       if (retry === null) void connect();
       return;
     }
-    if (ws.readyState !== WebSocket.OPEN) return;
     if (Date.now() - lastRecvAt > STALE_MS) return reconnectNow();
     ping();
   }, PING_MS);

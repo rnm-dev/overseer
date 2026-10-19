@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { sessionLineage } from "./sessionBranch";
-import { getSession, type SessionRecord } from "./sessionApi";
+import { getSession } from "./sessionApi";
+import type { SessionRunState } from "./useSessionRunState";
 
 export interface SessionLineage {
   sourceSessionId: string;
@@ -32,12 +33,6 @@ const EMPTY_METADATA: SessionMetadata = {
   turnCount: null, usage: null, lineage: null, agent: null, model: null, reasoningEffort: null, permissionMode: null,
 };
 
-interface RunStatusSink {
-  metadataRevision: () => number;
-  applyMetadataStatus: (revision: number, record: SessionRecord) => void;
-  applyMetadataFailure: (revision: number) => void;
-}
-
 interface Args {
   base: string;
   sid: string;
@@ -46,7 +41,7 @@ interface Args {
   metaTick: number;
   /** The indexed summary's title, mirrored into the header immediately. */
   indexedTitle: string | null | undefined;
-  runState: RunStatusSink;
+  runState: Pick<SessionRunState, "metadataRevision" | "applyMetadataStatus" | "applyMetadataFailure">;
 }
 
 export function useSessionMetadata({ base, sid, sessionKey, metaTick, indexedTitle, runState }: Args) {

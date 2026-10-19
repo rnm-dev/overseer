@@ -21,16 +21,17 @@ test("session display preferences default to grouped and accept bounded integer 
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
   };
-  assert.equal(loadSessionListDisplayMode(storage), "grouped");
-  assert.equal(loadSessionListProjectLimit(storage), 5);
-  saveSessionListDisplayMode("flat", storage);
-  saveSessionListProjectLimit(10, storage);
-  assert.equal(loadSessionListDisplayMode(storage), "flat");
-  assert.equal(loadSessionListProjectLimit(storage), 10);
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+  assert.equal(loadSessionListDisplayMode(), "grouped");
+  assert.equal(loadSessionListProjectLimit(), 5);
+  saveSessionListDisplayMode("flat");
+  saveSessionListProjectLimit(10);
+  assert.equal(loadSessionListDisplayMode(), "flat");
+  assert.equal(loadSessionListProjectLimit(), 10);
   values.set("overseer:session-list:project-limit", "17");
-  assert.equal(loadSessionListProjectLimit(storage), 17);
+  assert.equal(loadSessionListProjectLimit(), 17);
   values.set("overseer:session-list:project-limit", "100");
-  assert.equal(loadSessionListProjectLimit(storage), 5);
+  assert.equal(loadSessionListProjectLimit(), 5);
   assert.equal(normalizeSessionListProjectLimit(0), 1);
   assert.equal(normalizeSessionListProjectLimit(7.6), 8);
   assert.equal(normalizeSessionListProjectLimit(120), 99);

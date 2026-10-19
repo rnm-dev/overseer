@@ -1,4 +1,3 @@
-import type { T } from "./parsing";
 import { editFileName } from "./toolEdit";
 
 export type SimpleToolKind = "read" | "search" | "web" | "edit" | "analysis" | "command" | "generic";
@@ -25,10 +24,6 @@ export function simpleToolKind(name: string | undefined): SimpleToolKind {
     default:
       return "generic";
   }
-}
-
-export function simpleToolLabel(name: string | undefined, t: T): string {
-  return t(`session.chat.activity.${simpleToolKind(name)}`);
 }
 
 export function simpleToolFileName(name: string | undefined, input: unknown): string | null {

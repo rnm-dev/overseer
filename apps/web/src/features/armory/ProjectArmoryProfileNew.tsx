@@ -10,7 +10,7 @@ import { ProjectPageHeader } from "../projects/ProjectPageHeader";
 import { ProjectTabs } from "../projects/ProjectTabs";
 import type { ProjectDetail } from "../fleet/peonApi";
 import type { ArmoryConfiguration, ArmoryPackageSummary, ArmoryProfileOperation, ArmoryProfileRequirement } from "./armoryTypes";
-import { profileOperationActive, supportsArmoryProjectPackages, validateArmoryConfiguration, type ConfigurationErrors } from "./armoryValidation";
+import { operationActive, supportsArmoryProjectPackages, validateArmoryConfiguration, type ConfigurationErrors } from "./armoryValidation";
 import { configureArmoryProfile, createArmoryProfile, getArmoryConfiguration, getArmoryPackage, getArmoryProfileOperation, setArmoryProjectAssignment, verifyArmoryProfile } from "./armoryClient";
 
 const POLL_INTERVAL_MS = 1_200;
@@ -25,7 +25,7 @@ function wait(ms: number) {
 // success; it never resubmits on its own.
 async function settleProfileOperation(base: string, operation: ArmoryProfileOperation): Promise<ArmoryProfileOperation> {
   let current = operation;
-  for (let attempt = 0; profileOperationActive(current) && attempt < MAX_POLLS; attempt += 1) {
+  for (let attempt = 0; operationActive(current) && attempt < MAX_POLLS; attempt += 1) {
     await wait(POLL_INTERVAL_MS);
     current = (await getArmoryProfileOperation(base, current.operationId)).operation;
   }

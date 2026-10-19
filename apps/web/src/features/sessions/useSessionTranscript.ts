@@ -47,7 +47,9 @@ interface Args {
   paginationSupported: boolean;
   running: boolean;
   subscribe: (peonId: string, sessionId: string, onFrame: (frame: TailFrame) => void, lastEventId?: string | null) => () => void;
-  metadataStatusRef: MutableRefObject<Map<string, string | null>>;
+  /** The last status a session record reported; undefined until one is read. */
+  metadataStatus: () => string | null | undefined;
+  noteMetadataStatus: (status: string | null | undefined) => void;
   previewPinnedRef: MutableRefObject<boolean>;
   onRunningChange: (running: boolean) => void;
   onSnapshotRunning: () => void;
@@ -66,7 +68,8 @@ export function useSessionTranscript({
   paginationSupported,
   running,
   subscribe,
-  metadataStatusRef,
+  metadataStatus: readMetadataStatus,
+  noteMetadataStatus,
   previewPinnedRef,
   onRunningChange,
   onSnapshotRunning,
@@ -280,7 +283,7 @@ export function useSessionTranscript({
       });
       historyReadyRef.current = true;
       tailUnhealthyRef.current = false;
-      const metadataStatus = metadataStatusRef.current.get(sessionKey);
+      const metadataStatus = readMetadataStatus();
       if (latestRunSignal(page.events) === "running" && (metadataStatus === undefined || metadataStatus === "running")) onSnapshotRunning();
       const pending = pendingLiveRef.current;
       pendingLiveRef.current = [];
@@ -311,7 +314,7 @@ export function useSessionTranscript({
       olderLoadControllerRef.current?.abort();
       olderLoadControllerRef.current = null;
     };
-  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, metadataStatusRef, onSnapshotRunning, openFreshPreview, paginationSupported, pushFreshEvent, sessionKey, sid]);
+  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, onSnapshotRunning, readMetadataStatus, openFreshPreview, paginationSupported, pushFreshEvent, sessionKey, sid]);
 
   const recoverControlPlaneGap = useCallback(() => {
     if (document.visibilityState !== "visible") return;
@@ -374,7 +377,7 @@ export function useSessionTranscript({
       try {
         const session = await api<{ status?: string | null }>(`${base}/sessions/${encodeURIComponent(sid)}`, { signal: controller.signal });
         if (!alive) return;
-        metadataStatusRef.current.set(sessionKey, session.status ?? null);
+        noteMetadataStatus(session.status);
         if (mode === "transcript" || session.status !== "running") {
           const result = await fetchLatestTranscript(controller.signal);
           if (!alive) return;
@@ -405,7 +408,7 @@ export function useSessionTranscript({
       latestReconcileControllerRef.current?.abort();
       latestReconcileControllerRef.current = null;
     };
-  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, metadataStatusRef, onRunFinished, recoverControlPlaneGap, running, sessionKey, sid]);
+  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, noteMetadataStatus, onRunFinished, recoverControlPlaneGap, running, sessionKey, sid]);
 
   const loadOlder = useCallback(async (): Promise<boolean> => {
     const current = loadedTranscriptRef.current;

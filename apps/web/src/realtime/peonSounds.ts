@@ -1,4 +1,5 @@
 import { isAudioPrimary, onAudioPrimaryChange } from "./audioFocus";
+import { readStoredValue, writeStoredValue } from "../shared/storedValue";
 
 export type PeonSound = "start" | "stop" | "complete";
 
@@ -66,40 +67,19 @@ export const SOUND_PACK_STORAGE_KEY = "overseer.sound-pack";
 export const LEGACY_PEON_SOUNDS_STORAGE_KEY = "overseer.peon-sounds-enabled";
 const soundPackListeners = new Set<() => void>();
 
-interface SoundPreferenceStorage {
-  getItem: (key: string) => string | null;
-  setItem: (key: string, value: string) => void;
-}
-
-function browserStorage(): SoundPreferenceStorage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 function isSoundPack(value: string | null): value is SoundPack {
   return SOUND_PACKS.some((pack) => pack.id === value);
 }
 
-export function selectedSoundPack(storage: SoundPreferenceStorage | null = browserStorage()): SoundPack {
-  try {
-    const selected = storage?.getItem(SOUND_PACK_STORAGE_KEY) ?? null;
-    if (isSoundPack(selected)) return selected;
-    return storage?.getItem(LEGACY_PEON_SOUNDS_STORAGE_KEY) === "false" ? "none" : "peon";
-  } catch {
-    return "peon";
-  }
+export function selectedSoundPack(): SoundPack {
+  const selected = readStoredValue(SOUND_PACK_STORAGE_KEY);
+  if (isSoundPack(selected)) return selected;
+  return readStoredValue(LEGACY_PEON_SOUNDS_STORAGE_KEY) === "false" ? "none" : "peon";
 }
 
-export function setSelectedSoundPack(pack: SoundPack, storage: SoundPreferenceStorage | null = browserStorage()): void {
-  try {
-    storage?.setItem(SOUND_PACK_STORAGE_KEY, pack);
-    storage?.setItem(LEGACY_PEON_SOUNDS_STORAGE_KEY, String(pack !== "none"));
-  } catch {
-    // A private/restricted browser may deny storage; keep the UI usable.
-  }
+export function setSelectedSoundPack(pack: SoundPack): void {
+  writeStoredValue(SOUND_PACK_STORAGE_KEY, pack);
+  writeStoredValue(LEGACY_PEON_SOUNDS_STORAGE_KEY, String(pack !== "none"));
   for (const listener of soundPackListeners) listener();
 }
 

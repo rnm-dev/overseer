@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { readStoredJson, writeStoredValue } from "./storedValue";
+import { readStoredJson, writeStoredValue } from "../../shared/storedValue";
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 import { Link } from "react-router";
 import { useT } from "../../shared/i18n";
@@ -138,13 +138,13 @@ export function groupSessionsByProject(projects: ProjectLite[], sessions: Sessio
   return groups;
 }
 
-export function loadExpandedProjectGroups(storage?: Pick<Storage, "getItem">): string[] | null {
-  const parsed = readStoredJson(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY, storage);
+export function loadExpandedProjectGroups(): string[] | null {
+  const parsed = readStoredJson(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY);
   return Array.isArray(parsed) && parsed.every((value) => typeof value === "string") ? parsed : null;
 }
 
-export function saveExpandedProjectGroups(groups: string[], storage?: Pick<Storage, "setItem">): void {
-  writeStoredValue(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY, JSON.stringify(groups), storage);
+export function saveExpandedProjectGroups(groups: string[]): void {
+  writeStoredValue(GROUPED_PROJECTS_EXPANDED_STORAGE_KEY, JSON.stringify(groups));
 }
 
 export function ProjectGroupedSessionList({

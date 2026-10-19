@@ -5,7 +5,7 @@ import { api, ApiError } from "../../shared/api";
 import { Badge, Button, Card, ConfirmationDialog, Input, Label } from "../../shared/ui";
 import { useT } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
-import { defaultEffortIdFor, effortsForModel, providerForAgent, useModels } from "../fleet/modelsCatalog";
+import { effortsForModel, providerForAgent, useModels } from "../fleet/modelsCatalog";
 import { AgentSelect, ModelSelect, ReasoningEffortSelect } from "./models";
 import { buildSettingsPayload, resolveDefaultModel, resolveDefaultReasoningEffort } from "./settingsModel";
 import { type PeonSettingsTab, SOUL_EDITOR_ROWS } from "./settingsNavigation";
@@ -343,7 +343,7 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
                 value={defaultReasoningEffort}
                 onChange={(v) => { setForm((f) => ({ ...(f ?? {}), aiDefaultReasoningEffort: v || null })); setSaved(false); }}
                 defaultLabel={t("peon.settings.aiDefaultReasoningEffortAuto")}
-                defaultId={defaultEffortIdFor(effortOptions)}
+                defaultId={effortOptions.find((option) => option.default)?.id}
                 inlineLabel={false}
                 className="w-full"
               />

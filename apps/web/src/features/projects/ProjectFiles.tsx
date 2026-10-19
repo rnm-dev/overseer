@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, FolderUp, LoaderCircle, Pencil, RefreshCw, Save, Trash2, Upload, X } from "lucide-react";
 import { ApiError } from "../../shared/api";
+import { useSingleFlight } from "../../shared/useSingleFlight";
 import { useT } from "../../shared/i18n";
 import { ConfirmationDialog } from "../../shared/ui";
 import { CodeEditor } from "./CodeEditor";
@@ -84,8 +85,7 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
   const [copied, setCopied] = useState(false);
   const [directories, setDirectories] = useState<Record<string, DirectoryState>>({});
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set([""]));
-  const refreshingRef = useRef(false);
-  const previousRefreshRevisionRef = useRef(refreshRevision);
+  const refreshFlight = useSingleFlight();
   const requestGenerationRef = useRef(0);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -195,22 +195,22 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
   }, [filesBase, load]);
 
   const refreshExpanded = useCallback(async () => {
-    if (refreshingRef.current) return;
-    refreshingRef.current = true;
+    const token = refreshFlight.begin();
+    if (token === null) return;
     try {
       await Promise.all([...expanded].map(refreshDirectory));
     } finally {
-      refreshingRef.current = false;
+      refreshFlight.finish(token);
     }
-  }, [expanded, refreshDirectory]);
+  }, [expanded, refreshDirectory, refreshFlight]);
 
   const watchUnavailable = useProjectDirectoryWatch(peonId, projectKey, new Set([...expanded].filter((path) => !path || directories[parentPath(path)]?.entries.some((entry) => entry.name === baseName(path) && isDirectory(entry)))), refreshDirectory, treeRef);
 
   useEffect(() => {
-    if (previousRefreshRevisionRef.current === refreshRevision) return;
-    previousRefreshRevisionRef.current = refreshRevision;
-    void refreshExpanded();
-  }, [refreshExpanded, refreshRevision]);
+    if (refreshRevision > 0) void refreshExpanded();
+    // Only a revision bump triggers a refresh; expanding folders must not.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshRevision]);
 
   const toggle = async (path: string) => {
     if (expanded.has(path)) {

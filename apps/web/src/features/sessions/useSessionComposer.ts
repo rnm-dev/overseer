@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { api, ApiError, isPeonNeedsUpdate } from "../../shared/api";
-import { postContextMessage, postFollowup } from "./sessionApi";
+import { sessionPath, withRequestId } from "./sessionApi";
 import type { Translate } from "../../shared/i18n";
 import { useNotifications } from "../../shared/notifications";
-import { composerDraftKey, saveComposerDraft, useCarriedAttachments, useComposerDraft, useComposerDraftFiles, type ComposerSelectionDraft } from "./drafts";
+import { composerDraftKey, useCarriedAttachments, useComposerDraft, useComposerDraftFiles, type ComposerSelectionDraft } from "./drafts";
 import { attachmentUploadPath } from "../projects/fileLinks";
 import { effectiveModelId, isReasoningEffortValid, optionMatches, type ModelProvider, type ModelsCatalog } from "../fleet/modelsCatalog";
 import type { MessageAttachment } from "./parsing";
@@ -139,7 +139,6 @@ interface Args {
   overrideModel: string;
   overrideReasoningEffort: string;
   catalog: ModelsCatalog | null;
-  currentSessionKeyRef: MutableRefObject<string>;
   queueReconcilerRef: MutableRefObject<ReturnType<typeof createQueueReconciler> | null>;
   queueActivity: QueueActivityTracker;
   controlReadScope: string;
@@ -158,7 +157,7 @@ interface Args {
 
 export function useSessionComposer({
   base, sid, sessionKey, wsId, peonId, t, runState, session, sessionProvider, overrideModel,
-  overrideReasoningEffort, catalog, currentSessionKeyRef, queueReconcilerRef,
+  overrideReasoningEffort, catalog, queueReconcilerRef,
   queueActivity, controlReadScope, userMessageCount,
   replyTo, setReplyTo,
   onGhostCreated,
@@ -353,11 +352,11 @@ export function useSessionComposer({
       if (submittedSelection.model) body.model = submittedSelection.model; // becomes the session default after acceptance
       if (submittedSelection.reasoningEffort) body.reasoningEffort = submittedSelection.reasoningEffort;
       followupAttempted = true;
-      await postFollowup(base, sid, body, clientId);
+      await api(sessionPath(base, sid, "/followup"), withRequestId(body, clientId));
       clearRequestId(clientId);
       onSelectionAccepted(draftSelection);
       setMentions([]);
-      if (currentSessionKeyRef.current === sessionKey) onWorkStarted();
+      onWorkStarted();
     } catch (err) {
       // A refusal Overseer stated outright is final: nothing was committed, so
       // the next attempt is a new command and must not be answered from this
@@ -366,14 +365,6 @@ export function useSessionComposer({
       const statedRefusal = followupAttempted && followupWasRefused(err);
       const restoreDraft = shouldRestoreFollowupDraft(followupAttempted, err);
       if (statedRefusal) clearRequestId(clientId);
-      if (currentSessionKeyRef.current !== sessionKey) {
-        // The operator moved on, so there is no composer to roll back into. A
-        // stated refusal means the draft belongs back under this session's key;
-        // an unknown outcome might still have been delivered, so stay out of the
-        // way rather than invite a resend.
-        if (restoreDraft) saveComposerDraft(draftKey, text, pending, pendingCarried);
-        return;
-      }
       if (restoreDraft) {
         setGhost(null);
         setRunning(wasRunning);
@@ -389,7 +380,7 @@ export function useSessionComposer({
         message: composerActionErrorMessage(err, t),
       });
     } finally {
-      if (submissionGateRef.current.finish(submission) && currentSessionKeyRef.current === sessionKey) setSending(false);
+      if (submissionGateRef.current.finish(submission)) setSending(false);
     }
   }
 
@@ -413,10 +404,10 @@ export function useSessionComposer({
     try {
       const attachments: { type: "file" | "image"; path: string; transferId?: string; size?: number; sha256?: string }[] = carriedPayload(pendingCarried);
       for (const file of pending) attachments.push({ type: isImage(file) ? "image" : "file", ...await uploadFile(file) });
-      await postContextMessage(base, sid, { text, ...(attachments.length ? { attachments } : {}), ...(pendingMentions.length ? { mentions: mentionWire(pendingMentions) } : {}) }, commandId);
+      await api(sessionPath(base, sid, "/context-messages"), withRequestId({ text, ...(attachments.length ? { attachments } : {}), ...(pendingMentions.length ? { mentions: mentionWire(pendingMentions) } : {}) }, commandId));
       clearRequestId(commandId);
     } catch (error) {
-      if (currentSessionKeyRef.current === sessionKey && followupWasRefused(error)) {
+      if (followupWasRefused(error)) {
         clearRequestId(commandId);
         setGhost(null);
         setInput(text);
@@ -426,7 +417,7 @@ export function useSessionComposer({
       }
       notifyError(error, { title: "Message could not be sent", fallback: t("error.generic"), message: composerActionErrorMessage(error, t) });
     } finally {
-      if (submissionGateRef.current.finish(submission) && currentSessionKeyRef.current === sessionKey) setSending(false);
+      if (submissionGateRef.current.finish(submission)) setSending(false);
     }
   }
 
@@ -475,23 +466,20 @@ export function useSessionComposer({
       // Peon owns FIFO order. Never insert the response optimistically; fetch the
       // authoritative list after acceptance (the stream change is a second guard).
       await queueReconciler?.reconcile();
-      if (currentSessionKeyRef.current === sessionKey) {
-        setInput("");
-        setFiles([]);
-        setCarried([]);
-        setReplyTo(null);
-        setMentions([]);
-        setStopNote(null);
-      }
+      setInput("");
+      setFiles([]);
+      setCarried([]);
+      setReplyTo(null);
+      setMentions([]);
+      setStopNote(null);
     } catch (err) {
-      if (currentSessionKeyRef.current !== sessionKey) return;
       notifyError(err, {
         title: t("session.queue.addFailed"),
         fallback: t("error.generic"),
         message: composerActionErrorMessage(err, t),
       });
     } finally {
-      if (submissionGateRef.current.finish(submission) && currentSessionKeyRef.current === sessionKey) setSending(false);
+      if (submissionGateRef.current.finish(submission)) setSending(false);
     }
   }
 
@@ -547,7 +535,7 @@ export function useSessionComposer({
       });
       await (queueReconcilerRef.current?.reconcile() ?? Promise.resolve());
     }
-    if (!pulled || currentSessionKeyRef.current !== sessionKey) return;
+    if (!pulled) return;
     setSendError(null);
     setInput(draft.text);
     setCarried(draft.carried);

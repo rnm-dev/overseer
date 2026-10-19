@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckCircle2, Pencil } from "lucide-react";
-import { ApiError, api } from "../../shared/api";
+import { ApiError } from "../../shared/api";
 import { ArmoryFieldControl } from "./ArmoryFieldControl";
 import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { Badge, Button, Card, Dialog } from "../../shared/ui";
@@ -83,7 +83,7 @@ export function ArmoryConfigurationPanel({ base, packageId, installed, schema, s
     if (!operationId || operation?.id === operationId) return;
     const controller = new AbortController();
     recoveryController.current = controller;
-    getArmoryOperation(base, operationId, (path) => api(path, { signal: controller.signal }))
+    getArmoryOperation(base, operationId, controller.signal)
       .then((response) => { if (!controller.signal.aborted) { pollAttempts.current = 0; setOperation(response.operation); setPollingError(null); setRecoveryError(null); if (!operationActive(response.operation)) void onRefresh(); } })
       .catch((error) => { if (!controller.signal.aborted) setRecoveryError(error); });
     return () => controller.abort();
@@ -103,7 +103,7 @@ export function ArmoryConfigurationPanel({ base, packageId, installed, schema, s
       const controller = new AbortController();
       pollController.current = controller;
       try {
-        const response = await getArmoryOperation(base, operation.id, (path) => api(path, { signal: controller.signal }));
+        const response = await getArmoryOperation(base, operation.id, controller.signal);
         if (!alive) return;
         setOperation(response.operation);
         if (operationActive(response.operation)) timer = window.setTimeout(check, POLL_INTERVAL_MS);

@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { createRequestScope } from "./useApiResource";
 
 // A synchronous lock for mutations: two click handlers can run before React
 // commits the first `submitting` state update. The token also lets a response
@@ -16,14 +17,14 @@ export interface SingleFlight {
 }
 
 export function createSingleFlight(): SingleFlight {
-  let generation = 0;
+  const scope = createRequestScope();
   let active = false;
-  const current = (token: number) => active && token === generation;
+  const current = (token: number) => active && scope.current(token);
   return {
     begin() {
       if (active) return null;
       active = true;
-      return ++generation;
+      return scope.begin();
     },
     locked: () => active,
     current,
@@ -32,7 +33,7 @@ export function createSingleFlight(): SingleFlight {
       active = false;
       return true;
     },
-    reset() { generation += 1; active = false; },
+    reset() { scope.clear(); active = false; },
   };
 }
 

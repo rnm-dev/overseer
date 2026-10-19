@@ -1,4 +1,5 @@
-import { Outlet, useLocation } from "react-router";
+import { useLocation } from "react-router";
+import { PeonArmory } from "../armory/PeonArmory";
 import { PeonSettings } from "./PeonSettings";
 import { useT } from "../../shared/i18n";
 import { RouteTabs } from "../../shared/RouteTabs";
@@ -7,12 +8,13 @@ import { peonSettingsPath, peonSettingsTabFromPath } from "./settingsNavigation"
 
 // Owner-only shell for the Peon settings tabs. General/agent share one
 // PeonSettings instance kept mounted here so its form state survives visits to
-// the Armory child route, exactly as when every tab lived in one component.
+// the Armory tab, exactly as when every tab lived in one component.
 export function PeonSettingsLayout() {
   const t = useT();
   const { peon, isOwner } = usePeon();
   const location = useLocation();
   const settingsPath = peonSettingsPath(peon.peonId);
+  const tab = peonSettingsTabFromPath(location.pathname);
 
   if (!isOwner) return <p className="font-mono text-sm text-ink-faint">{t("ownerOnly")}</p>;
 
@@ -26,8 +28,8 @@ export function PeonSettingsLayout() {
           { to: `${settingsPath}/armory`, label: t("peon.settings.tab.armory") },
         ]}
       />
-      <PeonSettings tab={peonSettingsTabFromPath(location.pathname)} />
-      <Outlet />
+      <PeonSettings tab={tab} />
+      {tab === "armory" && <PeonArmory />}
     </div>
   );
 }

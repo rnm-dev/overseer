@@ -26,14 +26,17 @@ test("server theme manifests satisfy the versioned token contract", () => {
 
 test("unknown and unavailable themes fall back to Ironwood", () => {
   assert.equal(resolveTheme("org.example.missing", [DEFAULT_THEME, parchment]).id, DEFAULT_THEME_ID);
-  assert.equal(loadThemeId({ getItem: () => "org.example.missing", setItem() {} }), "org.example.missing");
-  assert.equal(loadThemeId({ getItem: () => { throw new Error("blocked"); }, setItem() {} }), DEFAULT_THEME_ID);
+  Object.defineProperty(globalThis, "localStorage", { value: { getItem: () => "org.example.missing", setItem() {} }, configurable: true });
+  assert.equal(loadThemeId(), "org.example.missing");
+  Object.defineProperty(globalThis, "localStorage", { value: { getItem: () => { throw new Error("blocked"); }, setItem() {} }, configurable: true });
+  assert.equal(loadThemeId(), DEFAULT_THEME_ID);
 });
 
 test("theme selection persists only the package id", () => {
   const stored = new Map<string, string>();
   const storage = { getItem: (key: string) => stored.get(key) ?? null, setItem: (key: string, value: string) => stored.set(key, value) };
-  saveTheme(parchment, storage);
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+  saveTheme(parchment);
   assert.equal(stored.get(THEME_STORAGE_KEY), "org.overseer.parchment");
 });
 

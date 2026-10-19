@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { useLiveSocket } from "../../realtime/liveSocket";
 import { activeMentionQuery, insertMention, remapMentions, removeMention, type ComposerMention, type MentionPrincipal } from "./contextMentions";
 import type { Ev } from "./parsing";
-import { getMentionAttention, getMentionPrincipals, markMentionAttentionRead } from "./sessionApi";
+import { api } from "../../shared/api";
+import { sessionPath } from "./sessionApi";
 
 interface Args {
   base: string;
@@ -30,7 +31,10 @@ export function useComposerMentions({ base, sid, peonId, supported, subscribeMen
       return;
     }
     let alive = true;
-    void Promise.all([getMentionPrincipals(base, sid), getMentionAttention(base, sid)]).then(([roster, attention]) => {
+    void Promise.all([
+      api<{ principals?: MentionPrincipal[] }>(sessionPath(base, sid, "/mention-principals")),
+      api<{ attention?: Array<{ eventId: string; unread: boolean }> }>(sessionPath(base, sid, "/mention-attention")),
+    ]).then(([roster, attention]) => {
       if (!alive) return;
       setPrincipals(roster.principals ?? []);
       setAttentionIds(new Set((attention.attention ?? []).filter((item) => item.unread).map((item) => item.eventId)));
@@ -50,7 +54,7 @@ export function useComposerMentions({ base, sid, peonId, supported, subscribeMen
     if (!supported || attentionIds.size === 0 || document.visibilityState !== "visible") return;
     const rendered = visibleEvents.flatMap((event) => typeof event.eventId === "string" && attentionIds.has(event.eventId) ? [event.eventId] : []);
     if (rendered.length === 0) return;
-    void markMentionAttentionRead(base, sid, rendered.slice(0, 100)).then(() => {
+    void api(sessionPath(base, sid, "/mention-attention/read"), { method: "POST", body: JSON.stringify({ eventIds: rendered.slice(0, 100) }) }).then(() => {
       setAttentionIds((current) => new Set([...current].filter((id) => !rendered.includes(id))));
     }).catch(() => undefined);
   }, [base, supported, attentionIds, sid, visibleEvents]);

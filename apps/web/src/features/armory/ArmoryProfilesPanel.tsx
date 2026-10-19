@@ -5,7 +5,7 @@ import { ArmoryFieldControl } from "./ArmoryFieldControl";
 import { ArmoryIdentityRow } from "./ArmoryProfileIdentity";
 import { Badge, Button, Card, Dialog } from "../../shared/ui";
 import type { ArmoryConfiguration, ArmoryProfile, ArmoryProfileOperation, ArmoryProfileRequirement } from "./armoryTypes";
-import { armoryProfileReadiness, matchingArmoryProfiles, missingArmoryProfileFields, profileOperationActive, validateArmoryProfileConfiguration, type ConfigurationErrors } from "./armoryValidation";
+import { armoryProfileReadiness, matchingArmoryProfiles, missingArmoryProfileFields, operationActive, validateArmoryProfileConfiguration, type ConfigurationErrors } from "./armoryValidation";
 import { configureArmoryProfile, createArmoryProfile, deleteArmoryProfile, getArmoryProfileOperation, renameArmoryProfile, verifyArmoryProfile } from "./armoryClient";
 
 const POLL_INTERVAL_MS = 1_200;
@@ -37,7 +37,7 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
   const gate = useSingleFlight();
   const missingFields = missingArmoryProfileFields(profile, requirement);
   const readiness = armoryProfileReadiness(profile, requirement);
-  const busy = submitting || profileOperationActive(operation) || gate.locked();
+  const busy = submitting || operationActive(operation) || gate.locked();
 
   useEffect(() => {
     const actionGate = gate;
@@ -53,7 +53,7 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
   }, [base, profile.profileId, profile.name]);
 
   useEffect(() => {
-    if (!profileOperationActive(operation) || pollingError) return;
+    if (!operationActive(operation) || pollingError) return;
     let alive = true;
     let timer: number | undefined;
     const poll = async () => {
@@ -62,7 +62,7 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
         const response = await getArmoryProfileOperation(base, operation.operationId);
         if (!alive) return;
         setOperation(response.operation);
-        if (profileOperationActive(response.operation)) timer = window.setTimeout(poll, POLL_INTERVAL_MS);
+        if (operationActive(response.operation)) timer = window.setTimeout(poll, POLL_INTERVAL_MS);
         else await onRefresh();
       } catch (error) { if (alive) setPollingError(error); }
     };
@@ -86,13 +86,13 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
         if (!gate.current(token)) return;
         setOperation(accepted);
         setPollingError(null);
-        if (!profileOperationActive(accepted)) await onRefresh();
+        if (!operationActive(accepted)) await onRefresh();
       } else if (action === "verify") {
         const accepted = await verifyArmoryProfile(base, profile.profileId);
         if (!gate.current(token)) return;
         setOperation(accepted);
         setPollingError(null);
-        if (!profileOperationActive(accepted)) await onRefresh();
+        if (!operationActive(accepted)) await onRefresh();
       } else if (action === "rename") {
         await renameArmoryProfile(base, profile.profileId, name.trim());
         if (!gate.current(token)) return;

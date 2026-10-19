@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { ArrowRight, GitFork, LoaderCircle, MoreHorizontal } from "lucide-react";
-import { ApiError, isPeonNeedsUpdate } from "../../shared/api";
+import { api, ApiError, isPeonNeedsUpdate } from "../../shared/api";
 import { shouldAcknowledgeAttention } from "./sessionAttentionRead";
 import { useI18n } from "../../shared/i18n";
 import { useLiveSocket } from "../../realtime/liveSocket";
@@ -49,11 +49,11 @@ import { useSessionBranch } from "./useSessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./pluginInquiries";
 import { SessionSharingPanel } from "./SessionSharingPanel";
 import { mentionsRouteToPeople, CONTEXT_MESSAGES_CAPABILITY } from "./contextMentions";
-import { cancelSession, deleteSession, markSessionAttentionRead, renameSession } from "./sessionApi";
+import { deleteSession, renameSession, sessionPath } from "./sessionApi";
 import { useSessionRunState } from "./useSessionRunState";
 import { useSessionMetadata } from "./useSessionMetadata";
 import { useComposerMentions, useMentionPicker } from "./useComposerMentions";
-import { readStoredJson, writeStoredValue } from "./storedValue";
+import { readStoredJson, writeStoredValue } from "../../shared/storedValue";
 import { clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, type ComposerSelectionDraft, useComposerSelectionDraft } from "./drafts";
 import { createContinuationSession, lastUnexecutedUserPrompt, sessionContinuationFailure, type SessionContinuationFailure } from "./sessionContinuationRecovery";
 
@@ -134,13 +134,9 @@ function PeonSessionDetailPage() {
   const pluginInquiriesSupported = peon.capabilities.includes(PLUGIN_INQUIRY_CAPABILITY);
   const contextMessagesSupported = peon.capabilities.includes(CONTEXT_MESSAGES_CAPABILITY);
   const filePanePageKey = `${wsId}:${sessionKey}`;
-  const currentSessionKeyRef = useRef(sessionKey);
-  const [simpleTools] = useState(() => loadToolDisplayMode() === "simple");
+  const simpleTools = useState(() => loadToolDisplayMode() === "simple")[0];
   const [sharingOpen, setSharingOpen] = useState(false);
   const attentionReadInFlightRef = useRef<string | null>(null);
-  // Update during render, not in an effect: a request from the previous route can
-  // settle in the small render→effect window and must not mutate the new session.
-  currentSessionKeyRef.current = sessionKey;
 
   // iOS Safari keeps html/body as a second scroll surface even when the fixed
   // route shell is clipped. Freeze that root surface for the lifetime of the
@@ -160,7 +156,7 @@ function PeonSessionDetailPage() {
     if (!sid || !shouldAcknowledgeAttention(attentionUnreadRef.current, document.visibilityState, document.hasFocus())) return;
     if (attentionReadInFlightRef.current === sessionKey) return;
     attentionReadInFlightRef.current = sessionKey;
-    void markSessionAttentionRead(base, sid).catch(() => {
+    void api(sessionPath(base, sid, "/attention/read"), { method: "POST" }).catch(() => {
       if (attentionReadInFlightRef.current === sessionKey) attentionReadInFlightRef.current = null;
     });
   }, [base, sessionKey, sid]);
@@ -187,7 +183,6 @@ function PeonSessionDetailPage() {
   const [metaTick, setMetaTick] = useState(0);
   const refreshMetadata = useCallback(() => setMetaTick((value) => value + 1), []);
   const runState = useSessionRunState({
-    sessionKey,
     sid,
     peonId: peon.peonId,
     indexedStatus: selectedSession?.status,
@@ -308,8 +303,8 @@ function PeonSessionDetailPage() {
     setSelectionDraft((current) => selectionAfterAcceptance(current, submittedSelection));
     // Peon owns the accepted pin. Re-read it after either immediate delivery or
     // durable queue acceptance so the next draft starts from server truth.
-    if (currentSessionKeyRef.current === sessionKey) setMetaTick((value) => value + 1);
-  }, [selectionDraftKey, sessionKey, setSelectionDraft]);
+    setMetaTick((value) => value + 1);
+  }, [selectionDraftKey, setSelectionDraft]);
   useEffect(() => {
     if (!composerNode) return;
     const measure = () => setComposerHeight(composerFooterHeight(composerNode.getBoundingClientRect().height, window.innerHeight));
@@ -372,7 +367,8 @@ function PeonSessionDetailPage() {
     paginationSupported: transcriptPaginationSupported,
     running,
     subscribe,
-    metadataStatusRef: runState.metadataStatusRef,
+    metadataStatus: runState.metadataStatus,
+    noteMetadataStatus: runState.noteMetadataStatus,
     previewPinnedRef,
     onRunningChange: runState.onLiveRunningChange,
     onSnapshotRunning: runState.onSnapshotRunning,
@@ -493,7 +489,6 @@ function PeonSessionDetailPage() {
     overrideModel,
     overrideReasoningEffort,
     catalog,
-    currentSessionKeyRef,
     queueReconcilerRef,
     queueActivity: queueActivityRef.current,
     controlReadScope,
@@ -547,7 +542,7 @@ function PeonSessionDetailPage() {
     setStopNote(null);
     suppressCompletionSoundRef.current = true;
     try {
-      await cancelSession(base, sid);
+      await api(sessionPath(base, sid, "/cancel"), { method: "POST" });
       setRunning(false);
       playPeonSound("stop");
     } catch (err) {

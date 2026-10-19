@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { api, ApiError, getToken, json, migrateLegacyWebSession, setToken } from "../../shared/api";
+import { api, ApiError, json } from "../../shared/api";
 import { clearTranscriptSnapshotCache } from "../sessions/transcriptSnapshotCache";
 import { providerStartBody } from "./inviteFlow";
 import { getOrStartAuthBootstrap } from "./authBootstrap";
@@ -64,35 +64,9 @@ export type InitialAuth =
   | { kind: "unauthenticated" }
   | { kind: "unavailable" };
 
-interface AuthBootstrapDependencies {
-  legacyToken: () => string | null;
-  migrateLegacySession: (token: string) => Promise<void>;
-  clearLegacyToken: () => void;
-  loadUser: () => Promise<{ user?: User }>;
-}
-
-export async function loadInitialAuth(
-  dependencies: AuthBootstrapDependencies = {
-    legacyToken: getToken,
-    migrateLegacySession: migrateLegacyWebSession,
-    clearLegacyToken: () => setToken(null),
-    loadUser: () => api<{ user?: User }>("/auth/me"),
-  },
-): Promise<InitialAuth> {
+export async function loadInitialAuth(): Promise<InitialAuth> {
   try {
-    const legacyToken = dependencies.legacyToken();
-    if (legacyToken) {
-      try {
-        await dependencies.migrateLegacySession(legacyToken);
-        dependencies.clearLegacyToken();
-      } catch (error) {
-        if (!(error instanceof ApiError) || error.status !== 401) {
-          return { kind: "unavailable" };
-        }
-        dependencies.clearLegacyToken();
-      }
-    }
-    const me = await dependencies.loadUser();
+    const me = await api<{ user?: User }>("/auth/me");
     return me.user
       ? { kind: "authenticated", user: me.user }
       : { kind: "unauthenticated" };

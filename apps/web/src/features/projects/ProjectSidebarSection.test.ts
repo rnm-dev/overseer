@@ -129,13 +129,14 @@ test("project sidebar expansion preference persists in local storage", () => {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
   };
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
 
-  assert.equal(loadProjectSidebarExpanded(storage), true);
-  saveProjectSidebarExpanded(false, storage);
+  assert.equal(loadProjectSidebarExpanded(), true);
+  saveProjectSidebarExpanded(false);
   assert.equal(values.get(PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY), "false");
-  assert.equal(loadProjectSidebarExpanded(storage), false);
-  saveProjectSidebarExpanded(true, storage);
-  assert.equal(loadProjectSidebarExpanded(storage), true);
+  assert.equal(loadProjectSidebarExpanded(), false);
+  saveProjectSidebarExpanded(true);
+  assert.equal(loadProjectSidebarExpanded(), true);
 });
 
 test("project sidebar falls back to expanded when local storage is unavailable", () => {
@@ -144,6 +145,7 @@ test("project sidebar falls back to expanded when local storage is unavailable",
       throw new Error("storage unavailable");
     },
   };
+  Object.defineProperty(globalThis, "localStorage", { value: unavailable, configurable: true });
 
-  assert.equal(loadProjectSidebarExpanded(unavailable), true);
+  assert.equal(loadProjectSidebarExpanded(), true);
 });

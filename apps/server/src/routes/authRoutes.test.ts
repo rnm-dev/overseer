@@ -151,12 +151,6 @@ test("web OAuth uses the shared frontend callback and completes through the API"
 
   const bearerMutation = await request("/api/auth/ws-ticket", "POST", undefined, { authorization: `Bearer ${rawToken}` });
   assert.equal(bearerMutation.status, 201);
-  const migrated = await request("/api/auth/web-session", "POST", undefined, {
-    authorization: `Bearer ${rawToken}`,
-    origin: config.publicUrl,
-  });
-  assert.equal(migrated.status, 200);
-  assert.match(migrated.setCookie[0], /^__Host-overseer_session=/);
 
   const replay = await request("/api/auth/github", "POST", { state, code: "web-github-code" });
   assert.equal(replay.status, 400);

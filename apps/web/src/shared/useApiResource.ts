@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type DependencyList, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { api } from "./api";
 
 // A monotonically increasing scope token lets a caller ignore a response that
@@ -49,28 +49,25 @@ export function resourceSettled<T>(state: ResourceState<T>, result: { data: T } 
 }
 
 /**
- * GET `path` through `api()` whenever `path` or `deps` change. A `null` path
- * means "not now" (offline, not permitted). Responses for superseded requests
- * are dropped.
+ * GET `path` through `api()` whenever `path` changes. A `null` path means
+ * "not now" (offline, not permitted). Responses for superseded requests are
+ * dropped. `noStore` bypasses the HTTP cache.
  */
-export function useApiResource<T>(path: string | null, deps: DependencyList = [], init?: RequestInit): ApiResource<T> {
+export function useApiResource<T>(path: string | null, { noStore = false }: { noStore?: boolean } = {}): ApiResource<T> {
   const [state, setState] = useState<ResourceState<T>>(() => ({ path, data: null, error: null, loading: path !== null }));
   const scope = useRequestScope();
-  const initRef = useRef(init);
-  initRef.current = init;
 
   const reload = useCallback(async () => {
     const token = scope.begin();
     setState((current) => resourceStarted(current, path));
     if (path === null) return;
     try {
-      const data = await api<T>(path, initRef.current);
+      const data = await api<T>(path, noStore ? { cache: "no-store" } : undefined);
       if (scope.current(token)) setState((current) => resourceSettled(current, { data }));
     } catch (error) {
       if (scope.current(token)) setState((current) => resourceSettled(current, { error }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [path, scope, ...deps]);
+  }, [path, scope, noStore]);
 
   useEffect(() => {
     void reload();

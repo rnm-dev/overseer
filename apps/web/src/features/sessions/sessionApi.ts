@@ -1,7 +1,6 @@
 import { api, json } from "../../shared/api";
-import type { MentionPrincipal } from "./contextMentions";
 
-// Typed wrappers for the per-session Peon endpoints this page calls directly.
+// Typed helpers for the per-session Peon endpoints.
 
 export interface SessionRecord {
   title?: string | null;
@@ -38,36 +37,8 @@ export function deleteSession(base: string, sid: string): Promise<unknown> {
   return api(sessionPath(base, sid), { method: "DELETE" });
 }
 
-export function cancelSession(base: string, sid: string): Promise<unknown> {
-  return api(sessionPath(base, sid, "/cancel"), { method: "POST" });
-}
-
-export function markSessionAttentionRead(base: string, sid: string): Promise<unknown> {
-  return api(sessionPath(base, sid, "/attention/read"), { method: "POST" });
-}
-
-export function getMentionPrincipals(base: string, sid: string): Promise<{ principals?: MentionPrincipal[] }> {
-  return api<{ principals?: MentionPrincipal[] }>(sessionPath(base, sid, "/mention-principals"));
-}
-
-export function getMentionAttention(base: string, sid: string): Promise<{ attention?: Array<{ eventId: string; unread: boolean }> }> {
-  return api<{ attention?: Array<{ eventId: string; unread: boolean }> }>(sessionPath(base, sid, "/mention-attention"));
-}
-
-export function markMentionAttentionRead(base: string, sid: string, eventIds: string[]): Promise<unknown> {
-  return api(sessionPath(base, sid, "/mention-attention/read"), { method: "POST", body: JSON.stringify({ eventIds }) });
-}
-
-function withRequestId(body: unknown, requestId: string): RequestInit {
+export function withRequestId(body: unknown, requestId: string): RequestInit {
   const request = json(body);
   request.headers = { "Peon-Request-Id": requestId };
   return request;
-}
-
-export function postFollowup(base: string, sid: string, body: unknown, requestId: string): Promise<unknown> {
-  return api(sessionPath(base, sid, "/followup"), withRequestId(body, requestId));
-}
-
-export function postContextMessage(base: string, sid: string, body: unknown, requestId: string): Promise<unknown> {
-  return api(sessionPath(base, sid, "/context-messages"), withRequestId(body, requestId));
 }

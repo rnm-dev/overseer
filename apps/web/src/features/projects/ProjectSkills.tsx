@@ -47,7 +47,7 @@ export function ProjectSkills() {
   const t = useT();
   const { key = "" } = useParams();
   const { peon, base } = usePeon();
-  const skills = useApiResource<ProjectSkillsResponse>(peon.online ? `${base}/projects/${encodeURIComponent(key)}/skills` : null, [], { cache: "no-store" });
+  const skills = useApiResource<ProjectSkillsResponse>(peon.online ? `${base}/projects/${encodeURIComponent(key)}/skills` : null, { noStore: true });
   const state = skillsState(skills.data, skills.error, skills.loading, t);
 
   return <div className="space-y-3">

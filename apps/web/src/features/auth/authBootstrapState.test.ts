@@ -1,47 +1,28 @@
 import assert from "node:assert/strict";
-import test from "node:test";
-import { ApiError } from "../../shared/api";
+import { afterEach, test } from "node:test";
 import { loadInitialAuth } from "./auth";
 
-const user = { email: "operator@example.com" };
+const originalFetch = globalThis.fetch;
+afterEach(() => { globalThis.fetch = originalFetch; });
 
-test("an unavailable auth backend does not become signed out", async () => {
-  let cleared = false;
-  const result = await loadInitialAuth({
-    legacyToken: () => "stored-token",
-    migrateLegacySession: async () => {
-      throw new TypeError("fetch failed");
-    },
-    clearLegacyToken: () => { cleared = true; },
-    loadUser: async () => ({ user }),
-  });
-
-  assert.deepEqual(result, { kind: "unavailable" });
-  assert.equal(cleared, false);
+test("an unreachable auth backend does not become signed out", async () => {
+  globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+  assert.deepEqual(await loadInitialAuth(), { kind: "unavailable" });
 });
 
 test("a server failure while checking the cookie is unavailable", async () => {
-  const result = await loadInitialAuth({
-    legacyToken: () => null,
-    migrateLegacySession: async () => {},
-    clearLegacyToken: () => {},
-    loadUser: async () => {
-      throw new ApiError(503, "UNAVAILABLE", "maintenance");
-    },
-  });
-
-  assert.deepEqual(result, { kind: "unavailable" });
+  globalThis.fetch = async () => Response.json({ code: "UNAVAILABLE" }, { status: 503 });
+  assert.deepEqual(await loadInitialAuth(), { kind: "unavailable" });
 });
 
 test("only an explicit unauthorized response becomes signed out", async () => {
-  const result = await loadInitialAuth({
-    legacyToken: () => null,
-    migrateLegacySession: async () => {},
-    clearLegacyToken: () => {},
-    loadUser: async () => {
-      throw new ApiError(401, "UNAUTHENTICATED", "authentication required");
-    },
-  });
-
-  assert.deepEqual(result, { kind: "unauthenticated" });
+  globalThis.fetch = async () => Response.json({ code: "UNAUTHENTICATED" }, { status: 401 });
+  assert.deepEqual(await loadInitialAuth(), { kind: "unauthenticated" });
 });
+
+test("a signed-in cookie yields the user", async () => {
+  const user = { email: "operator@example.com" };
+  globalThis.fetch = async () => Response.json({ user });
+  assert.deepEqual(await loadInitialAuth(), { kind: "authenticated", user });
+});
+

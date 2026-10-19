@@ -17,7 +17,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const controller = new AbortController();
     void fetchThemeCatalog(controller.signal).then((catalog) => {
-      const next = resolveTheme(loadThemeId(localStorage), catalog.themes);
+      const next = resolveTheme(loadThemeId(), catalog.themes);
       setThemes(catalog.themes);
       setTheme(next);
       applyTheme(next);
@@ -32,7 +32,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     selectTheme(id) {
       const next = resolveTheme(id, themes);
       applyTheme(next);
-      saveTheme(next, localStorage);
+      saveTheme(next);
       setTheme(next);
     },
   }), [theme, themes]);

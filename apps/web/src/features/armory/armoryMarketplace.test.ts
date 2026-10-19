@@ -10,7 +10,9 @@ import { ArmoryLifecyclePanel, UNINSTALL_PRESERVATION_COPY } from "./ArmoryLifec
 import { isPackageReady, PackageCard } from "./PeonArmory";
 import { ARMORY_SEARCH_DEBOUNCE_MS, type ArmoryConfiguration, type ArmoryOperation, type InstalledPackage } from "./armoryTypes";
 import { activeArmoryCapabilities, armoryOperationProgress, clearAcceptedTransientValues, isMcpCapable, operationActive, validateArmoryConfiguration } from "./armoryValidation";
-import { deleteArmoryConfiguration, getArmoryConfiguration, getArmoryInventory, getArmoryMcp, getArmoryOperation, getArmoryPackage, getArmorySettings, inventoryPath, installArmoryPackage, refreshArmory, setArmoryPackageEnabled, submitArmoryConfiguration, uninstallArmoryPackage, updateArmoryPackage } from "./armoryClient";
+import { setArmoryRequestForTests, deleteArmoryConfiguration, getArmoryConfiguration, getArmoryInventory, getArmoryMcp, getArmoryOperation, getArmoryPackage, getArmorySettings, inventoryPath, installArmoryPackage, refreshArmory, setArmoryPackageEnabled, submitArmoryConfiguration, uninstallArmoryPackage, updateArmoryPackage } from "./armoryClient";
+
+test.afterEach(() => setArmoryRequestForTests());
 
 const installed: InstalledPackage = {
   id: "heroboard", version: "1.0.0", enabled: false, state: "needs_configuration",
@@ -88,27 +90,28 @@ type Recorded = { path: string; options?: RequestInit };
 const id = "rnm/dev tools";
 const enc = "rnm%2Fdev%20tools";
 // [label, client call, expected path, method, JSON body (undefined = bodyless)]
-const PATH_CASES: Array<[string, (request: <T>(path: string, options?: RequestInit) => Promise<T>) => Promise<unknown>, string, string | undefined, unknown]> = [
-  ["available search", (r) => getArmoryInventory("/peon-a", { q: "git tools", view: "available" }, r), "/peon-a/armory/packages?q=git+tools&limit=24", undefined, undefined],
-  ["installed opaque cursor", (r) => getArmoryInventory("/peon-a", { view: "installed", cursor: "opaque+/cursor==" }, r), "/peon-a/armory/packages?installed=true&limit=24&cursor=opaque%2B%2Fcursor%3D%3D", undefined, undefined],
-  ["catalog refresh", (r) => refreshArmory("/peon-a", r), "/peon-a/armory/refresh", "POST", undefined],
-  ["detail", (r) => getArmoryPackage("/p", id, r), `/p/armory/packages/${enc}`, undefined, undefined],
-  ["configuration", (r) => getArmoryConfiguration("/p", id, r), `/p/armory/packages/${enc}/configuration`, undefined, undefined],
-  ["MCP discovery", (r) => getArmoryMcp("/p", id, r), `/p/armory/packages/${enc}/mcp`, undefined, undefined],
-  ["policy", (r) => getArmorySettings("/p", r), "/p/armory/settings", undefined, undefined],
-  ["enable", (r) => setArmoryPackageEnabled("/p", id, true, r), `/p/armory/packages/${enc}/enable`, "POST", undefined],
-  ["disable", (r) => setArmoryPackageEnabled("/p", id, false, r), `/p/armory/packages/${enc}/disable`, "POST", undefined],
-  ["install latest", (r) => installArmoryPackage("/selected-peon", id, null, r), `/selected-peon/armory/packages/${enc}/install`, "POST", {}],
-  ["install pinned", (r) => installArmoryPackage("/selected-peon", id, "1.2.3", r), `/selected-peon/armory/packages/${enc}/install`, "POST", { version: "1.2.3" }],
-  ["update latest", (r) => updateArmoryPackage("/selected-peon", id, null, r), `/selected-peon/armory/packages/${enc}/update`, "POST", {}],
-  ["update pinned", (r) => updateArmoryPackage("/selected-peon", id, "2.0.0", r), `/selected-peon/armory/packages/${enc}/update`, "POST", { version: "2.0.0" }],
-  ["uninstall", (r) => uninstallArmoryPackage("/selected-peon", id, r), `/selected-peon/armory/packages/${enc}`, "DELETE", {}],
+const PATH_CASES: Array<[string, () => Promise<unknown>, string, string | undefined, unknown]> = [
+  ["available search", () => getArmoryInventory("/peon-a", { q: "git tools", view: "available" }), "/peon-a/armory/packages?q=git+tools&limit=24", undefined, undefined],
+  ["installed opaque cursor", () => getArmoryInventory("/peon-a", { view: "installed", cursor: "opaque+/cursor==" }), "/peon-a/armory/packages?installed=true&limit=24&cursor=opaque%2B%2Fcursor%3D%3D", undefined, undefined],
+  ["catalog refresh", () => refreshArmory("/peon-a"), "/peon-a/armory/refresh", "POST", undefined],
+  ["detail", () => getArmoryPackage("/p", id), `/p/armory/packages/${enc}`, undefined, undefined],
+  ["configuration", () => getArmoryConfiguration("/p", id), `/p/armory/packages/${enc}/configuration`, undefined, undefined],
+  ["MCP discovery", () => getArmoryMcp("/p", id), `/p/armory/packages/${enc}/mcp`, undefined, undefined],
+  ["policy", () => getArmorySettings("/p"), "/p/armory/settings", undefined, undefined],
+  ["enable", () => setArmoryPackageEnabled("/p", id, true), `/p/armory/packages/${enc}/enable`, "POST", undefined],
+  ["disable", () => setArmoryPackageEnabled("/p", id, false), `/p/armory/packages/${enc}/disable`, "POST", undefined],
+  ["install latest", () => installArmoryPackage("/selected-peon", id, null), `/selected-peon/armory/packages/${enc}/install`, "POST", {}],
+  ["install pinned", () => installArmoryPackage("/selected-peon", id, "1.2.3"), `/selected-peon/armory/packages/${enc}/install`, "POST", { version: "1.2.3" }],
+  ["update latest", () => updateArmoryPackage("/selected-peon", id, null), `/selected-peon/armory/packages/${enc}/update`, "POST", {}],
+  ["update pinned", () => updateArmoryPackage("/selected-peon", id, "2.0.0"), `/selected-peon/armory/packages/${enc}/update`, "POST", { version: "2.0.0" }],
+  ["uninstall", () => uninstallArmoryPackage("/selected-peon", id), `/selected-peon/armory/packages/${enc}`, "DELETE", {}],
 ];
 
 for (const [label, call, path, method, body] of PATH_CASES) {
   test(`armory client request: ${label}`, async () => {
     const calls: Recorded[] = [];
-    await call(async <T>(requestPath: string, options?: RequestInit) => { calls.push({ path: requestPath, options }); return { operation: {} } as T; });
+    setArmoryRequestForTests(async <T>(requestPath: string, options?: RequestInit) => { calls.push({ path: requestPath, options }); return { operation: {} } as T; });
+    await call();
     assert.equal(calls.length, 1);
     assert.equal(calls[0].path, path);
     assert.equal(calls[0].options?.method, method);
@@ -262,8 +265,9 @@ test("configuration submission is scoped to Overseer path and keeps values out o
     calls.push({ path, options });
     return { operation: { id: "op-1", packageId: "heroboard", kind: "configure", status: "queued", phase: "queued", progress: null, message: "Queued", errorCode: null, startedAt: null, finishedAt: null } } as T;
   };
+  setArmoryRequestForTests(request);
   const secret = "hb_live_super_secret";
-  const response = await submitArmoryConfiguration("/workspaces/ws/peons/selected", "heroboard", { apiKey: secret }, true, request);
+  const response = await submitArmoryConfiguration("/workspaces/ws/peons/selected", "heroboard", { apiKey: secret }, true);
   assert.equal(calls[0].path, "/workspaces/ws/peons/selected/armory/packages/heroboard/configuration");
   assert.equal(calls[0].options?.method, "PUT");
   assert.deepEqual(JSON.parse(String(calls[0].options?.body)), { values: { apiKey: secret }, confirmHostWrites: true });
@@ -274,8 +278,9 @@ test("configuration submission is scoped to Overseer path and keeps values out o
 test("managed deletion omits host flags while explicit host deletion sends both confirmations", async () => {
   const calls: Array<{ path: string; options?: RequestInit }> = [];
   const request = async <T>(path: string, options?: RequestInit) => { calls.push({ path, options }); return { operation: {} } as T; };
-  await deleteArmoryConfiguration("/p", "heroboard", false, request);
-  await deleteArmoryConfiguration("/p", "heroboard", true, request);
+  setArmoryRequestForTests(request);
+  await deleteArmoryConfiguration("/p", "heroboard", false);
+  await deleteArmoryConfiguration("/p", "heroboard", true);
   assert.deepEqual(JSON.parse(String(calls[0].options?.body)), {});
   assert.deepEqual(JSON.parse(String(calls[1].options?.body)), { includeHost: true, confirmHostWrites: true });
   assert.ok(calls.every((call) => call.options?.method === "DELETE"));
@@ -283,20 +288,23 @@ test("managed deletion omits host flags while explicit host deletion sends both 
 
 test("lifecycle mutations preserve stable Peon conflict codes", async () => {
   const request = async <T>(): Promise<T> => { throw new ApiError(409, "OPERATION_IN_PROGRESS", "Another operation is already running"); };
-  await assert.rejects(() => installArmoryPackage("/selected-peon", "heroboard", null, request), (error: ApiError) => error.status === 409 && error.code === "OPERATION_IN_PROGRESS");
-  await assert.rejects(() => uninstallArmoryPackage("/selected-peon", "heroboard", request), (error: ApiError) => error.status === 409 && error.code === "OPERATION_IN_PROGRESS");
-  await assert.rejects(() => updateArmoryPackage("/selected-peon", "heroboard", null, request), (error: ApiError) => error.status === 409 && error.code === "OPERATION_IN_PROGRESS");
+  setArmoryRequestForTests(request);
+  await assert.rejects(() => installArmoryPackage("/selected-peon", "heroboard", null), (error: ApiError) => error.status === 409 && error.code === "OPERATION_IN_PROGRESS");
+  await assert.rejects(() => uninstallArmoryPackage("/selected-peon", "heroboard"), (error: ApiError) => error.status === 409 && error.code === "OPERATION_IN_PROGRESS");
+  await assert.rejects(() => updateArmoryPackage("/selected-peon", "heroboard", null), (error: ApiError) => error.status === 409 && error.code === "OPERATION_IN_PROGRESS");
 });
 
 test("update client preserves Peon 202, 404, and both 409 outcomes", async () => {
-  const accepted = await updateArmoryPackage("/p", "heroboard", "2.0.0", async <T>() => ({
+  setArmoryRequestForTests(async <T>() => ({
     operation: { id: "op-update", packageId: "heroboard", kind: "update", status: "queued", phase: "queued", progress: 0, message: "Queued", errorCode: null, startedAt: null, finishedAt: null },
   }) as T);
+  const accepted = await updateArmoryPackage("/p", "heroboard", "2.0.0");
   assert.deepEqual([accepted.operation.kind, accepted.operation.status], ["update", "queued"]);
 
   for (const [status, code] of [[404, "PACKAGE_NOT_ACTIVE"], [409, "NO_UPDATE_AVAILABLE"], [409, "OPERATION_IN_PROGRESS"]] as const) {
     const request = async <T>(): Promise<T> => { throw new ApiError(status, code, "Peon rejected the update"); };
-    await assert.rejects(() => updateArmoryPackage("/p", "heroboard", null, request), (error: ApiError) => error.status === status && error.code === code);
+    setArmoryRequestForTests(request);
+    await assert.rejects(() => updateArmoryPackage("/p", "heroboard", null), (error: ApiError) => error.status === status && error.code === code);
   }
 });
 
@@ -368,8 +376,9 @@ test("operation reads model queued, configure/verify progress, success, and stab
   ];
   let index = 0;
   const request = async <T>() => ({ operation: operations[index++] }) as T;
+  setArmoryRequestForTests(request);
   const seen = [];
-  for (let i = 0; i < operations.length; i++) seen.push((await getArmoryOperation("/p", "op", request)).operation);
+  for (let i = 0; i < operations.length; i++) seen.push((await getArmoryOperation("/p", "op")).operation);
   assert.deepEqual(seen.map((operation) => [operation.status, operation.phase, operation.progress]), [["queued", "queued", null], ["running", "configure", 35], ["running", "verify", 80], ["success", "complete", 100]]);
   assert.equal(operationActive(seen[0]), true);
   assert.equal(operationActive(seen[3]), false);
@@ -388,15 +397,17 @@ test("operation progress rejects missing and non-finite wire values", () => {
 test("409 operation-in-progress propagates without modifying entered values", async () => {
   const values = { apiKey: "still-present-for-immediate-error" };
   const request = async <T>(): Promise<T> => { throw new ApiError(409, "OPERATION_IN_PROGRESS", "Another operation is already running"); };
-  await assert.rejects(() => submitArmoryConfiguration("/p", "heroboard", values, false, request), (error: ApiError) => error.code === "OPERATION_IN_PROGRESS");
+  setArmoryRequestForTests(request);
+  await assert.rejects(() => submitArmoryConfiguration("/p", "heroboard", values, false), (error: ApiError) => error.code === "OPERATION_IN_PROGRESS");
   assert.deepEqual(values, { apiKey: "still-present-for-immediate-error" });
 });
 
 test("configuration API errors cannot echo submitted values", async () => {
   const secret = "hb_live_must_not_escape";
   const request = async <T>(): Promise<T> => { throw new ApiError(400, secret, `Invalid value: ${secret}`); };
+  setArmoryRequestForTests(request);
   await assert.rejects(
-    () => submitArmoryConfiguration("/p", "heroboard", { apiKey: secret }, false, request),
+    () => submitArmoryConfiguration("/p", "heroboard", { apiKey: secret }, false),
     (error: ApiError) => error.status === 400
       && error.code === "CONFIGURATION_REJECTED"
       && error.message === "Peon rejected the configuration."

@@ -1,4 +1,5 @@
 import { THEME_PACKAGE_FORMAT, validateThemePackage, type ThemePackageManifest } from "./themePackage";
+import { readStoredValue, writeStoredValue } from "../../shared/storedValue";
 
 export const DEFAULT_THEME_ID = "org.overseer.ironwood";
 export const THEME_STORAGE_KEY = "overseer.theme-package";
@@ -21,29 +22,16 @@ export interface ThemeCatalog {
   themes: readonly ThemePackageManifest[];
 }
 
-export interface ThemeStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
 export function resolveTheme(id: string | null | undefined, themes: readonly ThemePackageManifest[]): ThemePackageManifest {
   return themes.find((theme) => theme.id === id) ?? themes.find((theme) => theme.id === DEFAULT_THEME_ID) ?? themes[0] ?? DEFAULT_THEME;
 }
 
-export function loadThemeId(storage?: ThemeStorage | null): string {
-  try {
-    return storage?.getItem(THEME_STORAGE_KEY) || DEFAULT_THEME_ID;
-  } catch {
-    return DEFAULT_THEME_ID;
-  }
+export function loadThemeId(): string {
+  return readStoredValue(THEME_STORAGE_KEY) || DEFAULT_THEME_ID;
 }
 
-export function saveTheme(theme: ThemePackageManifest, storage?: ThemeStorage | null): void {
-  try {
-    storage?.setItem(THEME_STORAGE_KEY, theme.id);
-  } catch {
-    // A blocked storage API must never prevent the safe bundled fallback.
-  }
+export function saveTheme(theme: ThemePackageManifest): void {
+  writeStoredValue(THEME_STORAGE_KEY, theme.id);
 }
 
 export function applyTheme(theme: ThemePackageManifest, root?: HTMLElement): void {

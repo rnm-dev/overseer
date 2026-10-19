@@ -1,9 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { indexedRunAssumptionDelay, shouldSeedIndexedRun } from "./runStatus";
-import { activeRunReducer, initialActiveRun } from "./sessionRunState";
 
 interface Args {
-  sessionKey: string;
   sid: string;
   peonId: string;
   /** The indexed summary's status for this session, if the sidebar has it. */
@@ -13,34 +11,49 @@ interface Args {
   refreshMetadata: () => void;
 }
 
+interface ActiveRun {
+  running: boolean;
+  model: string | null;
+  reasoningEffort: string | null;
+  /** Set while the run is only assumed from the indexed summary. */
+  assumedAt: number | null;
+}
+
 export type SessionRunState = ReturnType<typeof useSessionRunState>;
 
 /**
  * Whether a run is currently active — gates the Stop button. Seeded from the
  * session record, flipped on by sending a followup, off by a `result` frame.
  */
-export function useSessionRunState({ sessionKey, sid, peonId, indexedStatus, onSessionRunningChange, refreshMetadata }: Args) {
+export function useSessionRunState({ sid, peonId, indexedStatus, onSessionRunningChange, refreshMetadata }: Args) {
   // The indexed summary is already on screen with the sidebar. Use it as the
   // cache-first answer instead of hiding activity until the direct metadata
   // request (or a transcript run signal) wins its independent request race.
-  const [activeRun, dispatch] = useReducer(activeRunReducer, undefined, () => initialActiveRun(sessionKey, indexedStatus, Date.now()));
-  const running = activeRun.sessionKey === sessionKey && activeRun.running;
-  const runningModel = activeRun.sessionKey === sessionKey ? activeRun.model : null;
-  const runningReasoningEffort = activeRun.sessionKey === sessionKey ? activeRun.reasoningEffort : null;
-  const runRevisionRef = useRef<Map<string, number>>(new Map());
-  const observedRunMetadataRefreshRef = useRef<Set<string>>(new Set());
-  const metadataStatusRef = useRef<Map<string, string | null>>(new Map());
+  const [activeRun, setActiveRun] = useState<ActiveRun>(() => {
+    const running = indexedStatus === "running";
+    return { running, model: null, reasoningEffort: null, assumedAt: running ? Date.now() : null };
+  });
+  const runRevisionRef = useRef(0);
+  const observedRunMetadataRefreshRef = useRef(false);
+  /** The last status a session record reported; undefined until one is read. */
+  const metadataStatusRef = useRef<string | null | undefined>(undefined);
   // A Peon that refuses a cancel with SESSION_NOT_RUNNING has told us something
   // stronger than its own session record does: that record can be left at
   // "running" by a run whose process vanished, and re-reading it would keep
   // resurrecting the indicator we just cleared. So the refusal outranks the
   // record until the session produces live work again.
-  const refutedRunRef = useRef<Set<string>>(new Set());
+  const refutedRunRef = useRef(false);
   // A run this page only inferred from the transcript, with nothing having
   // confirmed it. The inference reads "the newest event is not a result", which
   // is also true of a turn whose process vanished, so it must never outlive the
   // record read that was supposed to settle it.
-  const unconfirmedRunRef = useRef<Set<string>>(new Set());
+  const unconfirmedRunRef = useRef(false);
+
+  const retireAssumed = useCallback(() => {
+    setActiveRun((previous) => previous.assumedAt !== null
+      ? { running: false, model: null, reasoningEffort: null, assumedAt: null }
+      : previous);
+  }, []);
 
   useEffect(() => {
     // The sidebar page can finish hydrating after this route mounts. Promote
@@ -48,81 +61,95 @@ export function useSessionRunState({ sessionKey, sid, peonId, indexedStatus, onS
     // metadata GET and tail remain authoritative and can immediately clear it.
     if (!shouldSeedIndexedRun({
       indexedStatus,
-      metadataStatusKnown: metadataStatusRef.current.has(sessionKey),
-      runRevision: runRevisionRef.current.get(sessionKey) ?? 0,
-      refuted: refutedRunRef.current.has(sessionKey),
+      metadataStatusKnown: metadataStatusRef.current !== undefined,
+      runRevision: runRevisionRef.current,
+      refuted: refutedRunRef.current,
     })) return;
-    dispatch({ type: "seed-indexed", sessionKey, now: Date.now() });
-  }, [indexedStatus, sessionKey]);
+    const now = Date.now();
+    setActiveRun((previous) => previous.running ? previous : { running: true, model: null, reasoningEffort: null, assumedAt: now });
+  }, [indexedStatus]);
 
   const setRunning = useCallback((next: boolean) => {
     // Only a live signal — a sent follow-up or a tail frame — turns a run back
     // on, and that is exactly what makes the Peon's record trustworthy again.
-    if (next) refutedRunRef.current.delete(sessionKey);
-    unconfirmedRunRef.current.delete(sessionKey);
-    runRevisionRef.current.set(sessionKey, (runRevisionRef.current.get(sessionKey) ?? 0) + 1);
-    dispatch({ type: "set-running", sessionKey, running: next });
+    if (next) refutedRunRef.current = false;
+    unconfirmedRunRef.current = false;
+    runRevisionRef.current += 1;
+    setActiveRun((previous) => ({
+      running: next,
+      model: next ? previous.model : null,
+      reasoningEffort: next ? previous.reasoningEffort : null,
+      assumedAt: null,
+    }));
     onSessionRunningChange?.(peonId, sid, next, Date.now());
-  }, [onSessionRunningChange, peonId, sessionKey, sid]);
+  }, [onSessionRunningChange, peonId, sid]);
 
   const refreshMetadataForObservedRun = useCallback(() => {
-    if (observedRunMetadataRefreshRef.current.has(sessionKey)) return;
-    observedRunMetadataRefreshRef.current.add(sessionKey);
+    if (observedRunMetadataRefreshRef.current) return;
+    observedRunMetadataRefreshRef.current = true;
     refreshMetadata();
-  }, [refreshMetadata, sessionKey]);
+  }, [refreshMetadata]);
 
   const onLiveRunningChange = useCallback((next: boolean) => {
     if (next) refreshMetadataForObservedRun();
-    else observedRunMetadataRefreshRef.current.delete(sessionKey);
+    else observedRunMetadataRefreshRef.current = false;
     setRunning(next);
-  }, [refreshMetadataForObservedRun, sessionKey, setRunning]);
+  }, [refreshMetadataForObservedRun, setRunning]);
 
   // Model and effort always travel together: they describe the same turn, and
   // the activity indicator reports both.
   const setRunningSelection = useCallback((model: string | null, reasoningEffort: string | null) => {
-    dispatch({ type: "set-selection", sessionKey, model, reasoningEffort });
-  }, [sessionKey]);
+    setActiveRun((previous) => ({ ...previous, model, reasoningEffort }));
+  }, []);
 
   useEffect(() => {
-    if (activeRun.sessionKey !== sessionKey || !activeRun.running) return;
+    if (!activeRun.running) return;
     const delay = indexedRunAssumptionDelay(Date.now(), activeRun.assumedAt);
     if (delay === null) return;
-    const timer = window.setTimeout(() => dispatch({ type: "retire-assumed", sessionKey }), delay);
+    const timer = window.setTimeout(retireAssumed, delay);
     return () => window.clearTimeout(timer);
-  }, [activeRun.assumedAt, activeRun.running, activeRun.sessionKey, sessionKey]);
+  }, [activeRun.assumedAt, activeRun.running, retireAssumed]);
 
   const onSnapshotRunning = useCallback(() => {
     // A transcript whose last event is a run signal describes the same stuck
     // record the Peon already refuted; it is not evidence of live work.
-    if (refutedRunRef.current.has(sessionKey)) return;
+    if (refutedRunRef.current) return;
     refreshMetadataForObservedRun();
-    unconfirmedRunRef.current.add(sessionKey);
-    dispatch({ type: "snapshot-running", sessionKey });
-  }, [refreshMetadataForObservedRun, sessionKey]);
+    unconfirmedRunRef.current = true;
+    setActiveRun((previous) => ({ ...previous, running: true }));
+  }, [refreshMetadataForObservedRun]);
 
   /** A turn ended; the next observed run may refresh metadata again. */
   const clearObservedRun = useCallback(() => {
-    observedRunMetadataRefreshRef.current.delete(sessionKey);
-  }, [sessionKey]);
+    observedRunMetadataRefreshRef.current = false;
+  }, []);
 
   /** The Peon refused a cancel because nothing was running. */
   const refuteRun = useCallback(() => {
-    refutedRunRef.current.add(sessionKey);
-  }, [sessionKey]);
+    refutedRunRef.current = true;
+  }, []);
 
   /** Mark the start of a record read; pass the result to the apply functions. */
-  const metadataRevision = useCallback(() => runRevisionRef.current.get(sessionKey) ?? 0, [sessionKey]);
+  const metadataRevision = useCallback(() => runRevisionRef.current, []);
+
+  /** Note a record's status without applying it to the run (e.g. a recovery read). */
+  const noteMetadataStatus = useCallback((status: string | null | undefined) => {
+    metadataStatusRef.current = status ?? null;
+  }, []);
+
+  /** The last status a record reported; undefined until one has been read. */
+  const metadataStatus = useCallback(() => metadataStatusRef.current, []);
 
   const applyMetadataStatus = useCallback((revision: number, record: { status?: string | null; model?: string | null; reasoningEffort?: string | null }) => {
-    metadataStatusRef.current.set(sessionKey, record.status ?? null);
+    metadataStatusRef.current = record.status ?? null;
     // Do not let a metadata request that started before a local/live run
     // transition overwrite that newer transition when its response arrives.
-    if ((runRevisionRef.current.get(sessionKey) ?? 0) !== revision) return;
+    if (runRevisionRef.current !== revision) return;
     const peonRunning = record.status === "running";
     // A record still claiming a run the Peon itself refused stays refused.
-    if (!peonRunning || !refutedRunRef.current.has(sessionKey)) setRunning(peonRunning);
+    if (!peonRunning || !refutedRunRef.current) setRunning(peonRunning);
     if (peonRunning) setRunningSelection(record.model ?? null, record.reasoningEffort ?? null);
-  }, [sessionKey, setRunning, setRunningSelection]);
+  }, [setRunning, setRunningSelection]);
 
   const applyMetadataFailure = useCallback((revision: number) => {
     // The record could not be read at all — a Peon this Overseer can no
@@ -130,30 +157,31 @@ export function useSessionRunState({ sessionKey, sid, peonId, indexedStatus, onS
     // of live work, so withdraw a run only the transcript implied instead of
     // leaving an indicator and a Stop button that can never succeed. Record
     // the absent status too, so a snapshot landing later stays quiet.
-    metadataStatusRef.current.set(sessionKey, null);
-    if ((runRevisionRef.current.get(sessionKey) ?? 0) !== revision) return;
-    if (unconfirmedRunRef.current.has(sessionKey)) {
+    metadataStatusRef.current = null;
+    if (runRevisionRef.current !== revision) return;
+    if (unconfirmedRunRef.current) {
       setRunning(false);
     } else {
       // An indexed cache seed is useful only while its direct confirmation
       // is pending. A stated transport failure retires it before the TTL.
-      dispatch({ type: "retire-assumed", sessionKey });
+      retireAssumed();
     }
-  }, [sessionKey, setRunning]);
+  }, [retireAssumed, setRunning]);
 
-  return useMemo(() => ({
-    running,
-    runningModel,
-    runningReasoningEffort,
+  return {
+    running: activeRun.running,
+    runningModel: activeRun.model,
+    runningReasoningEffort: activeRun.reasoningEffort,
     setRunning,
     setRunningSelection,
     onLiveRunningChange,
     onSnapshotRunning,
     clearObservedRun,
     refuteRun,
-    metadataStatusRef,
     metadataRevision,
+    metadataStatus,
+    noteMetadataStatus,
     applyMetadataStatus,
     applyMetadataFailure,
-  }), [applyMetadataFailure, applyMetadataStatus, clearObservedRun, metadataRevision, onLiveRunningChange, onSnapshotRunning, refuteRun, running, runningModel, runningReasoningEffort, setRunning, setRunningSelection]);
+  };
 }

@@ -14,13 +14,14 @@ test("tool display stays technical until simple mode is explicitly selected", ()
       values.set(key, value);
     },
   };
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
 
-  assert.equal(loadToolDisplayMode(storage), "technical");
-  saveToolDisplayMode("simple", storage);
+  assert.equal(loadToolDisplayMode(), "technical");
+  saveToolDisplayMode("simple");
   assert.equal(values.get(TOOL_DISPLAY_MODE_STORAGE_KEY), "simple");
-  assert.equal(loadToolDisplayMode(storage), "simple");
-  saveToolDisplayMode("technical", storage);
-  assert.equal(loadToolDisplayMode(storage), "technical");
+  assert.equal(loadToolDisplayMode(), "simple");
+  saveToolDisplayMode("technical");
+  assert.equal(loadToolDisplayMode(), "technical");
 });
 
 test("tool display preference fails safely when browser storage is unavailable", () => {
@@ -32,7 +33,8 @@ test("tool display preference fails safely when browser storage is unavailable",
       throw new Error("denied");
     },
   };
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
 
-  assert.equal(loadToolDisplayMode(storage), "technical");
-  assert.doesNotThrow(() => saveToolDisplayMode("simple", storage));
+  assert.equal(loadToolDisplayMode(), "technical");
+  assert.doesNotThrow(() => saveToolDisplayMode("simple"));
 });

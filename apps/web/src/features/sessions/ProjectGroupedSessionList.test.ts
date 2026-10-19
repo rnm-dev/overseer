@@ -132,9 +132,10 @@ test("expanded project preferences are validated and persisted", () => {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => values.set(key, value),
   };
-  assert.equal(loadExpandedProjectGroups(storage), null);
-  saveExpandedProjectGroups(["id:a", "key:b"], storage);
-  assert.deepEqual(loadExpandedProjectGroups(storage), ["id:a", "key:b"]);
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+  assert.equal(loadExpandedProjectGroups(), null);
+  saveExpandedProjectGroups(["id:a", "key:b"]);
+  assert.deepEqual(loadExpandedProjectGroups(), ["id:a", "key:b"]);
   values.set("overseer:session-list:expanded-projects", "not-json");
-  assert.equal(loadExpandedProjectGroups(storage), null);
+  assert.equal(loadExpandedProjectGroups(), null);
 });

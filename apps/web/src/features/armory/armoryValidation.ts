@@ -34,10 +34,6 @@ export function armoryOperationProgress(value: unknown): number | null {
     : null;
 }
 
-export function profileOperationActive(operation: ArmoryProfileOperation | null): boolean {
-  return operation?.status === "queued" || operation?.status === "running";
-}
-
 export type ConfigurationErrors = Record<string, string>;
 
 // Client checks improve feedback only; Peon remains authoritative. Messages
@@ -87,6 +83,6 @@ export function clearAcceptedTransientValues(schema: ArmoryConfiguration, values
   return Object.fromEntries(Object.entries(values).filter(([id]) => !transientIds.has(id)));
 }
 
-export function operationActive(operation: ArmoryOperation | null): boolean {
+export function operationActive(operation: Pick<ArmoryOperation | ArmoryProfileOperation, "status"> | null): boolean {
   return operation?.status === "queued" || operation?.status === "running";
 }

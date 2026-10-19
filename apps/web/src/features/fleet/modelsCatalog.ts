@@ -164,10 +164,6 @@ export function defaultModelId(provider: ModelProvider | null): string | undefin
   return provider?.models.find((m) => m.default)?.id;
 }
 
-export function defaultReasoningEffortId(provider: ModelProvider | null, model?: string | null): string | undefined {
-  return reasoningEffortsForEffectiveModel(provider, model ?? null).find((o) => o.default)?.id;
-}
-
 // Which efforts the given model actually accepts. A peon that advertises them
 // per model wins; one that only advertises a provider-wide list keeps working
 // unchanged. An empty result means the model takes no explicit effort and the
@@ -189,11 +185,7 @@ export function effortsForModel(provider: ModelProvider | null, model: string | 
 // Composer policy: choose a supported concrete value when the CLI publishes no default.
 // Callers persist this choice in the draft so requests send exactly what is shown.
 export function composerDefaultEffortId(options: CatalogOption[]): string | undefined {
-  return defaultEffortIdFor(options) ?? options.find((option) => option.id === "medium")?.id ?? options[0]?.id;
-}
-
-export function defaultEffortIdFor(options: CatalogOption[]): string | undefined {
-  return options.find((option) => option.default)?.id;
+  return options.find((option) => option.default)?.id ?? options.find((option) => option.id === "medium")?.id ?? options[0]?.id;
 }
 
 // What a session with nothing pinned actually runs on: its own model if it has

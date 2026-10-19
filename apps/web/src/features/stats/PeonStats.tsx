@@ -42,8 +42,8 @@ export function PeonStats() {
   const [quotas, setQuotas] = useState<Record<Provider, QuotaState>>(EMPTY_QUOTA);
   const [capabilities, setCapabilities] = useState<Record<Provider, CapabilitiesState>>(EMPTY_CAPABILITIES);
   const [now, setNow] = useState(Date.now());
-  const [statsRevision, setStatsRevision] = useState(0);
-  const statsResource = useApiResource<Stats>(peon.online ? `${base}/stats?period=${period}` : null, [statsRevision], { cache: "no-store" });
+  const statsResource = useApiResource<Stats>(peon.online ? `${base}/stats?period=${period}` : null, { noStore: true });
+  const reloadStats = statsResource.reload;
   // A 204 still counts as loaded (empty) stats.
   const stats = useMemo(() => statsResource.data === undefined ? {} as Stats : statsResource.data, [statsResource.data]);
   // A peon that predates /stats answers 404 — treat as "needs update".
@@ -107,7 +107,7 @@ export function PeonStats() {
     if (!peon.online) return;
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") {
-        setStatsRevision((value) => value + 1);
+        void reloadStats();
       }
     };
     const timer = window.setInterval(refreshWhenVisible, STATS_REFRESH_INTERVAL_MS);
@@ -116,7 +116,7 @@ export function PeonStats() {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [base, peon.online]);
+  }, [peon.online, reloadStats]);
 
   useEffect(() => {
     setAnalytics({ users: null, projects: null });

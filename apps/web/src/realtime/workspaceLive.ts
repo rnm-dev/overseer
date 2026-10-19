@@ -9,6 +9,8 @@ import { parsePeonProjection, parsePeonProjections } from "../features/workspace
 // the selected workspace. It participates in the same hello/cursor/replay/live
 // protocol; today the dashboard consumes presence, while future consumers can
 // use the already-established event stream without another transport mode.
+const FALLBACK_POLL_MS = 10_000;
+
 export function useWorkspaceLivePresence(workspaceId: string, enabled: boolean): PresenceEntry[] {
   const [presence, setPresence] = useState<PresenceEntry[]>([]);
   const { updatePeon } = useWorkspace();
@@ -28,12 +30,24 @@ export function useWorkspaceLivePresence(workspaceId: string, enabled: boolean):
       })
       .catch(() => undefined);
 
+    // While the socket is down, poll presence over HTTP; an open socket stops it.
+    let fallbackTimer: number | null = null;
+    const stopFallback = () => {
+      if (fallbackTimer !== null) window.clearInterval(fallbackTimer);
+      fallbackTimer = null;
+    };
+    const startFallback = () => {
+      void pullFallback();
+      if (fallbackTimer === null) fallbackTimer = window.setInterval(() => void pullFallback(), FALLBACK_POLL_MS);
+    };
+
     // Same clientId as the selected-workspace socket: these are extra sockets
     // of one tab, not another client competing for the notification sound.
     const transport = createWorkspaceSocket({
       workspaceId,
       getCursor: () => cursor,
-      onUnhealthy: () => void pullFallback(),
+      onOpen: stopFallback,
+      onDisconnected: startFallback,
       onMessage: (message) => {
         if (message.type === "snapshot" || message.type === "presence") {
           setPresence((message.presence as PresenceEntry[]) ?? []);
@@ -54,10 +68,11 @@ export function useWorkspaceLivePresence(workspaceId: string, enabled: boolean):
         }
       },
     });
-    void pullFallback();
+    startFallback();
 
     return () => {
       stopped = true;
+      stopFallback();
       transport.stop();
     };
   }, [enabled, updatePeon, workspaceId]);

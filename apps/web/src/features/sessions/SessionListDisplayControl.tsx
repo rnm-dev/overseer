@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, List, Minus, PanelsTopLeft, Plus } from "lucide-react";
 import { useT } from "../../shared/i18n";
-import { readStoredValue, writeStoredValue } from "./storedValue";
+import { readStoredValue, writeStoredValue } from "../../shared/storedValue";
 import { SIDEBAR_SECTION_ACTION_CLASS, SidebarSectionHeader } from "../../shared/SidebarSectionHeader";
 
 export type SessionListDisplayMode = "grouped" | "flat";
@@ -17,21 +17,21 @@ export function normalizeSessionListProjectLimit(value: number): number {
   return Math.min(SESSION_LIST_LIMIT_MAX, Math.max(SESSION_LIST_LIMIT_MIN, Math.round(value)));
 }
 
-export function loadSessionListDisplayMode(storage?: Pick<Storage, "getItem">): SessionListDisplayMode {
-  return readStoredValue(SESSION_LIST_MODE_STORAGE_KEY, storage) === "flat" ? "flat" : "grouped";
+export function loadSessionListDisplayMode(): SessionListDisplayMode {
+  return readStoredValue(SESSION_LIST_MODE_STORAGE_KEY) === "flat" ? "flat" : "grouped";
 }
 
-export function saveSessionListDisplayMode(mode: SessionListDisplayMode, storage?: Pick<Storage, "setItem">): void {
-  writeStoredValue(SESSION_LIST_MODE_STORAGE_KEY, mode, storage);
+export function saveSessionListDisplayMode(mode: SessionListDisplayMode): void {
+  writeStoredValue(SESSION_LIST_MODE_STORAGE_KEY, mode);
 }
 
-export function loadSessionListProjectLimit(storage?: Pick<Storage, "getItem">): number {
-  const value = Number(readStoredValue(SESSION_LIST_LIMIT_STORAGE_KEY, storage));
+export function loadSessionListProjectLimit(): number {
+  const value = Number(readStoredValue(SESSION_LIST_LIMIT_STORAGE_KEY));
   return Number.isInteger(value) && value >= SESSION_LIST_LIMIT_MIN && value <= SESSION_LIST_LIMIT_MAX ? value : 5;
 }
 
-export function saveSessionListProjectLimit(limit: number, storage?: Pick<Storage, "setItem">): void {
-  writeStoredValue(SESSION_LIST_LIMIT_STORAGE_KEY, String(normalizeSessionListProjectLimit(limit)), storage);
+export function saveSessionListProjectLimit(limit: number): void {
+  writeStoredValue(SESSION_LIST_LIMIT_STORAGE_KEY, String(normalizeSessionListProjectLimit(limit)));
 }
 
 export function displayMenuPosition(anchor: DOMRect, viewportWidth: number, viewportHeight: number) {

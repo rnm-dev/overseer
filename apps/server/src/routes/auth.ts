@@ -46,18 +46,6 @@ export function publicAuthRouter(): express.Router {
   // one minted it.
   mountNativeExchange(router);
 
-  // One-release bridge for existing web sessions. The legacy dashboard proves
-  // possession of its localStorage device token once, receives an HttpOnly
-  // cookie, then deletes the JavaScript-readable copy.
-  router.post("/auth/web-session", async (req, res) => {
-    if (!requestHasTrustedOrigin(req)) return res.status(403).json({ error: "trusted request origin required", code: "CSRF_ORIGIN" });
-    const token = bearer(req);
-    const auth = token ? await verifyDeviceToken(token) : null;
-    if (!auth) return res.status(401).json({ error: "authentication required", code: "UNAUTHENTICATED" });
-    setWebSessionCookie(res, token);
-    res.json({ ok: true });
-  });
-
   // Public preview for a /join link — the join page shows which workspace the
   // invite is for before sign-in. No auth: the token itself is the capability.
   router.get("/invites/:token", async (req, res) => {

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ExternalLink, MoreHorizontal } from "lucide-react";
 import { NavLink } from "react-router";
 import { useT } from "../../shared/i18n";
+import { readStoredValue, writeStoredValue } from "../../shared/storedValue";
 import { visibleProjects, type ProjectLite } from "./projectList";
 import { FadingTitle } from "../sessions/SessionSidebarList";
 import {
@@ -22,22 +23,12 @@ interface ProjectSidebarSectionProps {
   onNew?: () => void;
 }
 
-export function loadProjectSidebarExpanded(storage?: Pick<Storage, "getItem">): boolean {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    return target?.getItem(PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY) !== "false";
-  } catch {
-    return true;
-  }
+export function loadProjectSidebarExpanded(): boolean {
+  return readStoredValue(PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY) !== "false";
 }
 
-export function saveProjectSidebarExpanded(expanded: boolean, storage?: Pick<Storage, "setItem">): void {
-  try {
-    const target = storage ?? (typeof window === "undefined" ? undefined : window.localStorage);
-    target?.setItem(PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY, String(expanded));
-  } catch {
-    // Storage can be unavailable in private/restricted browser contexts.
-  }
+export function saveProjectSidebarExpanded(expanded: boolean): void {
+  writeStoredValue(PROJECT_SIDEBAR_EXPANDED_STORAGE_KEY, String(expanded));
 }
 
 export function sidebarProjects(projects: ProjectLite[]): ProjectLite[] {

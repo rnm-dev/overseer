@@ -86,23 +86,24 @@ test("sound preference defaults to Peon, migrates the legacy toggle, and gates p
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); },
   };
-  assert.equal(selectedSoundPack(storage), "peon");
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+  assert.equal(selectedSoundPack(), "peon");
   values.set(LEGACY_PEON_SOUNDS_STORAGE_KEY, "false");
-  assert.equal(selectedSoundPack(storage), "none");
+  assert.equal(selectedSoundPack(), "none");
 
-  setSelectedSoundPack("dota2_axe", storage);
+  setSelectedSoundPack("dota2_axe");
   assert.equal(values.get(SOUND_PACK_STORAGE_KEY), "dota2_axe");
   assert.equal(values.get(LEGACY_PEON_SOUNDS_STORAGE_KEY), "true");
-  assert.equal(selectedSoundPack(storage), "dota2_axe");
+  assert.equal(selectedSoundPack(), "dota2_axe");
 
   let created = 0;
   const play = createPeonSoundPlayer(() => {
     created += 1;
     return { currentTime: 0, preload: "none", play: () => undefined };
-  }, () => selectedSoundPack(storage), () => 0);
+  }, () => selectedSoundPack(), () => 0);
   play("start");
   assert.equal(created, 1);
-  setSelectedSoundPack("none", storage);
+  setSelectedSoundPack("none");
   play("start");
   assert.equal(created, 1);
 });

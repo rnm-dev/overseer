@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Cpu, ExternalLink, Package as PackageIcon, RefreshCw, Search } from "lucide-react";
 import { Link, useParams } from "react-router";
-import { api, ApiError } from "../../shared/api";
+import { ApiError } from "../../shared/api";
 import { useRequestScope } from "../../shared/useApiResource";
 import { Badge, Button, Card } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
@@ -183,7 +183,7 @@ function MarketplaceList() {
     else setLoading(true);
     if (!append) setError(null);
     try {
-      const result = await getArmoryInventory(base, { q: debouncedQuery, view, cursor }, (path) => api(path, { signal: abort.signal }));
+      const result = await getArmoryInventory(base, { q: debouncedQuery, view, cursor }, abort.signal);
       if (!gate.current(token)) return;
       setInventory((previous) => append && previous ? { ...result, packages: [...previous.packages, ...result.packages] } : result);
       setError(null);
@@ -225,13 +225,12 @@ function MarketplaceList() {
     setLoading(false);
     setRefreshState("refreshing");
     try {
-      const request = <T,>(path: string, options?: RequestInit) => api<T>(path, { ...options, signal: abort.signal });
-      await refreshArmory(base, request);
+      await refreshArmory(base, abort.signal);
       let refreshed: ArmoryInventoryResponse | null = null;
       for (let attempt = 0; attempt < 20; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, attempt === 0 ? 250 : 500));
         if (abort.signal.aborted) return;
-        const result = await getArmoryInventory(base, { q: debouncedQuery, view }, request);
+        const result = await getArmoryInventory(base, { q: debouncedQuery, view }, abort.signal);
         if (result.registry.source !== "unavailable" && (result.packages.length > 0 || view === "installed")) {
           refreshed = result;
           break;
@@ -317,20 +316,19 @@ function PackageDetail({ packageId }: { packageId: string }) {
     setMcpError(null);
     setProfilesError(null);
     try {
-      const request = <T,>(path: string) => api<T>(path, { signal: abort.signal });
-      const value = await getArmoryPackage(base, packageId, request);
+      const value = await getArmoryPackage(base, packageId, abort.signal);
       if (!gate.current(token)) return;
       setDetail(value);
       if (projectPackages) {
         setProfilesLoading(true);
-        try { const result = await getArmoryProfiles(base, request); if (gate.current(token)) setProfiles(result.profiles); }
+        try { const result = await getArmoryProfiles(base, abort.signal); if (gate.current(token)) setProfiles(result.profiles); }
         catch (err) { if (!abort.signal.aborted && gate.current(token)) setProfilesError(err); }
         finally { if (gate.current(token)) setProfilesLoading(false); }
       }
       const mcpCapable = isMcpCapable(value.package) || isMcpCapable(value.catalog);
       if (mcpCapable) {
         setMcpLoading(true);
-        try { const result = await getArmoryMcp(base, packageId, request); if (gate.current(token)) setMcp(result); }
+        try { const result = await getArmoryMcp(base, packageId, abort.signal); if (gate.current(token)) setMcp(result); }
         catch (err) { if (!abort.signal.aborted && gate.current(token)) setMcpError(err); }
         finally { if (gate.current(token)) setMcpLoading(false); }
       } else {
@@ -339,7 +337,7 @@ function PackageDetail({ packageId }: { packageId: string }) {
         setTab("overview");
       }
       if (value.package.installed) {
-        try { const config = await getArmoryConfiguration(base, packageId, request); if (gate.current(token)) setConfiguration(config); }
+        try { const config = await getArmoryConfiguration(base, packageId, abort.signal); if (gate.current(token)) setConfiguration(config); }
         catch (err) { if (!abort.signal.aborted && gate.current(token)) setConfigurationError(err); }
       } else setConfiguration(null);
     } catch (err) { if (!abort.signal.aborted && gate.current(token)) setError(err); }
