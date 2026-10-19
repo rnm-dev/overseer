@@ -491,6 +491,7 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
     const result = sessions.editQueued(req.params.id, req.params.itemId, prompt, replyTo, mentions);
     if (result === "unknown_session") return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
     if (result === "not_found") return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+    if (result === "steer_pending") return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
     res.json(result);
   });
 
@@ -498,6 +499,7 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
     const result = sessions.steerQueued(req.params.id, req.params.itemId);
     if (result === "unknown_session") return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
     if (result === "not_found") return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+    if (result === "steer_pending") return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
     res.json({ ok: true });
   });
 
@@ -507,6 +509,7 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
     const result = sessions.sendQueuedNow(req.params.id, req.params.itemId);
     if (result === "unknown_session") return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
     if (result === "not_found") return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+    if (result === "steer_pending") return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
     res.json({ ok: true });
   });
 
@@ -514,6 +517,7 @@ export function attachSessionRoutes(router: express.Router, options: FleetSessio
     const result = sessions.removeQueued(req.params.id, req.params.itemId);
     if (result === "unknown_session") return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
     if (result === "not_found") return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+    if (result === "steer_pending") return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
     res.json({ ok: true });
   });
 

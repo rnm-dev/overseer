@@ -99,6 +99,8 @@ export interface SessionRecord {
   queuedFollowUps: QueuedFollowUp[];
   /** Bounded durable receipts for queue items already accepted by steer. */
   steeredQueueItemIds?: string[];
+  /** Bounded durable receipts for enqueue commandIds, so a retried enqueue adds nothing. */
+  queuedCommandIds?: string[];
   /** Durable automation context coalesced into the next turn; never exposed in public session views. */
   pendingSystemPrompts: PendingSystemPrompt[];
   dir: string;

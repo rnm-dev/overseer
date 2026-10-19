@@ -94,11 +94,6 @@ export function steerSessionQueueItem(base: string, sessionId: string, itemId: s
   return request(`${queuePath(base, sessionId)}/${encodeURIComponent(itemId)}/steer`, { method: "POST" });
 }
 
-/** @deprecated Use steerSessionQueueItem. */
-export function sendSessionQueueItemNow(base: string, sessionId: string, itemId: string, request: ApiRequest = api) {
-  return request(`${queuePath(base, sessionId)}/${encodeURIComponent(itemId)}/send`, { method: "POST" });
-}
-
 // Queue snapshots are authoritative and must be applied in the order fetched.
 // Serializing refreshes also guarantees that a change received during a GET
 // triggers one final GET instead of allowing stale parallel responses to reorder

@@ -88,6 +88,18 @@ function shouldEmitWarning(warning: SessionWarning, now = Date.now()): boolean {
 // the daemon restarts.
 const QUEUED_DISPATCH_BARRIER_GRACE_MS = 2_000;
 
+const MAX_QUEUE_RECEIPTS = 128;
+
+export function rememberReceipt(receipts: string[], id: string): void {
+  if (receipts.includes(id)) return;
+  receipts.push(id);
+  if (receipts.length > MAX_QUEUE_RECEIPTS) receipts.splice(0, receipts.length - MAX_QUEUE_RECEIPTS);
+}
+
+export function rememberSteeredItem(record: SessionRecord, itemId: string): void {
+  rememberReceipt(record.steeredQueueItemIds ??= [], itemId);
+}
+
 export function scheduleQueuedDispatch(record: SessionRecord): void {
   if (
     (record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0)
@@ -129,13 +141,7 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
     }
     sessionState.queueDispatchPending.delete(record.id);
     const item = record.queuedFollowUps.shift();
-    if (item?.type === "steer") {
-      const receipts = record.steeredQueueItemIds ??= [];
-      if (!receipts.includes(item.id)) {
-        receipts.push(item.id);
-        if (receipts.length > 128) receipts.splice(0, receipts.length - 128);
-      }
-    }
+    if (item?.type === "steer") rememberSteeredItem(record, item.id);
     // Keep triggers durable until the provider process has actually started.
     // A setup/configuration failure must not acknowledge invisible work that
     // no agent ever received.

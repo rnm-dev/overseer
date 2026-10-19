@@ -99,11 +99,11 @@ export interface SessionQueueContract {
     attribution?: MessageAttribution,
   ): SessionRecord;
   enqueueSystem(id: string, prompt: string, commandId?: string): SessionRecord;
-  editQueued(id: string, itemId: string, prompt: string, replyTo?: ReplyTo | null, mentions?: ContextMention[] | null): SessionRecord | "not_found" | "unknown_session";
-  steerQueued(id: string, itemId: string): "steered" | "not_found" | "unknown_session";
+  editQueued(id: string, itemId: string, prompt: string, replyTo?: ReplyTo | null, mentions?: ContextMention[] | null): SessionRecord | "not_found" | "unknown_session" | "steer_pending";
+  steerQueued(id: string, itemId: string): "steered" | "not_found" | "unknown_session" | "steer_pending";
   /** @deprecated Use steerQueued. */
-  sendQueuedNow(id: string, itemId: string): "sent" | "not_found" | "unknown_session";
-  removeQueued(id: string, itemId: string): "removed" | "not_found" | "unknown_session";
+  sendQueuedNow(id: string, itemId: string): "sent" | "not_found" | "unknown_session" | "steer_pending";
+  removeQueued(id: string, itemId: string): "removed" | "not_found" | "unknown_session" | "steer_pending";
 }
 
 export type SessionJsonService =

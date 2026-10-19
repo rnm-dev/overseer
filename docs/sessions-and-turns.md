@@ -71,6 +71,17 @@ Steer delivery after a lost HTTP response returns success without sending the
 prompt twice. A refusal before either boundary leaves the item visible and
 retryable.
 
+Enqueue is idempotent on `commandId`: Peon keeps a bounded durable receipt of
+accepted enqueue command IDs, and a retry after a lost response returns the
+session without adding a second item, whether the first is still queued or has
+already run.
+
+While a native Codex steer awaits acknowledgement, a retry of that same item
+succeeds without a second delivery. Steering a different item, or removing or
+editing the in-flight one, is refused `409 STEER_PENDING` and is retryable once
+the steer settles — interrupting then could orphan an acknowledgement the
+provider has already given and deliver the message twice.
+
 - **Codex** — a queued Steer remains durable until native `turn/steer`
   acknowledges the exact active turn; rejection retains the item and falls back
   to interrupt-and-resume.

@@ -284,6 +284,7 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
     const result = service.editQueued(req.params.id, req.params.itemId, prompt, replyTo);
     if (result === "unknown_session") return res.status(404).json({ error: "unknown session" });
     if (result === "not_found") return res.status(404).json({ error: "unknown queue item" });
+    if (result === "steer_pending") return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
     res.json(result);
   });
 
@@ -291,6 +292,7 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
     const result = service.steerQueued(req.params.id, req.params.itemId);
     if (result === "unknown_session") return res.status(404).json({ error: "unknown session" });
     if (result === "not_found") return res.status(404).json({ error: "unknown queue item" });
+    if (result === "steer_pending") return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
     res.json({ ok: true });
   });
 
@@ -300,6 +302,7 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
     const result = service.sendQueuedNow(req.params.id, req.params.itemId);
     if (result === "unknown_session") return res.status(404).json({ error: "unknown session" });
     if (result === "not_found") return res.status(404).json({ error: "unknown queue item" });
+    if (result === "steer_pending") return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
     res.json({ ok: true });
   });
 
@@ -307,6 +310,7 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
     const result = service.removeQueued(req.params.id, req.params.itemId);
     if (result === "unknown_session") return res.status(404).json({ error: "unknown session" });
     if (result === "not_found") return res.status(404).json({ error: "unknown queue item" });
+    if (result === "steer_pending") return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
     res.json({ ok: true });
   });
 

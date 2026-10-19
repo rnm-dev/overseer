@@ -294,3 +294,43 @@ async function waitForClaudeStyleRunCount(expected: number) {
   }
   assert.fail(`expected ${expected} Claude-style driver runs, got ${claudeStyleRuns.length}`);
 }
+
+test("a retried enqueue with the same commandId adds no second item", () => {
+  const record = sessions.start({ id: "enqueue-idempotent", prompt: "first", dir: os.tmpdir(), agent: driverId });
+  sessions.enqueue(record.id, "once", [], undefined, undefined, undefined, undefined, "cmd-once");
+  sessions.enqueue(record.id, "once", [], undefined, undefined, undefined, undefined, "cmd-once");
+  assert.deepEqual(sessions.queued(record.id)?.map((item) => item.prompt), ["once"]);
+  sessions.enqueue(record.id, "other", [], undefined, undefined, undefined, undefined, "cmd-other");
+  assert.equal(sessions.queued(record.id)?.length, 2);
+  assert.equal(sessions.cancel(record.id), true);
+});
+
+test("a pending native steer fences retries, other steers, remove and edit", () => {
+  pendingSteer = null;
+  const initialRuns = runCount;
+  const record = sessions.start({ id: "native-steer-pending-fence", prompt: "first", dir: os.tmpdir(), agent: driverId });
+  sessions.enqueue(record.id, "selected");
+  sessions.enqueue(record.id, "other");
+  const [selected, other] = sessions.queued(record.id)!;
+  assert.ok(selected && other);
+
+  assert.equal(sessions.steerQueued(record.id, selected.id), "steered");
+  const firstSteer = pendingSteer;
+  pendingSteer = null;
+  // Same item again (a lost-2xx retry): success, no second provider delivery.
+  assert.equal(sessions.steerQueued(record.id, selected.id), "steered");
+  assert.equal(pendingSteer, null);
+  // A different item must not interrupt the run under the pending steer.
+  assert.equal(sessions.steerQueued(record.id, other.id), "steer_pending");
+  assert.equal(sessions.removeQueued(record.id, selected.id), "steer_pending");
+  assert.equal(sessions.editQueued(record.id, selected.id, "rewritten"), "steer_pending");
+  assert.equal(runCount, initialRuns + 1);
+
+  firstSteer?.callbacks.accepted();
+  assert.deepEqual(sessions.queued(record.id)?.map((item) => item.prompt), ["other"]);
+  assert.deepEqual(userMessages(record.id).map((event) => event.text), ["first", "selected"]);
+  // Once settled, the selected item's receipt answers a late retry.
+  assert.equal(sessions.steerQueued(record.id, selected.id), "steered");
+  assert.equal(sessions.removeQueued(record.id, other.id), "removed");
+  assert.equal(sessions.cancel(record.id), true);
+});
