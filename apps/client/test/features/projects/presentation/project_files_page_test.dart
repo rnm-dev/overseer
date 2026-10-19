@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:overseer_mobile/features/projects/application/project_files_controller.dart';
 import 'package:overseer_mobile/features/projects/application/projects_controller.dart';
+import 'package:overseer_mobile/features/projects/domain/project_file_transfer_repository.dart';
 import 'package:overseer_mobile/features/projects/domain/project_detail_models.dart';
 import 'package:overseer_mobile/features/projects/domain/project_models.dart';
 import 'package:overseer_mobile/features/projects/domain/project_repository.dart';
@@ -178,6 +180,125 @@ void main() {
     expect(find.byKey(const Key('file-view-code-preview')), findsOneWidget);
     debugDefaultTargetPlatformOverride = null;
   });
+
+  Future<(_FilesRepository, _FakeTransfers)> pumpTransferTree(
+    WidgetTester tester,
+  ) async {
+    final repository = _FilesRepository({
+      '': const [
+        ProjectFileEntry(name: 'docs', type: 'dir'),
+        ProjectFileEntry(name: 'README.md', type: 'file', size: 1536),
+      ],
+      'docs': const [],
+    });
+    final transfers = _FakeTransfers(repository);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          projectRepositoryProvider.overrideWithValue(repository),
+          projectFileTransfersProvider.overrideWithValue(transfers),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.dark,
+          home: const ProjectFilesPage(
+            workspaceId: 'workspace',
+            peonId: 'peon',
+            projectKey: 'overseer-mobile',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return (repository, transfers);
+  }
+
+  testWidgets('long press on a folder offers upload, on a file download', (
+    tester,
+  ) async {
+    await pumpTransferTree(tester);
+    expect(find.byKey(const Key('project-files-upload')), findsOneWidget);
+
+    await tester.longPress(find.text('docs'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-file-menu-upload')), findsOneWidget);
+    expect(find.byKey(const Key('project-file-menu-download')), findsNothing);
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('README.md'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('project-file-menu-download')), findsOneWidget);
+    expect(find.byKey(const Key('project-file-menu-upload')), findsNothing);
+  });
+
+  testWidgets('long press and drag moves a file into a folder', (tester) async {
+    final (repository, transfers) = await pumpTransferTree(tester);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.text('README.md')),
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await gesture.moveBy(const Offset(0, -20));
+    await tester.pump();
+    expect(find.byKey(const Key('project-files-root-drop')), findsOneWidget);
+    await gesture.moveTo(tester.getCenter(find.text('docs').first));
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(transfers.moves, ['README.md -> docs/README.md']);
+    expect(find.text('docs'), findsOneWidget);
+    expect(repository.directories['docs']!.single.name, 'README.md');
+    expect(find.textContaining('Moved README.md to docs'), findsOneWidget);
+  });
+
+  test('refuses to move a folder into itself or where it already is', () {
+    expect(projectMoveRefusal('docs', 'docs/api'), isNotNull);
+    expect(projectMoveRefusal('docs', 'docs'), isNotNull);
+    expect(projectMoveRefusal('docs/a.md', 'docs'), isNotNull);
+    expect(projectMoveRefusal('docs/a.md', ''), isNull);
+    expect(projectSafeSegment('../x/y'), '.._x_y');
+  });
+}
+
+class _FakeTransfers implements ProjectFileTransferRepository {
+  _FakeTransfers(this.repository);
+
+  final _FilesRepository repository;
+  final List<String> moves = [];
+
+  @override
+  Future<void> upload({
+    required String workspaceId,
+    required String peonId,
+    required String projectKey,
+    required String path,
+    required Stream<List<int>> bytes,
+    required int length,
+    void Function(int sent, int total)? onProgress,
+  }) async {}
+
+  @override
+  Future<void> move({
+    required String workspaceId,
+    required String peonId,
+    required String projectKey,
+    required String source,
+    required String destination,
+  }) async {
+    moves.add('$source -> $destination');
+    final from = source.contains('/')
+        ? source.substring(0, source.lastIndexOf('/'))
+        : '';
+    final to = destination.contains('/')
+        ? destination.substring(0, destination.lastIndexOf('/'))
+        : '';
+    final list = [...?repository.directories[from]];
+    final entry = list.firstWhere((e) => '$from/${e.name}'.endsWith(source));
+    list.remove(entry);
+    repository.directories[from] = list;
+    repository.directories[to] = [...?repository.directories[to], entry];
+  }
 }
 
 class _FilesRepository implements ProjectRepository {

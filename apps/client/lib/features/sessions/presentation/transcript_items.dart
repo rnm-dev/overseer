@@ -373,9 +373,7 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
           if (lastText != null) {
             lastText.resultMeta = meta;
           } else {
-            items.add(
-              TranscriptNoticeItem(key: baseKey, text: meta.text),
-            );
+            items.add(TranscriptNoticeItem(key: baseKey, text: meta.text));
           }
         }
         continue;

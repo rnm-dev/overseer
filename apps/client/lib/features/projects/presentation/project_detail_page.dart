@@ -15,6 +15,7 @@ import '../application/project_detail_controller.dart';
 import '../application/project_files_controller.dart';
 import '../domain/project_detail_models.dart';
 import '../domain/project_models.dart';
+import 'project_file_actions.dart';
 import 'project_files_page.dart';
 part 'project_detail_tabs.dart';
 
@@ -627,6 +628,12 @@ class _FilesPane extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final files = ref.watch(projectFilesControllerProvider(scope));
     final state = files.value;
+    final actions = ProjectFileActions(
+      context: context,
+      ref: ref,
+      scope: scope,
+      onOpenFile: onOpenFile,
+    );
     return Column(
       key: const Key('project-files-pane'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -658,6 +665,8 @@ class _FilesPane extends ConsumerWidget {
                     .read(projectFilesControllerProvider(scope).notifier)
                     .retryDirectory(path),
                 onOpenFile: onOpenFile,
+                onEntryMenu: actions.showEntryMenu,
+                onMove: actions.move,
               ),
               loading: () => const _LoadingPane(),
               error: (_, _) => _ErrorPane(

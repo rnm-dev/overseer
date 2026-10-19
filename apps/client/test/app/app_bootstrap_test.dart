@@ -128,17 +128,23 @@ void main() {
     expect(find.text('Add Overseer'), findsOneWidget);
   });
 
-  testWidgets('restores the last selected connection after restart', (tester) async {
-    final connection = OverseerConnection(serverUrl: Uri.parse('https://one.example'));
+  testWidgets('restores the last selected connection after restart', (
+    tester,
+  ) async {
+    final connection = OverseerConnection(
+      serverUrl: Uri.parse('https://one.example'),
+    );
     final store = _FakeConnectionStore([connection]);
     store.selected = connection.serverUrl;
-    await tester.pumpWidget(AppBootstrap(
-      store: store,
-      environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
-      connectionAppBuilder: (_, _, _, _) => const MaterialApp(
-        home: Scaffold(body: Text('Restored connection')),
+    await tester.pumpWidget(
+      AppBootstrap(
+        store: store,
+        environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
+        connectionAppBuilder: (_, _, _, _) => const MaterialApp(
+          home: Scaffold(body: Text('Restored connection')),
+        ),
       ),
-    ));
+    );
     await tester.pump();
     expect(find.text('Restored connection'), findsOneWidget);
   });

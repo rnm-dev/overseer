@@ -1,7 +1,7 @@
 # Project file browser
 
-Session and project detail share a full-screen, read-only project tree and file
-viewer.
+Session and project detail share a full-screen project tree and file viewer.
+The tree can upload, download and move files; it does not edit or delete.
 
 ## Data contract
 
@@ -65,9 +65,35 @@ models, so attachments and other byte-backed file surfaces can reuse the same
 rendering behavior. Project screens remain responsible for loading files,
 navigation, and error/retry states.
 
+## Transfers
+
+`ProjectFileActions` owns the operator gestures for both the Files page and
+the project Files tab; `ProjectFileTransferRepository` (Dio implementation `DioProjectFileTransfers`, installed by the composition root) owns the wire calls. They use the
+same Peon routes as the web tree:
+
+- Upload is a streamed `PUT …/files/<parent>/<name>` with `Content-Length`,
+  one file at a time. Picked names are folded to one safe path segment. A
+  pending row with a progress ring appears in the target folder (which is
+  revealed) and is replaced by the real row once the folder reloads.
+- Move is `PATCH …/files/<source>` with `{ "destination": "<dir>/<name>" }`.
+  Moving into the same folder or a folder into itself is refused locally.
+  Expanded subfolders of a moved folder stay expanded at the new path.
+- Download fetches the bytes and hands them to the platform save dialog
+  (`FilePicker.saveFile`).
+
+Gestures:
+
+- Navbar **Upload** uploads to the project root.
+- Long press then release without moving opens the entry menu: folders offer
+  *Upload files here*; files offer *Open* and *Download*; both offer *Move to
+  project root* (when nested) and *Copy path*.
+- Long press then drag lifts the entry. Folder rows are drop targets and
+  spring open after resting on them ~0.7 s; a banner at the top accepts drops
+  to the root; the list auto-scrolls near its edges.
+
 ## Limits
 
-The browser does not edit, upload, or move project files. HTML preview does not
+The browser does not edit, delete, or download folders. HTML preview does not
 resolve relative assets. File contents are fetched on open and are not
 persisted in the app cache. Windows and Linux write the isolated HTML document
 and an ephemeral WebView profile to operating-system temporary storage and

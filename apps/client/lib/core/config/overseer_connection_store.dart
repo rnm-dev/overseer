@@ -37,7 +37,9 @@ class SharedPreferencesOverseerConnectionStore
   @override
   Future<Uri?> readSelected() async {
     final preferences = await SharedPreferences.getInstance();
-    return parseOverseerServerUrl(preferences.getString(selectedPreferenceKey) ?? '');
+    return parseOverseerServerUrl(
+      preferences.getString(selectedPreferenceKey) ?? '',
+    );
   }
 
   @override
@@ -45,7 +47,10 @@ class SharedPreferencesOverseerConnectionStore
     final preferences = await SharedPreferences.getInstance();
     if (serverUrl == null) {
       await preferences.remove(selectedPreferenceKey);
-    } else if (!await preferences.setString(selectedPreferenceKey, normalizeOverseerServerUrl(serverUrl).toString())) {
+    } else if (!await preferences.setString(
+      selectedPreferenceKey,
+      normalizeOverseerServerUrl(serverUrl).toString(),
+    )) {
       throw StateError('The selected Overseer could not be saved.');
     }
   }

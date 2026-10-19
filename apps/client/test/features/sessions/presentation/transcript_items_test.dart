@@ -590,7 +590,10 @@ void main() {
 
     final notice = items.whereType<TranscriptNoticeItem>().single;
     expect(notice.isError, isTrue);
-    expect(notice.text, 'API Error: 500 Internal Server Error · 10s · retrying 1/2');
+    expect(
+      notice.text,
+      'API Error: 500 Internal Server Error · 10s · retrying 1/2',
+    );
     // The failure is its own row; the assistant bubble above keeps no red suffix.
     expect(items.whereType<TranscriptTextItem>().single.resultMeta, isNull);
   });
@@ -628,10 +631,7 @@ void main() {
       }),
       'line one line two',
     );
-    expect(
-      transcriptResultFailureReason({'result': 'boom'}),
-      'boom',
-    );
+    expect(transcriptResultFailureReason({'result': 'boom'}), 'boom');
     expect(
       transcriptResultFailureReason({'subtype': 'error_during_execution'}),
       'error_during_execution',

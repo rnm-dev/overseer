@@ -44,9 +44,7 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final live = ref.read(fleetLiveServiceProvider);
     if (live case final FleetLiveForeground visibility) {
-      visibility.setForeground(
-        state == AppLifecycleState.resumed,
-      );
+      visibility.setForeground(state == AppLifecycleState.resumed);
     }
     ref
         .read(appDiagnosticsProvider)
