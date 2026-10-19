@@ -24,11 +24,14 @@ import { PeonConnectionStatusDot } from "./PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./context";
 import { NewProjectDialog } from "../projects/NewProjectDialog";
 import { applyProjectEvent, applyProjectSessionCounts, mergeProjects, withLiveActiveSessionCounts, type ProjectLite } from "../projects/projectList";
-import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionDisplayTitle, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "../sessions/sessionList";
+import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "../sessions/sessionList";
 import { MobilePaneIdentity } from "../sessions/mobileHeader";
 import { nextSessionAfterDeletion } from "../sessions/nextSession";
 import { sessionRouteShellClass } from "../sessions/sessionViewport";
 import { prefetchTranscriptSnapshot } from "../sessions/transcriptSnapshotCache";
+import { isProjectPath, sessionListRequestPath } from "./sessionListApi";
+import { useResizableSidebar } from "./useResizableSidebar";
+import { useWorkingTitle } from "./useWorkingTitle";
 
 // author: Viktor
 
@@ -47,31 +50,6 @@ export const PEON_NAV_ITEMS: readonly PeonNavItem[] = [
 
 const iconNavClass = (active: boolean) =>
   `rounded p-1.5 transition-colors ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`;
-
-const SIDEBAR_WIDTH_KEY = "overseer.peon-sidebar-width";
-const DEFAULT_SIDEBAR_WIDTH = 256;
-const MIN_SIDEBAR_WIDTH = 208;
-const MAX_SIDEBAR_WIDTH = 480;
-const WORKING_TITLE_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const SESSION_PAGE_SIZE = 50;
-
-export function sessionListRequestPath(workspaceId: string, peonId: string, mode: "grouped" | "flat", projectLimit: number, offset: number): string {
-  const base = `/workspaces/${workspaceId}/sessions?peonId=${encodeURIComponent(peonId)}`;
-  return mode === "grouped"
-    ? `${base}&perProjectLimit=${projectLimit}`
-    : `${base}&limit=${SESSION_PAGE_SIZE}&offset=${offset}`;
-}
-
-export function isProjectPath(pathname: string): boolean {
-  return /\/projects\/[^/]+(?:\/.*)?$/.test(pathname);
-}
-
-function savedSidebarWidth(): number {
-  const saved = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
-  return Number.isFinite(saved) && saved >= MIN_SIDEBAR_WIDTH && saved <= MAX_SIDEBAR_WIDTH
-    ? saved
-    : DEFAULT_SIDEBAR_WIDTH;
-}
 
 export function PeonDetail() {
   const t = useT();
@@ -105,8 +83,7 @@ export function PeonDetail() {
   const [sessionListMode, setSessionListMode] = useState(loadSessionListDisplayMode);
   const [sessionsPerProject, setSessionsPerProject] = useState(loadSessionListProjectLimit);
   const { drawerOpen, setDrawerOpen } = useMobileDrawer();
-  const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
-  const [resizing, setResizing] = useState(false);
+  const sidebar = useResizableSidebar();
   const sessionScrollNode = useRef<HTMLDivElement>(null);
   const sessionLoadSentinel = useRef<HTMLDivElement>(null);
   const sessionLoadEpoch = useRef(0);
@@ -116,40 +93,6 @@ export function PeonDetail() {
   const onSessionRunningChange = useCallback((changedPeonId: string, sessionId: string, running: boolean, changedAt: number) => {
     setSessions((current) => applyLocalSessionRunningChange(current, changedPeonId, sessionId, running, changedAt));
   }, []);
-
-  useEffect(() => {
-    if (!resizing) return;
-    const resize = (event: PointerEvent) => {
-      // Leave enough room for the current page to remain useful on narrower desktops.
-      const maximum = Math.min(MAX_SIDEBAR_WIDTH, window.innerWidth - 320);
-      setSidebarWidth(Math.max(MIN_SIDEBAR_WIDTH, Math.min(maximum, event.clientX)));
-    };
-    const stop = () => setResizing(false);
-    document.documentElement.classList.add("peon-sidebar-resizing");
-    window.addEventListener("pointermove", resize);
-    window.addEventListener("pointerup", stop);
-    window.addEventListener("pointercancel", stop);
-    return () => {
-      document.documentElement.classList.remove("peon-sidebar-resizing");
-      window.removeEventListener("pointermove", resize);
-      window.removeEventListener("pointerup", stop);
-      window.removeEventListener("pointercancel", stop);
-    };
-  }, [resizing]);
-
-  useEffect(() => {
-    if (!resizing) window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
-  }, [resizing, sidebarWidth]);
-
-  // Headers and the session composer live outside this component's flex layout.
-  // Publish the width so those fixed pieces share the pane's desktop boundary.
-  useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty("--peon-sidebar-width", `${sidebarWidth}px`);
-    return () => {
-      root.style.removeProperty("--peon-sidebar-width");
-    };
-  }, [sidebarWidth]);
 
   // Route changes select an item from the mobile drawer. Start its exit motion
   // as soon as the newly selected page becomes active.
@@ -278,27 +221,7 @@ export function PeonDetail() {
     setSessions((current) => applyAttentionEvent(current, event));
   }), [peonId, subscribeAttention]);
 
-  // Keep browser tabs identifiable when several peons/sessions are open. While
-  // the selected session is running, animate a small spinner so background work
-  // remains visible even when this tab is not focused.
-  useEffect(() => {
-    if (!peon) return;
-    const previousTitle = document.title;
-    const peonName = peon.name || peon.hostname || t("peons.unnamed");
-    const session = sid ? sessions.find((item) => item.id === sid) : undefined;
-    const sessionName = session ? sessionDisplayTitle(session, t("session.untitled")) : null;
-    const baseTitle = sessionName ? `${peonName} — ${sessionName} · Overseer` : `${peonName} · Overseer`;
-    let frame = 0;
-    const update = () => {
-      document.title = session?.status === "running" ? `${WORKING_TITLE_FRAMES[frame++ % WORKING_TITLE_FRAMES.length]} ${baseTitle}` : baseTitle;
-    };
-    update();
-    const timer = session?.status === "running" ? window.setInterval(update, 250) : undefined;
-    return () => {
-      if (timer !== undefined) window.clearInterval(timer);
-      document.title = previousTitle;
-    };
-  }, [peon, sessions, sid, t]);
+  useWorkingTitle(peon, sessions, sid);
 
   const activeProject = sessions.find((s) => s.id === sid)?.projectKey;
   const newSessionTo = activeProject ? `sessions/new?project=${encodeURIComponent(activeProject)}` : "sessions/new";
@@ -532,20 +455,20 @@ export function PeonDetail() {
           role="separator"
           aria-orientation="vertical"
           aria-label="Resize sidebar"
-          aria-valuemin={MIN_SIDEBAR_WIDTH}
-          aria-valuemax={MAX_SIDEBAR_WIDTH}
-          aria-valuenow={Math.round(sidebarWidth)}
+          aria-valuemin={sidebar.minWidth}
+          aria-valuemax={sidebar.maxWidth}
+          aria-valuenow={Math.round(sidebar.sidebarWidth)}
           tabIndex={0}
           className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-accent/70 focus-visible:after:bg-accent md:block"
           onPointerDown={(event) => {
             event.preventDefault();
-            setResizing(true);
+            sidebar.startResize();
           }}
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
             event.preventDefault();
             const change = event.key === "ArrowLeft" ? -16 : 16;
-            setSidebarWidth((width) => Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, width + change)));
+            sidebar.nudgeWidth(change);
           }}
         />
       </aside>

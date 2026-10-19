@@ -46,9 +46,9 @@ export function supportsDesktopComposerFocus(): boolean {
     : window.innerWidth >= 768;
 }
 
-export const COMPOSER_SHELL_CLASS = "surface theme-composer-shell composer-shell relative p-2 transition-[border-color,box-shadow]";
-export const COMPOSER_ICON_ACTION_CLASS = "on-surface on-surface--interactive flex h-8 w-8 flex-none items-center justify-center rounded-lg";
-export const COMPOSER_TEXT_ACTION_CLASS = "on-surface on-surface--interactive h-8 flex-none rounded-lg px-3";
+const COMPOSER_SHELL_CLASS = "surface theme-composer-shell composer-shell relative p-2 transition-[border-color,box-shadow]";
+const COMPOSER_ICON_ACTION_CLASS = "on-surface on-surface--interactive flex h-8 w-8 flex-none items-center justify-center rounded-lg";
+const COMPOSER_TEXT_ACTION_CLASS = "on-surface on-surface--interactive h-8 flex-none rounded-lg px-3";
 
 export interface ComposerProps {
   value: string;

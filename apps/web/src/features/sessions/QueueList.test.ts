@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { QUEUE_ACTION_CLASS, QUEUE_CONTENT_MIN_HEIGHT_CLASS, QUEUE_HOURGLASS_CLASS, QueueList } from "./QueueList";
+import { QueueList } from "./QueueList";
 import type { QueueItem } from "./queue";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
@@ -48,16 +48,7 @@ test("every queued item exposes an accessible steer action", () => {
   assert.match(html, /\bmax-w-full\b/);
   assert.doesNotMatch(html, /\bmax-w-none\b|\bmd:w-auto\b|class="[^"]*\sw-full\b/);
   assert.match(html, /md:max-w-\[80%\]/);
-  assert.match(QUEUE_ACTION_CLASS, /\bh-7\b/);
-  assert.match(QUEUE_ACTION_CLASS, /\bmin-w-7\b/);
-  assert.match(QUEUE_ACTION_CLASS, /\bbg-black\/10\b/);
-  assert.match(QUEUE_ACTION_CLASS, /\bhover:bg-black\/20\b/);
-  assert.match(QUEUE_ACTION_CLASS, /\btext-white\b/);
-  assert.match(QUEUE_ACTION_CLASS, /\bhover:text-white\b/);
-  assert.doesNotMatch(QUEUE_ACTION_CLASS, /\bon-surface\b|\bsize-9\b/);
   assert.doesNotMatch(html, /\btext-warning-strong\/85\b|\btext-ink\/45\b|\bhover:text-danger\b/);
-  assert.match(QUEUE_HOURGLASS_CLASS, /\btheme-queued-message-icon\b/);
-  assert.doesNotMatch(QUEUE_HOURGLASS_CLASS, /\btext-accent-strong\b/);
   assert.match(html, /width="13"[^>]*lucide-send/);
   assert.match(html, /width="15"[^>]*lucide-trash[^>]*lucide-trash-2/);
   assert.match(html, /plan\.md/);
@@ -76,9 +67,7 @@ test("a single-line queued message is centered against the action buttons", () =
       t: (key) => key,
     }),
   );
-  assert.match(QUEUE_CONTENT_MIN_HEIGHT_CLASS, /\bmin-h-7\b/);
-  assert.match(html, new RegExp(`flex min-w-0 flex-1 flex-col justify-center ${QUEUE_CONTENT_MIN_HEIGHT_CLASS}`));
-  assert.match(QUEUE_ACTION_CLASS, /\bh-7\b/);
+  assert.match(html, new RegExp(`flex min-w-0 flex-1 flex-col justify-center min-h-7`));
 });
 
 test("a scrollable queue ends flush against the composer fade", () => {

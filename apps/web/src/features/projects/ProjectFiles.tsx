@@ -10,7 +10,8 @@ import { FileTypeIcon } from "./FileTypeIcon";
 import { FileDownloadButton, FileView, useFileContent } from "./FileView";
 import { fileDownloadUrl, fileName, fileWriteBase, formatFileSize, type FileSource } from "./fileLinks";
 import { UnsavedChangesDialog } from "./UnsavedChangesDialog";
-import { baseName, filesFromInput, parentPath, useFileTransfers, type DraggedEntry, type PendingUpload } from "./fileTransfers";
+import { baseName, parentPath, type DraggedEntry, type PendingUpload } from "./fileTransfers";
+import { useFileTreeDnd } from "./useFileTreeDnd";
 import { requestProjectDirectory, refreshProjectDirectory, type ProjectFileEntry } from "./projectDirectoryListing";
 import { useProjectDirectoryWatch } from "./projectDirectoryWatch";
 
@@ -86,9 +87,6 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
   const refreshingRef = useRef(false);
   const previousRefreshRevisionRef = useRef(refreshRevision);
   const requestGenerationRef = useRef(0);
-  const filePicker = useRef<HTMLInputElement>(null);
-  const folderPicker = useRef<HTMLInputElement>(null);
-  const pickTarget = useRef("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -144,28 +142,7 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
     });
   }, []);
 
-  const transfers = useFileTransfers({
-    filesBase,
-    enabled: allowUpload,
-    onUploaded: (parent, name, size) => patchDirectory(parent, (entries) => [...entries.filter((entry) => entry.name !== name), { name, type: "file", size }]),
-    onDirectoryChanged: (path) => void refreshDirectory(path),
-    onMoved: (source, destination, entry) => {
-      const name = baseName(destination);
-      patchDirectory(parentPath(source), (entries) => entries.filter((item) => item.name !== baseName(source)));
-      patchDirectory(parentPath(destination), (entries) => [...entries.filter((item) => item.name !== name), { name, type: entry.type === "dir" ? "dir" : "file", size: entry.size }]);
-      // A moved folder keeps its expanded children under their old paths.
-      // Dropping its cached subtree makes the next expansion read the truth.
-      if (entry.type === "dir") {
-        setDirectories((current) => Object.fromEntries(Object.entries(current).filter(([path]) => path !== source && !path.startsWith(`${source}/`))));
-        setExpanded((current) => new Set([...current].filter((path) => path !== source && !path.startsWith(`${source}/`))));
-      }
-      onFileMoved?.(source, destination);
-    },
-    onDeleted: (path) => {
-      patchDirectory(parentPath(path), (entries) => entries.filter((item) => item.name !== baseName(path)));
-      onFileDeleted?.(path);
-    },
-  });
+  const { transfers, filePicker, folderPicker, openPicker, uploadPicked } = useFileTreeDnd({ filesBase, allowUpload, patchDirectory, refreshDirectory, setDirectories, setExpanded, onFileMoved, onFileDeleted });
 
   useEffect(() => {
     if (!menu) return;
@@ -196,13 +173,8 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
   };
 
   const pick = (target: string, folder: boolean) => {
-    pickTarget.current = target;
     setMenu(null);
-    const input = folder ? folderPicker.current : filePicker.current;
-    if (!input) return;
-    // Picking the same file twice in a row must still fire `change`.
-    input.value = "";
-    input.click();
+    openPicker(target, folder);
   };
 
   const copyPath = async (path: string) => {
@@ -324,10 +296,10 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
         {renderDirectory("", 0)}
       </div>
       {allowUpload && <>
-        <input ref={filePicker} type="file" multiple className="hidden" onChange={(event) => void transfers.upload(pickTarget.current, filesFromInput(event.target.files))} />
+        <input ref={filePicker} type="file" multiple className="hidden" onChange={(event) => uploadPicked(event.target.files)} />
         {/* A directory pick is not in the React DOM typings, and every browser
             that offers one reads the attribute rather than the property. */}
-        <input ref={folderPicker} type="file" multiple className="hidden" {...{ webkitdirectory: "" }} onChange={(event) => void transfers.upload(pickTarget.current, filesFromInput(event.target.files))} />
+        <input ref={folderPicker} type="file" multiple className="hidden" {...{ webkitdirectory: "" }} onChange={(event) => uploadPicked(event.target.files)} />
       </>}
       {transfers.dropTarget === "" && <div className="pointer-events-none absolute inset-x-3 bottom-3 rounded-lg bg-surface/95 px-3 py-2 text-center font-mono text-xs text-accent-strong shadow-lg">{transfers.dragSource ? t("proj.files.moveRoot") : t("proj.files.dropRoot")}</div>}
       {transfers.status && (

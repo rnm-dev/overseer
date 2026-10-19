@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "../../shared/api";
 import { useApiResource } from "../../shared/useApiResource";
 import { Card, StatPlate } from "../../shared/ui";
-import { useT } from "../../shared/i18n";
+import { useT, type MessageKey } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
 import { CliUpdatesPanel } from "../settings/CliUpdatesPanel";
 import {
@@ -153,7 +153,7 @@ export function PeonStats() {
   const missingUsage = stats?.sessionsMissingUsage ?? 0;
   // Canonical input/cache buckets are exclusive. Output includes reasoning;
   // processed usage includes repeated context, not just visible answer text.
-  const breakdown: [string, number | undefined][] = [
+  const breakdown: [MessageKey, number | undefined][] = [
     ["peon.stats.ordinaryInput", stats?.totalInputTokens],
     ["peon.stats.cacheWrite", stats?.totalCacheCreationTokens],
     ["peon.stats.cacheRead", stats?.totalCacheReadTokens],

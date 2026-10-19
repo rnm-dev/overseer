@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
 import { I18nProvider } from "../../shared/i18n";
 import { NotificationsProvider } from "../../shared/notifications";
-import { isProjectPath } from "../fleet/PeonDetail";
+import { isProjectPath } from "../fleet/sessionListApi";
 import { ProjectRecentSessions, recentProjectSessions } from "./PeonProjectDetail";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;

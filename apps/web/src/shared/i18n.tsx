@@ -24,7 +24,7 @@ export const LOCALES: { code: Locale; label: string }[] = [
 
 const STORAGE_KEY = "overseer.locale";
 
-export type Translate = (key: string, vars?: Record<string, string | number>) => string;
+export type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
 
 interface I18nValue {
   locale: Locale;

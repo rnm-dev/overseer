@@ -56,10 +56,10 @@ interface Props {
   caretRequest: { position: number; seq: number } | null;
 }
 
-export const SESSION_COMPOSER_DOCK_CLASS = "session-composer fixed bottom-0 left-0 z-40 md:left-[var(--peon-sidebar-width)]";
+const SESSION_COMPOSER_DOCK_CLASS = "session-composer fixed bottom-0 left-0 z-40 md:left-[var(--peon-sidebar-width)]";
 // The fade belongs to the composer alone: queued messages stack above it on
 // their own bubbles, so adding one never drags the shade up the transcript.
-export const SESSION_COMPOSER_FADE_CLASS = "theme-transcript-composer-fade pt-4";
+const SESSION_COMPOSER_FADE_CLASS = "theme-transcript-composer-fade pt-4";
 const SESSION_COMPOSER_WIDTH_CLASS = "mx-auto max-w-[76rem] px-2 sm:px-6";
 export const COMPOSER_FOOTER_PADDING = 100;
 

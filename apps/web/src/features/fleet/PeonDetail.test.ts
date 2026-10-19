@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PEON_NAV_ITEMS, sessionListRequestPath } from "./PeonDetail";
+import { PEON_NAV_ITEMS } from "./PeonDetail";
+import { sessionListRequestPath } from "./sessionListApi";
 
 test("AI Stats is part of the navigation for every workspace member", () => {
   assert.deepEqual(PEON_NAV_ITEMS.map(({ to, key }) => ({ to, key })), [

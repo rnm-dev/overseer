@@ -1,18 +1,16 @@
 import { useEffect, useState } from "react";
 import { SportShoe } from "lucide-react";
-import { useLocation, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 import { api, ApiError } from "../../shared/api";
 import { Badge, Button, Card, ConfirmationDialog, Input, Label } from "../../shared/ui";
 import { useT } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
 import { defaultEffortIdFor, effortsForModel, providerForAgent, useModels } from "../fleet/modelsCatalog";
 import { AgentSelect, ModelSelect, ReasoningEffortSelect } from "./models";
-import { PeonArmory } from "../armory/PeonArmory";
 import { buildSettingsPayload, resolveDefaultModel, resolveDefaultReasoningEffort } from "./settingsModel";
-import { peonSettingsPath, peonSettingsTabFromPath, SOUL_EDITOR_ROWS } from "./settingsNavigation";
+import { type PeonSettingsTab, SOUL_EDITOR_ROWS } from "./settingsNavigation";
 import { savePeonSoul, soulExcerpt } from "../fleet/peonApi";
 import { normalizeUpdateStatus, type PeonUpdateStatus } from "./updateStatus";
-import { RouteTabs } from "../../shared/RouteTabs";
 import { PeonResourceMonitor } from "../resources/PeonResourceMonitor";
 
 // author: Viktor
@@ -25,11 +23,10 @@ interface Settings {
 }
 
 
-export function PeonSettings() {
+export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
   const t = useT();
-  const location = useLocation();
   const navigate = useNavigate();
-  const { peon, base, reload, isOwner } = usePeon();
+  const { peon, base, reload } = usePeon();
   const { catalog, supported: modelsSupported } = useModels(base);
 
   const [form, setForm] = useState<Settings | null>(null);
@@ -200,22 +197,9 @@ export function PeonSettings() {
   const effortOptions = effortsForModel(defaultAgentProvider, defaultModel);
   const defaultReasoningEffort = resolveDefaultReasoningEffort(defaultAgentProvider, defaultModel, form?.aiDefaultReasoningEffort) ?? "";
   const updating = updatePhase === "installing" || updatePhase === "restarting";
-  const tab = peonSettingsTabFromPath(location.pathname);
-  const settingsPath = peonSettingsPath(peon.peonId);
-
-  if (!isOwner) return <p className="font-mono text-sm text-ink-faint">{t("ownerOnly")}</p>;
 
   return (
-    <div className="space-y-8">
-      <RouteTabs
-        ariaLabel={t("peon.settings.tabs")}
-        tabs={[
-          { to: settingsPath, label: t("peon.settings.tab.general"), end: true },
-          { to: `${settingsPath}/agent`, label: t("peon.settings.tab.agent") },
-          { to: `${settingsPath}/armory`, label: t("peon.settings.tab.armory") },
-        ]}
-      />
-
+    <>
       {tab === "general" && <>
       {peon.online && !unsupported && form && (
         <Card className="space-y-5 px-5 py-5">
@@ -419,7 +403,6 @@ export function PeonSettings() {
         {(unsupported || !peon.online) && <p className="font-mono text-sm text-ink-faint">{peon.online ? t("peon.unsupported") : t("peon.offlineNote")}</p>}
       </>}
 
-      {tab === "armory" && <PeonArmory />}
-    </div>
+    </>
   );
 }

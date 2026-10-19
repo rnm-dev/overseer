@@ -1,4 +1,5 @@
 import { api, ApiError } from "../../shared/api";
+import type { MessageKey } from "../../shared/i18n";
 
 // Folder browsing for the directory picker. The overseer route behind this
 // adapter talks to the Peon through Overseer's stable route, which proxies the
@@ -60,7 +61,7 @@ export async function listNearestPeonFolder(
 }
 
 // Stable, translatable messages for every state the operation can end in.
-export function folderErrorKey(error: unknown): string {
+export function folderErrorKey(error: unknown): Extract<MessageKey, "error.loadFailed" | `pathSelector.${string}`> {
   if (!(error instanceof ApiError)) return "error.loadFailed";
   switch (error.code) {
     case "UNSUPPORTED_CAPABILITY":

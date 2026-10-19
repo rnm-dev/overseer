@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { MessageSquare, Server, Users } from "lucide-react";
-import { api } from "../../shared/api";
+import { useApiResource } from "../../shared/useApiResource";
 import { Badge, Button } from "../../shared/ui";
 import { PeonConnectionStatusDot } from "../fleet/PeonConnectionStatusDot";
 import { useT } from "../../shared/i18n";
@@ -31,7 +31,8 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
   const isOwner = workspace.role === "owner";
   const peons = useWorkspacePeonPresence(wsId);
 
-  const [status, setStatus] = useState<Record<string, StatusPeon>>({});
+  const statusResource = useApiResource<{ peons: StatusPeon[] }>(`/workspaces/${wsId}/status`);
+  const status = useMemo<Record<string, StatusPeon>>(() => Object.fromEntries((statusResource.data?.peons ?? []).map((p) => [p.peonId, p])), [statusResource.data]);
   const [showAddPeon, setShowAddPeon] = useState(false);
   const remotePresence = useWorkspaceLivePresence(wsId, current?.id !== wsId);
 
@@ -39,17 +40,6 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
 
   // HTTP supplies active-session counts and last errors only. Connectivity is
   // read from the socket-owned workspace projection above.
-  useEffect(() => {
-    let alive = true;
-    const pull = () =>
-      api<{ peons: StatusPeon[] }>(`/workspaces/${wsId}/status`)
-        .then((r) => alive && setStatus(Object.fromEntries((r.peons ?? []).map((p) => [p.peonId, p]))))
-        .catch(() => {});
-    pull();
-    return () => {
-      alive = false;
-    };
-  }, [wsId]);
 
   const peonViewers = (peonId: string) => current?.id === wsId
     ? viewersForPeon(peonId)

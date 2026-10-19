@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { api, ApiError, apiUpload } from "../../shared/api";
-import { useT, type Translate } from "../../shared/i18n";
+import { useT, type MessageKey, type Translate } from "../../shared/i18n";
 import { encodeFilePath } from "./fileLinks";
 
 // One drag-and-drop layer for every file surface. A surface owns how it draws
@@ -8,9 +8,9 @@ import { encodeFilePath } from "./fileLinks";
 // the project Files page mount this hook, so an upload, a move, their refusals
 // and their status wording stay identical wherever an operator drops a file.
 
-export const FILE_TREE_DRAG_TYPE = "application/x-overseer-project-file";
+const FILE_TREE_DRAG_TYPE = "application/x-overseer-project-file";
 
-export type TransferEntryType = "file" | "dir";
+type TransferEntryType = "file" | "dir";
 
 export interface DraggedEntry {
   path: string;
@@ -18,7 +18,7 @@ export interface DraggedEntry {
   size?: number;
 }
 
-export interface DroppedFile {
+interface DroppedFile {
   file: File;
   // Path relative to the drop target: `notes.md` for a plain file, or
   // `docs/api/notes.md` when a folder was dropped.
@@ -35,7 +35,7 @@ export interface PendingUpload {
   sent: number;
 }
 
-export interface TransferStatus {
+interface TransferStatus {
   message: string;
   busy: boolean;
   error: boolean;
@@ -43,8 +43,8 @@ export interface TransferStatus {
 
 const OS_FILE_TYPE = "Files";
 const hasType = (event: DragEvent, type: string) => Array.from(event.dataTransfer.types).includes(type);
-export const hasDraggedFiles = (event: DragEvent) => hasType(event, OS_FILE_TYPE);
-export const hasDraggedEntry = (event: DragEvent) => hasType(event, FILE_TREE_DRAG_TYPE);
+const hasDraggedFiles = (event: DragEvent) => hasType(event, OS_FILE_TYPE);
+const hasDraggedEntry = (event: DragEvent) => hasType(event, FILE_TREE_DRAG_TYPE);
 
 export const parentPath = (path: string) => path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
 export const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
@@ -74,7 +74,7 @@ export function readDraggedEntry(transfer: DataTransfer): DraggedEntry | null {
   }
 }
 
-export function writeDraggedEntry(transfer: DataTransfer, entry: DraggedEntry) {
+function writeDraggedEntry(transfer: DataTransfer, entry: DraggedEntry) {
   transfer.effectAllowed = "move";
   transfer.setData(FILE_TREE_DRAG_TYPE, JSON.stringify(entry));
   transfer.setData("text/plain", baseName(entry.path));
@@ -172,12 +172,14 @@ export function pendingRows(target: string, dropped: DroppedFile[]): PendingUplo
   return [...rows.values()];
 }
 
-function transferFailure(error: unknown, t: Translate, unsupported: string, failed: string): string {
+type TransferFailureKey = Extract<MessageKey, `proj.files.${"upload" | "move" | "delete"}${"Unsupported" | "Failed"}`>;
+
+function transferFailure(error: unknown, t: Translate, unsupported: TransferFailureKey, failed: TransferFailureKey): string {
   if (error instanceof ApiError && (error.status === 404 || error.status === 405)) return t(unsupported);
   return error instanceof Error && error.message ? error.message : t(failed);
 }
 
-export interface FileTransfersOptions {
+interface FileTransfersOptions {
   filesBase: string;
   enabled: boolean;
   // A file landed in `parent`. The surface may show it before its next listing.

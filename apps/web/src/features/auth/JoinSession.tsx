@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useNavigate, useParams } from "react-router";
 import { api, ApiError } from "../../shared/api";
+import { useApiResource } from "../../shared/useApiResource";
 import { Button, Input } from "../../shared/ui";
 import { useAuth } from "./auth";
 import { activeMentionQuery, insertMention, mentionWire, mentionsRouteToPeople, validComposerMentions, type ComposerMention, type MentionPrincipal } from "../sessions/contextMentions";
@@ -69,27 +70,17 @@ export function JoinSession() {
   const { token = "" } = useParams();
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [preview, setPreview] = useState<Preview | null>(null);
-  const [loadError, setLoadError] = useState<unknown>(null);
+  const previewResource = useApiResource<Preview>(token ? `/session-invitations/${encodeURIComponent(token)}` : null);
+  const preview = previewResource.data;
+  const loadError = previewResource.error;
   const [displayName, setDisplayName] = useState("");
   const [accepting, setAccepting] = useState(false);
   const [acceptError, setAcceptError] = useState<unknown>(null);
   const [acceptance, setAcceptance] = useState<Acceptance | null>(null);
 
   useEffect(() => {
-    let alive = true;
-    setPreview(null);
-    setLoadError(null);
-    if (!token) return undefined;
-    api<Preview>(`/session-invitations/${encodeURIComponent(token)}`)
-      .then((value) => {
-        if (!alive) return;
-        setPreview(value);
-        setDisplayName(value.suggestedDisplayName);
-      })
-      .catch((error: unknown) => alive && setLoadError(error));
-    return () => { alive = false; };
-  }, [token]);
+    if (preview) setDisplayName(preview.suggestedDisplayName);
+  }, [preview]);
 
   useEffect(() => {
     if (preview?.alreadyAuthorized) navigate(canonicalSessionPath(preview), { replace: true });

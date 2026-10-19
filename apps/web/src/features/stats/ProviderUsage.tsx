@@ -9,10 +9,10 @@ import { fmtCount, fmtDuration, fmtReset, sum, type ByModel, type CapabilitiesSt
 export function ModelUsageDetails({ model, providerTokens }: { model: ByModel; providerTokens?: number }) {
   const t = useT();
   const buckets = [
-    { key: "ordinaryInput", value: model.inputTokens, color: "bg-sky-400" },
-    { key: "cacheRead", value: model.cacheReadTokens, color: "bg-emerald-400" },
-    { key: "cacheWrite", value: model.cacheCreationTokens, color: "bg-violet-400" },
-    { key: "outputTokens", value: model.outputTokens, color: "bg-accent" },
+    { key: "ordinaryInput" as const, value: model.inputTokens, color: "bg-sky-400" },
+    { key: "cacheRead" as const, value: model.cacheReadTokens, color: "bg-emerald-400" },
+    { key: "cacheWrite" as const, value: model.cacheCreationTokens, color: "bg-violet-400" },
+    { key: "outputTokens" as const, value: model.outputTokens, color: "bg-accent" },
   ];
   const completeBreakdown = model.cacheBreakdownComplete !== false && buckets.every((bucket) => typeof bucket.value === "number" && Number.isFinite(bucket.value));
   const input = (model.inputTokens ?? 0) + (model.cacheReadTokens ?? 0) + (model.cacheCreationTokens ?? 0);

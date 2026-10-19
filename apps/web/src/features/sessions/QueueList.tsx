@@ -4,10 +4,10 @@ import { attachmentLabel, mergeQueueRows, type QueueItem, type QueueRow } from "
 import type { Translate } from "../../shared/i18n";
 import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
 
-export const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium text-white transition-colors hover:bg-black/20 hover:text-white disabled:cursor-wait disabled:opacity-40";
-export const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 theme-queued-message-icon";
+const QUEUE_ACTION_CLASS = "flex h-7 min-w-7 items-center justify-center rounded-md bg-black/10 text-[11px] font-medium text-white transition-colors hover:bg-black/20 hover:text-white disabled:cursor-wait disabled:opacity-40";
+const QUEUE_HOURGLASS_CLASS = "mt-1 shrink-0 theme-queued-message-icon";
 // Matches the action buttons' h-7 so a single-line message centers against them instead of hanging at the top.
-export const QUEUE_CONTENT_MIN_HEIGHT_CLASS = "min-h-7";
+const QUEUE_CONTENT_MIN_HEIGHT_CLASS = "min-h-7";
 // Kept in step with the queue-row-leave keyframes.
 export const QUEUE_EXIT_MS = 220;
 

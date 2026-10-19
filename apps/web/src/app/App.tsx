@@ -18,7 +18,9 @@ const PeonNewSession = lazy(() => import("../features/sessions/PeonNewSession").
 const PeonSessionDetail = lazy(() => import("../features/sessions/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
 const PeonProjectDetail = lazy(() => import("../features/projects/PeonProjectDetail").then((m) => ({ default: m.PeonProjectDetail })));
 const PeonStats = lazy(() => import("../features/stats/PeonStats").then((m) => ({ default: m.PeonStats })));
-const PeonSettings = lazy(() => import("../features/settings/PeonSettings").then((m) => ({ default: m.PeonSettings })));
+const loadPeonSettingsRoutes = () => import("../features/settings/peonSettingsRoutes");
+const PeonSettingsLayout = lazy(() => loadPeonSettingsRoutes().then((m) => ({ default: m.PeonSettingsLayout })));
+const PeonArmory = lazy(() => loadPeonSettingsRoutes().then((m) => ({ default: m.PeonArmory })));
 const Members = lazy(() => import("../features/workspaces/Members").then((m) => ({ default: m.Members })));
 const WorkspaceDashboard = lazy(() => import("../features/workspaces/WorkspaceDashboard").then((m) => ({ default: m.WorkspaceDashboard })));
 const WorkspaceSessions = lazy(() => import("../features/workspaces/WorkspaceSessions").then((m) => ({ default: m.WorkspaceSessions })));
@@ -127,10 +129,12 @@ export function App() {
           <Route path="stats" element={<PeonStats />} />
           <Route path="armory" element={<LegacyPeonArmoryRedirect />} />
           <Route path="armory/:packageId" element={<LegacyPeonArmoryRedirect />} />
-          <Route path="settings" element={<PeonSettings />} />
-          <Route path="settings/agent" element={<PeonSettings />} />
-          <Route path="settings/armory" element={<PeonSettings />} />
-          <Route path="settings/armory/:packageId" element={<PeonSettings />} />
+          <Route path="settings" element={<PeonSettingsLayout />}>
+            {/* General and Agent render from the layout's persistent PeonSettings. */}
+            <Route index element={null} />
+            <Route path="agent" element={null} />
+            <Route path="armory/:packageId?" element={<PeonArmory />} />
+          </Route>
         </Route>
       </Route>
 

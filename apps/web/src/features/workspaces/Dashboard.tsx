@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { ChevronRight, Plus } from "lucide-react";
-import { api } from "../../shared/api";
+import { useApiResource } from "../../shared/useApiResource";
 import { useWorkspace, type Workspace } from "./workspace";
 import { useWorkspacePeonPresence } from "../fleet/usePeonPresence";
 import { Button, OverseerWordmark } from "../../shared/ui";
@@ -113,7 +113,8 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
   const t = useT();
   const { current } = useWorkspace();
   const { viewersForPeon } = useLiveSocket();
-  const [status, setStatus] = useState<Record<string, HomePeonStatus>>({});
+  const statusResource = useApiResource<{ peons: HomePeonStatus[] }>(`/workspaces/${encodeURIComponent(workspace.id)}/status`);
+  const status = useMemo<Record<string, HomePeonStatus>>(() => Object.fromEntries((statusResource.data?.peons ?? []).map((peon) => [peon.peonId, peon])), [statusResource.data]);
   const peons = useWorkspacePeonPresence(workspace.id);
   const remotePresence = useWorkspaceLivePresence(workspace.id, current?.id !== workspace.id);
 
@@ -121,18 +122,6 @@ function WorkspaceCard({ workspace }: { workspace: Workspace }) {
     ? viewersForPeon(peonId)
     : presenceUsersForPeon(remotePresence, peonId);
 
-  useEffect(() => {
-    let active = true;
-    const pull = () => api<{ peons: HomePeonStatus[] }>(`/workspaces/${encodeURIComponent(workspace.id)}/status`)
-      .then((result) => {
-        if (active) setStatus(Object.fromEntries((result.peons ?? []).map((peon) => [peon.peonId, peon])));
-      })
-      .catch(() => undefined);
-    void pull();
-    return () => {
-      active = false;
-    };
-  }, [workspace.id]);
 
   return (
     <article className={HOME_WORKSPACE_CARD_CLASS}>

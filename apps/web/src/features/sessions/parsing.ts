@@ -1,4 +1,7 @@
-import type { Translate } from "../../shared/i18n";
+import type { MessageKey, Translate } from "../../shared/i18n";
+
+// "thinking" has no label: the indicator renders without text for it.
+export type WorkingActivityKey = Extract<MessageKey, `session.working.${string}`> | "session.working.thinking";
 import type { SelectedTextReply } from "./selectedTextReply";
 import type { ComposerMention, MentionPrincipal } from "./contextMentions";
 
@@ -361,7 +364,7 @@ export function gapPaddingClass(prevIsUser: boolean, isUser: boolean, textBounda
 
 // Contextual "agent is working" label from the freshest transcript event — so the
 // operator sees *what* it's doing (running a command, reading a file…), not just a spinner.
-function toolActivity(name?: string): { key: string; name?: string } {
+function toolActivity(name?: string): { key: WorkingActivityKey; name?: string } {
   switch (name) {
     case "Bash":
       return { key: "session.working.bash" };
@@ -384,7 +387,7 @@ function toolActivity(name?: string): { key: string; name?: string } {
       return { key: "session.working.tool", name: name || "tool" };
   }
 }
-export function workingActivity(last: Ev | undefined): { key: string; name?: string } {
+export function workingActivity(last: Ev | undefined): { key: WorkingActivityKey; name?: string } {
   if (last?.type === "assistant") {
     const blocks = Array.isArray(last.message?.content) ? (last.message!.content as Block[]) : [];
     const b = [...blocks].reverse().find((x) => x.type === "tool_use" || (x.type === "text" && !!x.text?.trim()));

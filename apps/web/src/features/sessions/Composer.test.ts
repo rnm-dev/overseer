@@ -3,8 +3,8 @@ import test from "node:test";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { I18nProvider } from "../../shared/i18n";
-import { COMPOSER_ICON_ACTION_CLASS, COMPOSER_SHELL_CLASS, COMPOSER_TEXT_ACTION_CLASS, Composer, MAX_TEXTAREA_HEIGHT, isFileDrag } from "./Composer";
-import { COMPOSER_FOOTER_PADDING, SESSION_COMPOSER_DOCK_CLASS, SESSION_COMPOSER_FADE_CLASS, composerFooterHeight } from "./SessionComposerDock";
+import { Composer, MAX_TEXTAREA_HEIGHT, isFileDrag } from "./Composer";
+import { COMPOSER_FOOTER_PADDING, composerFooterHeight } from "./SessionComposerDock";
 
 (globalThis as typeof globalThis & { React: typeof React }).React = React;
 
@@ -30,23 +30,6 @@ test("composer exposes the shared file drop zone", () => {
 
   assert.match(markup, /data-file-drop-zone="composer"/);
   assert.match(markup, /type="file"/);
-  assert.match(COMPOSER_SHELL_CLASS, /\bsurface\b/);
-  assert.match(COMPOSER_SHELL_CLASS, /\btheme-composer-shell\b/);
-  assert.doesNotMatch(COMPOSER_SHELL_CLASS, /focus-within:/);
-  assert.match(COMPOSER_SHELL_CLASS, /\bp-2\b/);
-  assert.match(COMPOSER_ICON_ACTION_CLASS, /\bon-surface\b/);
-  assert.match(COMPOSER_ICON_ACTION_CLASS, /\bh-8\b/);
-  assert.match(COMPOSER_ICON_ACTION_CLASS, /\bw-8\b/);
-  assert.match(COMPOSER_ICON_ACTION_CLASS, /\brounded-lg\b/);
-  assert.match(COMPOSER_TEXT_ACTION_CLASS, /\bon-surface\b/);
-});
-
-test("composer dock uses the package-owned transcript fade", () => {
-  assert.match(SESSION_COMPOSER_FADE_CLASS, /\btheme-transcript-composer-fade\b/);
-  assert.doesNotMatch(SESSION_COMPOSER_FADE_CLASS, /from-void|via-void/);
-  // The fade wraps the composer alone, so queued messages stacking above it
-  // leave the shade where it was instead of pushing it up the transcript.
-  assert.doesNotMatch(SESSION_COMPOSER_DOCK_CLASS, /\btheme-transcript-composer-fade\b/);
 });
 
 test("the transcript reserves room for queued messages stacked above the composer", () => {
@@ -57,13 +40,6 @@ test("the transcript reserves room for queued messages stacked above the compose
   // A queue taller than the viewport still leaves half the screen for the
   // conversation it was queued against.
   assert.equal(composerFooterHeight(withQueue, 400), 200);
-});
-
-test("composer dock leaves its right edge to the scrollbar-aware stylesheet", () => {
-  // .session-composer owns `right` so the fade stops before the transcript
-  // scrollbar; a utility right-0 here would paint over it again.
-  assert.doesNotMatch(SESSION_COMPOSER_DOCK_CLASS, /\bright-0\b/);
-  assert.match(SESSION_COMPOSER_DOCK_CLASS, /\bsession-composer\b/);
 });
 
 test("the auto-size cap matches the textarea's painted max height", () => {

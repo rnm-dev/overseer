@@ -18,10 +18,10 @@ import { simpleToolFileName, simpleToolKind, simpleToolLabel, type SimpleToolKin
 // renderer and the "agent is working" indicator. Pure presentation — all parsing
 // lives in ./parsing. author: Viktor
 
-export const OWN_ATTACHMENT_CLASS = "theme-user-message-ink bg-surface/25 hover:bg-surface/40";
-export const OTHER_ATTACHMENT_CLASS = "on-surface text-ink hover:bg-surface-active/60";
-export const TOOL_ROW_LAYOUT_CLASS = "grid w-fit min-w-0 max-w-[85%] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 py-0.5 typo-chat-system-message";
-export const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-surface-hover/70 hover:text-ink`;
+const OWN_ATTACHMENT_CLASS = "theme-user-message-ink bg-surface/25 hover:bg-surface/40";
+const OTHER_ATTACHMENT_CLASS = "on-surface text-ink hover:bg-surface-active/60";
+const TOOL_ROW_LAYOUT_CLASS = "grid w-fit min-w-0 max-w-[85%] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 py-0.5 typo-chat-system-message";
+const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-surface-hover/70 hover:text-ink`;
 // The 2px rule under a tool row is centered on that row's size-4 icon column ((16-2)/2 = 7px),
 // and its text resumes where the row's label does (16px icon + gap-x-1.5 - 7px - 2px = 13px).
 export const TOOL_DETAIL_RULE_CLASS = "ml-[7px] border-l-2 pl-[13px]";
@@ -69,11 +69,11 @@ function LocalMessageTime({ createdAt, locale, yesterdayLabel }: { createdAt?: n
 }
 
 const USER_BUBBLE_BASE_CLASS = "max-w-[80%] whitespace-pre-wrap break-words rounded-xl rounded-br-sm px-3 py-1.5 typo-chat-message text-ink";
-export const OWN_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} theme-user-message`;
-export const OTHER_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} surface`;
-export const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.625rem] font-semibold leading-tight text-accent-strong";
-export const OWN_USER_BUBBLE_TIME_CLASS = "theme-user-message-meta font-body text-[0.625rem] leading-tight";
-export const OTHER_USER_BUBBLE_TIME_CLASS = "font-body text-[0.625rem] leading-tight text-ink-faint";
+const OWN_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} theme-user-message`;
+const OTHER_USER_BUBBLE_CLASS = `${USER_BUBBLE_BASE_CLASS} surface`;
+const OTHER_USER_BUBBLE_AUTHOR_CLASS = "mb-1 truncate font-body text-[0.625rem] font-semibold leading-tight text-accent-strong";
+const OWN_USER_BUBBLE_TIME_CLASS = "theme-user-message-meta font-body text-[0.625rem] leading-tight";
+const OTHER_USER_BUBBLE_TIME_CLASS = "font-body text-[0.625rem] leading-tight text-ink-faint";
 
 export function isCompactUserMessage(text: string, attachments?: MessageAttachment[]): boolean {
   const trimmed = text.trim();

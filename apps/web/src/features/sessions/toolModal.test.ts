@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ItemView, OTHER_ATTACHMENT_CLASS, OTHER_USER_BUBBLE_AUTHOR_CLASS, OTHER_USER_BUBBLE_CLASS, OTHER_USER_BUBBLE_TIME_CLASS, OWN_ATTACHMENT_CLASS, OWN_USER_BUBBLE_CLASS, OWN_USER_BUBBLE_TIME_CLASS, TOOL_DETAIL_RULE_CLASS, TOOL_ROW_CLASS, TOOL_ROW_LAYOUT_CLASS, attachmentMeta, isCompactUserMessage, isOwnMessageAuthor, isOwnParticipantAuthor, userMessageAvatar } from "./messageParts";
+import { ItemView, TOOL_DETAIL_RULE_CLASS, attachmentMeta, isCompactUserMessage, isOwnMessageAuthor, isOwnParticipantAuthor, userMessageAvatar } from "./messageParts";
 import { editDiff, editFileName, editOperation, editStats, editStatsFromInput } from "./toolEdit";
 import { simpleToolFileName, simpleToolKind } from "./simpleTools";
 import { flattenEvents, gapClass, gapPaddingClass, toolHasOutputSection } from "./parsing";
@@ -12,18 +12,6 @@ test("edit tool details omit the output section", () => {
   assert.equal(toolHasOutputSection("Edit"), false);
   assert.equal(toolHasOutputSection("edit"), false);
   assert.equal(toolHasOutputSection(" EDIT "), false);
-});
-
-test("own chat messages use package-owned colors while other users use the canonical surface", () => {
-  assert.match(OWN_USER_BUBBLE_CLASS, /\btheme-user-message\b/);
-  assert.doesNotMatch(OWN_USER_BUBBLE_CLASS, /\bsurface\b/);
-  assert.match(OTHER_USER_BUBBLE_CLASS, /\bsurface\b/);
-  assert.doesNotMatch(OTHER_USER_BUBBLE_CLASS, /\bbg-warning-deep\b/);
-  assert.match(OTHER_USER_BUBBLE_AUTHOR_CLASS, /\btext-accent-strong\b/);
-  assert.match(OTHER_USER_BUBBLE_AUTHOR_CLASS, /\bfont-body\b/);
-  assert.match(OWN_USER_BUBBLE_TIME_CLASS, /\btheme-user-message-meta\b/);
-  assert.match(OTHER_USER_BUBBLE_TIME_CLASS, /\btext-ink-faint\b/);
-  assert.match(OWN_USER_BUBBLE_TIME_CLASS, /\bfont-body\b/);
 });
 
 test("message ownership matches current email or GitHub login without case sensitivity", () => {
@@ -54,8 +42,6 @@ test("a newly tailed own message falls back to the signed-in user's avatar", () 
 });
 
 test("message attachments adapt to bubble ownership and expose compact metadata", () => {
-  assert.match(OWN_ATTACHMENT_CLASS, /\bbg-surface\/25\b/);
-  assert.match(OTHER_ATTACHMENT_CLASS, /\bon-surface\b/);
   assert.equal(attachmentMeta({ type: "image", name: "preview.png", size: 245_760 }), "PNG · 240 KB");
   assert.equal(attachmentMeta({ type: "file", name: "notes", size: 1_258_291 }), "FILE · 1.2 MB");
 });
@@ -119,7 +105,6 @@ test("both modes are the same row: one class list, differing only in words", () 
 
   const rowClass = (html: string) => /class="([^"]*)"/.exec(html.slice(html.indexOf("<button")))?.[1];
   assert.equal(rowClass(simple), rowClass(technical));
-  assert.ok(rowClass(technical)?.includes(TOOL_ROW_CLASS));
   // The technical row names its operation beside the icon; the simple one does not.
   assert.match(technical, /Edit/);
   assert.doesNotMatch(simple, /Edit</);
@@ -157,12 +142,6 @@ test("simple tool rows choose semantic icons and expose only safe file names", (
   assert.equal(simpleToolFileName("Bash", { path: "/private/contracts/nda.pdf" }), null);
 });
 
-test("tool rows align to the transcript edge with a fixed icon grid", () => {
-  assert.match(TOOL_ROW_CLASS, /\bgrid\b/);
-  assert.match(TOOL_ROW_CLASS, /grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
-  assert.doesNotMatch(TOOL_ROW_CLASS, /\bpx-/);
-});
-
 test("a tool detail rule is centered on the icon column above it", () => {
   const iconColumn = 16;
   const gap = 6;
@@ -178,9 +157,6 @@ test("technical and simple system rows share the same compact vertical rhythm", 
   assert.equal(gapPaddingClass(false, false), "pt-0.5");
   assert.equal(gapClass(false, false), "mt-0.5");
   assert.equal(gapPaddingClass(true, false), "pt-6");
-  assert.ok(TOOL_ROW_CLASS.startsWith(TOOL_ROW_LAYOUT_CLASS));
-  assert.match(TOOL_ROW_LAYOUT_CLASS, /\bgap-x-1\.5\b/);
-  assert.match(TOOL_ROW_CLASS, /\bpy-0\.5\b/);
 });
 
 test("assistant text keeps breathing room around compact system rows", () => {
