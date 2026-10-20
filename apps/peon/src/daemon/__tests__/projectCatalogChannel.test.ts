@@ -23,7 +23,6 @@ function capture(durable = true) {
   const sender: PeonSocketSender = {
     durable,
     send: (frame) => { frames.push(frame); return true; },
-    sendBinary: () => true,
     sendDurable: (frame, options) => {
       durableFrames.push({ frame, options });
       return durable
@@ -141,7 +140,6 @@ test("project events preserve shared durable order with interleaved channel mess
   const sender: PeonSocketSender = {
     durable: true,
     send: () => true,
-    sendBinary: () => true,
     sendDurable: (frame, options) => outbox.enqueue(frame, options),
     disconnect: () => {},
   };

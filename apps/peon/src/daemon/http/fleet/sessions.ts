@@ -1,11 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, statSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { mkdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import express from "express";
 import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads.js";
-import { getAgentDriver, listAgentDrivers } from "../../agents/index.js";
-import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort, type CodingAgent, type ReasoningEffort } from "../../providers/modelCatalog.js";
-import { ContextMessageError, MessageThreadError, parseContextMessage, parseMessageAttribution, parseReplyTo, ReplyToError, type AttachmentInfo, type ContextMention, type MessageAttribution, type ReplyTo, type SessionJsonService, type SessionRecord } from "../../sessions/index.js";
+import { listAgentDrivers } from "../../agents/index.js";
+import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort, type CodingAgent } from "../../providers/modelCatalog.js";
+import { ContextMessageError, MessageThreadError, parseContextMessage, parseMessageAttribution, parseReplyTo, ReplyToError, type AttachmentInfo, type ContextMention, type MessageAttribution, type ReplyTo, type SessionJsonService } from "../../sessions/index.js";
 import { toPublicSessionRecord } from "../../sessions/index.js";
 import { toSessionSummary } from "../../sessions/index.js";
 import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";

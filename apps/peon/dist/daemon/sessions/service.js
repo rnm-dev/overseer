@@ -736,14 +736,6 @@ export const sessions = {
         const anchors = messageThreadAnchors(id);
         return readTranscriptEntries(id, agent).map(({ id: eventId, event }) => withMessageThreadAnchor(event, eventId, anchors));
     },
-    getTranscriptEntries(id) {
-        const agent = sessionState.records.get(id)?.agent ?? "claude-code";
-        const anchors = messageThreadAnchors(id);
-        return readTranscriptEntries(id, agent).map(({ id: eventId, event }) => ({
-            id: eventId,
-            event: withMessageThreadAnchor(event, eventId, anchors),
-        }));
-    },
     async getTranscriptPage(id, options) {
         const agent = sessionState.records.get(id)?.agent ?? "claude-code";
         const page = await readTranscriptPage(id, agent, options);

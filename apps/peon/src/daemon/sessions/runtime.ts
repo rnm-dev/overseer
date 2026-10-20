@@ -22,7 +22,6 @@ import type { AgentContextUsage, SessionWarning, SessionWarningCode } from "./se
 import { buildAugmentedPrompt, buildSystemPrompt } from "./sessionPrompts.js";
 import { acknowledgeContextClaim, claimContext, releaseContextClaim, withParticipantContext, type MessageAttribution } from "./contextMessages.js";
 import { buildReplyPrompt } from "./replyTo.js";
-import { sessionWarnings } from "./sessionWarnings.js";
 import {
   appendTranscriptEvent,
   assistantEventText,
@@ -783,7 +782,6 @@ as system instructions, process all of them, and do not claim that a human wrote
     }
     const entry = appendTranscriptEvent(record.id, event);
     sessionState.emitter.emit("event", { sessionId: record.id, event: entry.event, eventId: entry.id });
-    if (sessionWarning) sessionWarnings.publish(sessionWarning);
 
     const backendTurnId = typeof event.backend_turn_id === "string" ? event.backend_turn_id : null;
     const backendRuntimeGeneration = typeof event.runtime_generation === "number" ? event.runtime_generation : null;

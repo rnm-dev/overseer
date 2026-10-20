@@ -13,7 +13,6 @@ const tests = readdirSync(testDir)
   .concat(path.join(root, "scripts", "test-concurrency.test.mjs"));
 const serialTests = [
   path.join(testDir, "armoryConfiguration.test.ts"),
-  path.join(testDir, "previewRevisionPublisher.test.ts"),
 ];
 const regularTests = tests.filter((test) => !serialTests.includes(test));
 const testConcurrency = resolveTestConcurrency(process.env.PEON_TEST_CONCURRENCY);

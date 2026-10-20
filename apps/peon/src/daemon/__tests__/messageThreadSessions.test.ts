@@ -48,7 +48,6 @@ test("a newly created thread is immediately a first-class dormant session", asyn
   assert.equal(messageThread.messageCount, 1);
   assert.equal(messageThread.activityStatus, "discussion");
   assert.equal(typeof messageThread.updatedAt, "number");
-  assert.deepEqual(sessions.getTranscriptEntries(source.id)[0]?.event.messageThread, transcript[0]?.messageThread);
   const page = await sessions.getTranscriptPage(source.id, { limit: 10 });
   assert.deepEqual(page.events[0]?.messageThread, transcript[0]?.messageThread);
 });

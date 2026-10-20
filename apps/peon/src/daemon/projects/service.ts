@@ -4,7 +4,6 @@ import { projectDocumentation, readProjectDoc } from "./docs.js";
 import { listProjectSkills } from "./skills.js";
 import type { ProjectSessionContract } from "../sessions/index.js";
 import {
-  projectStore,
   slugify,
   suggestDir,
   type ProjectQuickLink,

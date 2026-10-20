@@ -8,7 +8,7 @@ import {
   type Tool,
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ArmoryMcpRuntime } from "./armory/index.js";
-import { ProjectServiceError, type ProjectQuickLink, type ProjectService } from "./projects/index.js";
+import { ProjectServiceError, type ProjectService } from "./projects/index.js";
 import {
   MAX_SESSION_SPAWN_NAME_LENGTH,
   MAX_SESSION_SPAWN_PROMPT_LENGTH,

@@ -572,7 +572,7 @@ export class ArmoryMcpRuntime implements ArmoryPackageRuntimeController {
 /** Retained only for pre-capability API compatibility; capable APIs return 410 first. */
 export class ArmoryMcpLifecycleService {
   readonly operations: ArmoryOperationCoordinator;
-  constructor(private readonly runtime: ArmoryMcpRuntime) {
+  constructor(runtime: ArmoryMcpRuntime) {
     this.operations = new ArmoryOperationCoordinator(runtime.stores.operations);
   }
   async enable(packageId: string) {

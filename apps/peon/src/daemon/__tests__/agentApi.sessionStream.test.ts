@@ -396,15 +396,15 @@ test("reconnecting with Last-Event-ID replays only what was missed, exactly once
 
 test("afterEventId query resumes a native EventSource after a bounded snapshot", async () => {
   makeSession("s-query-resume", ["one", "two", "three"]);
-  const snapshot = sessions.getTranscriptEntries("s-query-resume");
-  const boundary = snapshot[1].id;
+  const snapshot = (await sessions.getTranscriptPage("s-query-resume", { limit: 10 })).events;
+  const boundary = snapshot[1].eventId;
 
   const client = await SseClient.connect(
     `${streamUrl("s-query-resume")}?afterEventId=${encodeURIComponent(boundary)}`,
     { Authorization: `Bearer ${TOKEN}` },
   );
   const replay = await client.nextEvent();
-  assert.equal(replay.id, snapshot[2].id);
+  assert.equal(replay.id, snapshot[2].eventId);
   assert.equal(JSON.parse(replay.data).text, "three");
 
   appendLiveEvent("s-query-resume", "four");

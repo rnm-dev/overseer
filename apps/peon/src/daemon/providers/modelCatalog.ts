@@ -170,7 +170,6 @@ export function narrowNewSessionAgent(value: unknown): CodingAgent | undefined {
 }
 
 export function providerDefaultModel(agent: CodingAgent): string {
-  const driver = getAgentDriver(agent);
   const models = modelsFor(agent);
   const model = models.find((candidate) => candidate.default) ?? models[0];
   if (!model) throw new Error(`Model catalog for ${agent} is unavailable: CLI discovery has not succeeded`);

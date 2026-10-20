@@ -1,5 +1,5 @@
 import { getAgentDriver, requireAgentDriver } from "./registry.js";
-import type { AgentEvent, AgentExit, AgentRun, AgentRunOptions } from "./registry.js";
+import type { AgentEvent, AgentRun, AgentRunOptions } from "./registry.js";
 
 // Provider-neutral contract used by sessions service. Concrete CLI flags and event
 // shapes live behind the adapters below; this module is the proxy that selects

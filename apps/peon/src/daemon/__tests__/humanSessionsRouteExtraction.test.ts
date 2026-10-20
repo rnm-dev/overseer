@@ -25,7 +25,6 @@ interface TestFixture {
   cancel: number;
   toSessionSummary: number;
   toPublicSessionRecord: number;
-  toSessionView: number;
 }
 
 const COMPLETE_SESSION = "7e3af8f5-8f2d-4f3f-9d9d-2f4c0f4c1f33";
@@ -93,7 +92,6 @@ const callLog: TestFixture = {
   cancel: 0,
   toSessionSummary: 0,
   toPublicSessionRecord: 0,
-  toSessionView: 0,
 };
 
 const records = new Map<string, SessionRecord>();
@@ -215,7 +213,6 @@ function resetFixtures() {
   callLog.cancel = 0;
   callLog.toSessionSummary = 0;
   callLog.toPublicSessionRecord = 0;
-  callLog.toSessionView = 0;
   lastStartArgs = null;
 
   records.set(COMPLETE_SESSION, makeRecord({ id: COMPLETE_SESSION, status: "completed", title: "complete" }));
@@ -252,16 +249,7 @@ app.use("/api/v1", createHumanSessionsRouter({
         title: record.title,
       };
     },
-    toSessionView: (record) => {
-      callLog.toSessionView += 1;
-      return {
-        ...record,
-        viewers: ["human-viewer"],
-        viewerCount: 1,
-      };
-    },
     resolveSessionAuthor: () => "human@example.com",
-    resolveSessionViewer: () => "human-viewer",
     resolveDefaultAgent: () => "claude-code",
     listAgentsForNewSessionError: () => "claude-code, codex",
     narrowNewSessionAgent: (value) => (typeof value === "string" ? value : undefined),
@@ -293,16 +281,15 @@ test("human sessions collection route uses injected list service and summary hel
   assert.equal(callLog.toSessionSummary, 2);
 });
 
-test("human session detail returns session view and uses viewer helper", async () => {
+test("human session detail returns the public session record", async () => {
   resetFixtures();
 
   const response = await fetch(`${base}/sessions/${COMPLETE_SESSION}`);
   assert.equal(response.status, 200);
-  const payload = (await response.json()) as { id: string; viewerCount: number };
+  const payload = (await response.json()) as { id: string };
   assert.equal(payload.id, COMPLETE_SESSION);
-  assert.equal(payload.viewerCount, 1);
   assert.equal(callLog.get, 1);
-  assert.equal(callLog.toSessionView, 1);
+  assert.equal(callLog.toPublicSessionRecord, 1);
 });
 
 test("human session creation maps request and service result through helpers", async () => {

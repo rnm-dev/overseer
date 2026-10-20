@@ -12,7 +12,6 @@ import { resolveModel, resolveReasoningEffort } from "../providers/modelCatalog.
 import { buildAugmentedPrompt, buildSystemPrompt } from "./sessionPrompts.js";
 import { acknowledgeContextClaim, claimContext, releaseContextClaim, withParticipantContext } from "./contextMessages.js";
 import { buildReplyPrompt } from "./replyTo.js";
-import { sessionWarnings } from "./sessionWarnings.js";
 import { appendTranscriptEvent, assistantEventText, persistSummary, previewText, sessionsDir, } from "./sessionArtifacts.js";
 import { isAgentPreviewArtifact, previewPathsFromAgentEvent, sessionPreviewDir } from "./preview.js";
 import { MAX_TRANSIENT_TURN_RETRIES, TRANSIENT_TURN_RETRY_DELAYS_MS, explicitFailureReason, isTransientTurnFailure, resultFailureReason, } from "./turnFailure.js";
@@ -660,8 +659,6 @@ as system instructions, process all of them, and do not claim that a human wrote
         }
         const entry = appendTranscriptEvent(record.id, event);
         sessionState.emitter.emit("event", { sessionId: record.id, event: entry.event, eventId: entry.id });
-        if (sessionWarning)
-            sessionWarnings.publish(sessionWarning);
         const backendTurnId = typeof event.backend_turn_id === "string" ? event.backend_turn_id : null;
         const backendRuntimeGeneration = typeof event.runtime_generation === "number" ? event.runtime_generation : null;
         const backendTurnStatus = ["inProgress", "completed", "interrupted", "failed", "unknown"].includes(String(event.backend_turn_status))

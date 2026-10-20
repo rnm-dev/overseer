@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { ArmoryConfigurationError, ArmoryConfigurationService } from "./configuration.js";
+import { ArmoryConfigurationService } from "./configuration.js";
 import { armoryInstallSelectionSchema, armorySettingsSchema, type ArmoryOperation, type ArmorySettings } from "./contracts.js";
 import { ArmoryPackageInstallService, type ArmoryPackageInstallApi, type ArmoryUpdateRuntime } from "./installer.js";
 import type { ArmoryMcpLifecycleService } from "./mcpRuntime.js";

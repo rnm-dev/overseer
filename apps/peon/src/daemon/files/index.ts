@@ -1,7 +1,5 @@
 import { FileAccessService } from "./service.js";
 import type {
-  FileAccessContract,
-  FileAccessServiceOptions,
   FileEntry,
   FileView,
   FilesystemError,

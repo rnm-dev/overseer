@@ -6,9 +6,7 @@ import { PROTOCOL_VERSION } from "../../protocol.js";
 import { PeonSocketMultiplexer, PEON_SOCKET_MAX_FRAME_BYTES, } from "./peonSocketProtocol.js";
 import { PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY, PeonSocketOutbox, } from "./peonSocketOutbox.js";
 import { SessionCatalogChannel } from "./channels/sessionCatalogChannel.js";
-import { SessionWarningChannel } from "./channels/sessionWarningChannel.js";
 import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
-import { ReverseCommandChannel } from "./channels/reverseCommandChannel.js";
 import { RuntimeStateChannel } from "./channels/runtimeStateChannel.js";
 import { settings } from "../../settings/index.js";
 const DEFAULT_RETRY_BASE_MS = 250;
@@ -99,7 +97,6 @@ export class PeonSocketSupervisor {
         lastError: null,
         outbox: null,
     };
-    reverseCommandChannel;
     constructor(options = {}) {
         this.readSettings = options.readSettings ?? (() => settings.getPeonSocketSettings());
         this.subscribe = options.subscribe ?? defaultSubscribe;
@@ -114,22 +111,13 @@ export class PeonSocketSupervisor {
         this.maxFrameBytes = PEON_SOCKET_MAX_FRAME_BYTES;
         this.maxBufferedBytes = CONTROL_MAX_BUFFERED_BYTES;
         const hasDurableOutbox = Boolean(options.outbox || options.outboxFactory);
-        this.reverseCommandChannel = hasDurableOutbox
-            ? new ReverseCommandChannel({ peonId: () => this.configured()?.peonId })
-            : null;
         const defaultChannels = [
             new SessionCatalogChannel(),
-            ...(hasDurableOutbox ? [new ProjectCatalogChannel()] : []),
-            new SessionWarningChannel(),
-            ...(this.reverseCommandChannel ? [this.reverseCommandChannel] : []),
-            ...(hasDurableOutbox ? [new RuntimeStateChannel()] : []),
+            ...(hasDurableOutbox ? [new ProjectCatalogChannel(), new RuntimeStateChannel()] : []),
         ];
         this.multiplexer = new PeonSocketMultiplexer(options.channels ?? defaultChannels);
         this.outbox = options.outbox ?? null;
         this.outboxFactory = options.outboxFactory ?? null;
-    }
-    registerReverseCommandHandlers(handlers) {
-        this.reverseCommandChannel?.registerHandlers(handlers);
     }
     start() {
         if (this.started)
@@ -150,7 +138,6 @@ export class PeonSocketSupervisor {
             },
             get generation() { return supervisor.generation; },
             send: () => false,
-            sendBinary: () => false,
             sendDurable: (frame, options) => supervisor.enqueueDurable(frame, options),
             disconnect: (reason) => { supervisor.state.lastError = reason; },
         };
@@ -273,7 +260,6 @@ export class PeonSocketSupervisor {
             get authority() { return socketSupervisor.destinationHash(config); },
             get generation() { return generation; },
             send: (frame) => this.sendFrame(socket, current, frame),
-            sendBinary: (frame) => this.sendBinaryFrame(socket, current, frame),
             sendDurable: (frame, options) => this.sendDurable(socket, current, frame, options),
             disconnect: (reason) => {
                 if (!current())
@@ -285,12 +271,8 @@ export class PeonSocketSupervisor {
         socket.on("message", (data, isBinary) => {
             if (!current())
                 return;
-            if (isBinary) {
-                if (!this.state.connected || !this.multiplexer.receiveBinary(Buffer.from(data), sender)) {
-                    sender.disconnect("unsupported binary Peon socket frame");
-                }
-                return;
-            }
+            if (isBinary)
+                return sender.disconnect("unsupported binary Peon socket frame");
             let frame;
             try {
                 const parsed = JSON.parse(data.toString());
@@ -601,20 +583,7 @@ export class PeonSocketSupervisor {
         this.flushOutbox(socket, current);
     }
     acknowledgeOutbox(epoch, cursor) {
-        if (!this.outbox)
-            return false;
-        const pending = this.outbox.pendingForDelivery();
-        const index = pending.findIndex((message) => message.cursor === cursor);
-        const acknowledged = index < 0 ? [] : pending.slice(0, index + 1).map((message) => message.cursor);
-        for (const removedCursor of acknowledged) {
-            if (!this.multiplexer.durableAcknowledging(removedCursor))
-                return false;
-        }
-        if (!this.outbox.acknowledge(epoch, cursor))
-            return false;
-        for (const removedCursor of acknowledged)
-            this.multiplexer.durableAcknowledged(removedCursor);
-        return true;
+        return this.outbox?.acknowledge(epoch, cursor) ?? false;
     }
     clearOutboxTimers() {
         if (this.outboxFlushTimer)
@@ -646,85 +615,7 @@ export class PeonSocketSupervisor {
             return false;
         }
     }
-    sendBinaryFrame(socket, current, frame) {
-        if (!current() || socket.readyState !== WebSocket.OPEN || frame.byteLength > this.maxFrameBytes
-            || socket.bufferedAmount + frame.byteLength > this.maxBufferedBytes)
-            return false;
-        try {
-            socket.send(frame, { binary: true }, (error) => {
-                if (!error || !current())
-                    return;
-                this.state.lastError = this.errorText(error);
-                socket.terminate();
-            });
-            return true;
-        }
-        catch (error) {
-            this.state.lastError = this.errorText(error);
-            socket.terminate();
-            return false;
-        }
-    }
 }
 // Overseer uses one control/realtime socket for capabilities and durable
-// delivery. File bytes use Fleet HTTP and do not participate in this pool.
-export class PeonSocketPool {
-    supervisors;
-    constructor(supervisors) {
-        this.supervisors = supervisors;
-        if (supervisors.length === 0)
-            throw new Error("Peon socket pool requires at least one connection");
-    }
-    start() {
-        for (const supervisor of this.supervisors)
-            supervisor.start();
-    }
-    stop() {
-        for (const supervisor of this.supervisors)
-            supervisor.stop();
-    }
-    refresh() {
-        for (const supervisor of this.supervisors)
-            supervisor.refresh();
-    }
-    getState() {
-        const states = this.supervisors.map((supervisor) => supervisor.getState());
-        const enabled = states.some((state) => state.enabled);
-        const connectedConnections = states.filter((state) => state.connected).length;
-        const connectingConnections = states.filter((state) => state.connecting).length;
-        const connected = enabled && connectedConnections === states.length;
-        const connectedTimes = states
-            .map((state) => state.connectedAt)
-            .filter((value) => value !== null);
-        const disconnectedTimes = states
-            .map((state) => state.lastDisconnectedAt)
-            .filter((value) => value !== null);
-        const retryTimes = states
-            .map((state) => state.nextRetryAt)
-            .filter((value) => value !== null);
-        const unhealthy = states.find((state) => !state.connected && state.lastError);
-        const primary = states[0];
-        return {
-            enabled,
-            connecting: connectingConnections > 0,
-            connected,
-            derecruited: states.some((state) => state.derecruited),
-            connectedAt: connected && connectedTimes.length > 0 ? Math.max(...connectedTimes) : null,
-            lastDisconnectedAt: disconnectedTimes.length > 0 ? Math.max(...disconnectedTimes) : null,
-            reconnectAttempt: Math.max(...states.map((state) => state.reconnectAttempt)),
-            nextRetryAt: retryTimes.length > 0 ? Math.min(...retryTimes) : null,
-            lastError: unhealthy?.lastError ?? primary?.lastError ?? null,
-            outbox: primary?.outbox ?? null,
-            targetConnections: states.length,
-            connectedConnections,
-            connectingConnections,
-        };
-    }
-    registerReverseCommandHandlers(handlers) {
-        for (const supervisor of this.supervisors)
-            supervisor.registerReverseCommandHandlers(handlers);
-    }
-}
-export const peonSocket = new PeonSocketPool([
-    new PeonSocketSupervisor({ outboxFactory: () => new PeonSocketOutbox() }),
-]);
+// delivery. File bytes use Fleet HTTP.
+export const peonSocket = new PeonSocketSupervisor({ outboxFactory: () => new PeonSocketOutbox() });

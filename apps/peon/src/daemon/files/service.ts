@@ -1,6 +1,5 @@
 import { closeSync, openSync, readSync, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import type { Dirent } from "node:fs";
 import {
   type FileAccessContract,
   type FileAccessServiceOptions,

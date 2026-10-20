@@ -24,8 +24,6 @@ export {
   flushTranscript,
   previewText,
   readTranscript,
-  readCommittedTranscriptEntries,
-  readCommittedTranscriptEntriesBounded,
   readCommittedTranscriptEntriesBoundedAsync,
   readCommittedTranscriptTail,
   sessionArtifactInventory,
@@ -117,9 +115,6 @@ export {
   utf8Suffix,
 } from "./sessionPayloadGuard.js";
 export {
-  sessionPresence,
-} from "./sessionPresence.js";
-export {
   CONTEXT_ONLY_MESSAGES_CAPABILITY,
   ContextMessageError,
   parseContextMessage,
@@ -157,9 +152,6 @@ export {
   type StatsPeriod,
 } from "./sessionTypes.js";
 export {
-  sessionWarnings,
-} from "./sessionWarnings.js";
-export {
   type AgentContextUsage,
   type SessionWarning,
   type SessionWarningCode,
@@ -181,10 +173,8 @@ export {
   TranscriptPaginationError,
   decodeTranscriptCursor,
   encodeIndexedTranscriptCursor,
-  paginateTranscript,
   parseTranscriptPageRequest,
   parseTranscriptResumeEventId,
-  transcriptResumeIndex,
   type TranscriptPage,
 } from "./transcriptPagination.js";
 export {

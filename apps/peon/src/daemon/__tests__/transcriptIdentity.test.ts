@@ -12,15 +12,13 @@ const {
   discardTranscript,
   flushTranscript,
   forgetTranscript,
-  readCommittedTranscriptEntries,
-  readCommittedTranscriptEntriesBounded,
   readCommittedTranscriptEntriesBoundedAsync,
   readTranscriptEntries,
+  readTranscriptPage,
   sessionsDir,
   subscribeTranscriptCommits,
   transcriptPath,
 } = await import("../sessions/sessionArtifacts.js");
-const { paginateTranscript } = await import("../sessions/transcriptPagination.js");
 
 test("legacy, duplicate, corrupt, and newly persisted rows keep stable distinct ids across reload", async () => {
   mkdirSync(sessionsDir, { recursive: true });
@@ -32,13 +30,14 @@ test("legacy, duplicate, corrupt, and newly persisted rows keep stable distinct 
   assert.equal(first.length, 3);
   assert.equal(new Set(first.map((entry) => entry.id)).size, 3);
   assert.ok(first.every((entry) => entry.id.startsWith("legacy_")));
-  const newestPage = paginateTranscript(id, first, { limit: 1 });
+  const newestPage = await readTranscriptPage(id, "claude-code", { limit: 1 });
+  assert.equal(newestPage.events[0]?.eventId, first.at(-1)?.id);
 
   forgetTranscript(id);
   const reloaded = readTranscriptEntries(id, "claude-code");
   assert.deepEqual(reloaded.map((entry) => entry.id), first.map((entry) => entry.id));
-  const reloadedOlderPage = paginateTranscript(id, reloaded, { limit: 1, cursor: newestPage.nextCursor! });
-  assert.equal(reloadedOlderPage.events.length, 1);
+  const reloadedOlderPage = await readTranscriptPage(id, "claude-code", { limit: 1, cursor: newestPage.nextCursor! });
+  assert.deepEqual(reloadedOlderPage.events.map((event) => event.eventId), [first[1]?.id]);
 
   const sourceTimestamp = "2026-07-16T08:06:23.942Z";
   const appended = appendTranscriptEvent(id, { type: "user_message", text: "new", createdAt: 1, sourceTimestamp }, () => 1_783_000_000_123);
@@ -96,13 +95,13 @@ test("reverse publication notification crosses only after the canonical JSONL ap
     assert.deepEqual(committed, []);
     await flushTranscript(id);
     assert.deepEqual(committed, [appended.id]);
-    assert.deepEqual(readCommittedTranscriptEntries(id, "claude-code").map((item) => item.id), [appended.id]);
+    assert.deepEqual(readTranscriptEntries(id, "claude-code").map((item) => item.id), [appended.id]);
   } finally {
     unsubscribe();
   }
 });
 
-test("bounded committed reader stops oversized canonical transcripts by bytes, line, and event count", () => {
+test("bounded committed reader stops oversized canonical transcripts by bytes, line, and event count", async () => {
   const id = "bounded-committed-reader";
   mkdirSync(sessionsDir, { recursive: true });
   const rows = [
@@ -112,24 +111,24 @@ test("bounded committed reader stops oversized canonical transcripts by bytes, l
   ];
   writeFileSync(transcriptPath(id), `${rows.join("\n")}\n`);
 
-  assert.throws(
-    () => readCommittedTranscriptEntriesBounded(id, "claude-code", {
+  await assert.rejects(
+    () => readCommittedTranscriptEntriesBoundedAsync(id, "claude-code", {
       maxEvents: 2,
       maxSourceBytes: 8 * 1024,
       maxLineBytes: 2 * 1024,
     }),
     (error: unknown) => error instanceof CommittedTranscriptLimitError && error.limit === "events",
   );
-  assert.throws(
-    () => readCommittedTranscriptEntriesBounded(id, "claude-code", {
+  await assert.rejects(
+    () => readCommittedTranscriptEntriesBoundedAsync(id, "claude-code", {
       maxEvents: 10,
       maxSourceBytes: 128,
       maxLineBytes: 2 * 1024,
     }),
     (error: unknown) => error instanceof CommittedTranscriptLimitError && error.limit === "source_bytes",
   );
-  assert.throws(
-    () => readCommittedTranscriptEntriesBounded(id, "claude-code", {
+  await assert.rejects(
+    () => readCommittedTranscriptEntriesBoundedAsync(id, "claude-code", {
       maxEvents: 10,
       maxSourceBytes: 8 * 1024,
       maxLineBytes: 128,

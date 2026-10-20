@@ -12,18 +12,13 @@ import { paginateSessions } from "./sessionPagination.js";
 import { statsForPeriod as calculateStatsForPeriod } from "./sessionStats.js";
 import type {
   AttachmentInfo,
-  PendingSystemPrompt,
   QueuedFollowUp,
-  SessionOutcome,
   SessionRecord,
   SessionStats,
-  SessionStatus,
-  SessionUsage,
   StatsPeriod,
   ReplyTo,
 } from "./sessionTypes.js";
 import {
-  attachmentsDir,
   appendTranscriptEvent,
   discardTranscript,
   flushTranscript,
@@ -866,15 +861,6 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     const agent = sessionState.records.get(id)?.agent ?? "claude-code";
     const anchors = messageThreadAnchors(id);
     return readTranscriptEntries(id, agent).map(({ id: eventId, event }) => withMessageThreadAnchor(event, eventId, anchors));
-  },
-
-  getTranscriptEntries(id: string) {
-    const agent = sessionState.records.get(id)?.agent ?? "claude-code";
-    const anchors = messageThreadAnchors(id);
-    return readTranscriptEntries(id, agent).map(({ id: eventId, event }) => ({
-      id: eventId,
-      event: withMessageThreadAnchor(event, eventId, anchors),
-    }));
   },
 
   async getTranscriptPage(id: string, options: { limit: number; cursor?: string }) {

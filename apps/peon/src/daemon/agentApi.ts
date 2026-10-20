@@ -20,7 +20,6 @@ import {
   toPublicSessionRecord,
   type StatsPeriod,
 } from "./sessions/index.js";
-import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "./uploads.js";
 import { createProjectService, projectStore, type ProjectService } from "./projects/index.js";
 import { pairing } from "./identity/pairing.js";
 import { ensurePeonId } from "./identity/peonIdentity.js";

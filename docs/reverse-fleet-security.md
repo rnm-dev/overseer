@@ -221,7 +221,6 @@ Overseer coverage:
 Peon coverage:
 
 - claim contract and implemented client persistence/proof/recovery tests
-- reverse-command channel/ledger characterization
 - socket and credential-generation replacement
 - project/sandbox file channels and Fleet HTTP directory listing
 - human-settings credential redaction

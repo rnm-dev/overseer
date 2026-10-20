@@ -39,22 +39,8 @@ export class PeonSocketMultiplexer {
         channel.receive(frame, sender);
         return true;
     }
-    receiveBinary(frame, sender) {
-        const channel = this.channels.find((candidate) => candidate.handlesBinary?.(frame));
-        if (!channel?.receiveBinary)
-            return false;
-        channel.receiveBinary(frame, sender);
-        return true;
-    }
     disconnected(resetAuthority = false) {
         for (const channel of this.channels)
             channel.disconnected(resetAuthority);
-    }
-    durableAcknowledged(cursor) {
-        for (const channel of this.channels)
-            channel.durableAcknowledged?.(cursor);
-    }
-    durableAcknowledging(cursor) {
-        return this.channels.every((channel) => channel.durableAcknowledging?.(cursor) !== false);
     }
 }

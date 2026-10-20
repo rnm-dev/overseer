@@ -25,7 +25,6 @@ test("multiplexer advertises, negotiates, and routes isolated channels", () => {
   const sender = {
     durable: false,
     send: (_frame: PeonSocketFrame) => true,
-    sendBinary: () => true,
     sendDurable: () => ({ accepted: false as const, code: "PERSIST_FAILED" as const, error: "disabled" }),
     disconnect: (_reason: string) => {},
   };

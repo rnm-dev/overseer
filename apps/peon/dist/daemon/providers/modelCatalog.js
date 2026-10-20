@@ -130,7 +130,6 @@ export function narrowNewSessionAgent(value) {
     return driver?.available() && driver.visible ? driver.id : undefined;
 }
 export function providerDefaultModel(agent) {
-    const driver = getAgentDriver(agent);
     const models = modelsFor(agent);
     const model = models.find((candidate) => candidate.default) ?? models[0];
     if (!model)

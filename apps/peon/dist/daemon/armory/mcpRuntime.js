@@ -527,10 +527,8 @@ export class ArmoryMcpRuntime {
 }
 /** Retained only for pre-capability API compatibility; capable APIs return 410 first. */
 export class ArmoryMcpLifecycleService {
-    runtime;
     operations;
     constructor(runtime) {
-        this.runtime = runtime;
         this.operations = new ArmoryOperationCoordinator(runtime.stores.operations);
     }
     async enable(packageId) {

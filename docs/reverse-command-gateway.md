@@ -6,6 +6,13 @@ context, workspace, Peon, operation, target, and optional stable command ID.
 The gateway reloads the canonical user/email and rejects a caller-supplied
 `actor`; services do not read or write the Peon WebSocket directly.
 
+**Status:** no operation uses this gateway. `REVERSE_COMMAND_OPERATIONS` is
+empty, so Overseer never accepts the capability, and on 2026-10-20 Peon's
+unused side (command channel, admission ledger, preview-revision handlers)
+was deleted. Reviving an operation means rebuilding that Peon participant;
+the removed implementation is in git history before that date. The server
+gateway and the contract below are unchanged.
+
 The wire lifecycle is the frozen canonical `reverse-command-v1` contract in
 `packages/protocol/reverse-command-v1/`:
 

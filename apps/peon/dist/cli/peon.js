@@ -265,7 +265,6 @@ async function restartCommand(force) {
     // Same busy-session guard `/api/v1/control/update` and `peon remote` apply — a
     // restart SIGTERMs the whole cgroup, killing any in-flight `claude -p`
     // session with no way to recover it. --force (or FORCE=1) overrides.
-    const RESTART_CMD = serviceRestartHint();
     try {
         const body = (await (await fetch(`${BASE}/api/v1/sessions`)).json());
         if (body.sessions?.some((s) => s.status === "running") && !force) {
@@ -518,14 +517,6 @@ async function main() {
                 }
             };
             const RESTART_CMD = serviceRestartHint();
-            const hostnameOf = (url) => {
-                try {
-                    return new URL(url ?? "").hostname;
-                }
-                catch {
-                    return "";
-                }
-            };
             // Mirrors the busy-session guard `/api/v1/control/update` applies before its own
             // restart — restarting kills any in-flight session the same way a daemon update does.
             const restartBothServices = async (force) => {

@@ -25,7 +25,7 @@ function requireKnownSession(service) {
 export function createHumanSessionsRouter(options) {
     const router = express.Router();
     const service = options.sessionService;
-    const { resolveSessionAuthor, resolveSessionViewer, resolveDefaultAgent, listAgentsForNewSessionError, narrowNewSessionAgent, narrowModel, narrowReasoningEffort, toPublicSessionRecord, toSessionSummary, toSessionView, } = options.helpers;
+    const { resolveSessionAuthor, resolveDefaultAgent, listAgentsForNewSessionError, narrowNewSessionAgent, narrowModel, narrowReasoningEffort, toPublicSessionRecord, toSessionSummary, } = options.helpers;
     const assignSessionId = (req, _res, next) => {
         req.acaSessionId = options.resolveSessionId();
         next();
@@ -100,7 +100,7 @@ export function createHumanSessionsRouter(options) {
         const record = service.get(req.params.id);
         if (!record)
             return res.status(404).json({ error: "unknown session" });
-        res.json(toSessionView(record, resolveSessionViewer(req)));
+        res.json(toPublicSessionRecord(record));
     });
     router.patch("/sessions/:id", (req, res) => {
         if (typeof req.body?.title !== "string") {
@@ -109,7 +109,7 @@ export function createHumanSessionsRouter(options) {
         const record = service.rename(req.params.id, req.body.title);
         if (!record)
             return res.status(404).json({ error: "unknown session" });
-        res.json(toSessionView(record, resolveSessionViewer(req)));
+        res.json(toPublicSessionRecord(record));
     });
     router.delete("/sessions/:id", (req, res) => {
         const result = service.delete(req.params.id);

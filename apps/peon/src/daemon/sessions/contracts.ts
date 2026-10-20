@@ -1,7 +1,7 @@
 import type { AgentEvent } from "../agents/index.js";
 import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js";
 import type { SessionPage } from "./sessionPagination.js";
-import type { AttachmentInfo, QueuedFollowUp, ReplyTo, SessionOutcome, SessionRecord, SessionStats, StatsPeriod } from "./sessionTypes.js";
+import type { AttachmentInfo, QueuedFollowUp, ReplyTo, SessionRecord, SessionStats, StatsPeriod } from "./sessionTypes.js";
 import type { ContextMention, MessageAttribution, ParticipantMessageEvent, PrincipalSnapshot } from "./contextMessages.js";
 import type { MessageThread, MessageThreadPrincipal } from "./messageThreads.js";
 
@@ -126,7 +126,6 @@ export type SessionJsonService =
 
 export interface SessionTranscriptEventContract {
   getTranscript(id: string): AgentEvent[];
-  getTranscriptEntries(id: string): SessionRecordEntry[];
   getTranscriptPage(id: string, options: { limit: number; cursor?: string }): Promise<SessionTranscriptPage>;
   preview(id: string, filePath: string, author?: string): AgentEvent | undefined;
   on(event: "event", listener: (payload: { sessionId: string; event: unknown; eventId: string }) => void): unknown;

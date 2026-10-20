@@ -7,14 +7,12 @@ import path from "node:path";
 import express from "express";
 import { settings } from "./settings/index.js";
 import { pairing } from "./identity/pairing.js";
-import { sessionPresence } from "./sessions/index.js";
 import {
   sessionArtifactInventory,
   SessionOrchestrationService,
   type ProjectSessionContract,
   sessions,
   toPublicSessionRecord,
-  type SessionRecord,
 } from "./sessions/index.js";
 import { UnauthorizedRateLimiter } from "./runtime/unauthorizedRateLimit.js";
 import { createProjectService, projectStore, type ProjectService } from "./projects/index.js";
@@ -35,12 +33,10 @@ import {
   FileAccessService,
 } from "./files/index.js";
 import { toSessionSummary } from "./sessions/index.js";
-import { paginateTranscript, parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { cliUpdates, CliUpdateError, type CliUpdateProvider, type CliUpdateService } from "./updates/cliUpdates.js";
 
 const startedAt = Date.now();
-const SSE_HEARTBEAT_MS = Number(process.env.ACA_SSE_HEARTBEAT_MS) || 15_000;
 export const MCP_JSON_BODY_LIMIT_BYTES = 24 * 1024 * 1024;
 
 export function mcpJsonBodyParser(): express.RequestHandler {
@@ -67,22 +63,6 @@ export function jsonBodyErrorHandler(
     return;
   }
   next(error);
-}
-
-// Joins ephemeral, in-memory viewer presence onto the persisted
-// SessionRecord for API responses only — SessionRecord itself (and what
-// gets written to <id>.summary.json) stays untouched. viewers seeds
-// SessionDetail's initial render before its first SSE "presence" frame
-// arrives; viewerCount powers the sessions-list row badge.
-//
-// The requesting user is excluded from `viewers` — the badge is meant to
-// surface *other* people looking at a session, so someone who's the only
-// viewer of their own open session shouldn't see a "1 viewing" badge for
-// themselves. The SSE presence stream (GET /api/v1/sessions/:id/stream) applies
-// the same per-connection exclusion.
-function toSessionView(record: SessionRecord, viewerUsername: string | null) {
-  const viewers = sessionPresence.list(record.id).filter((u) => u !== viewerUsername);
-  return { ...toPublicSessionRecord(record), viewers, viewerCount: viewers.length };
 }
 
 function isLoopback(req: express.Request): boolean {
@@ -140,9 +120,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
   const sessionHelpers: HumanSessionResponseHelpers = options.sessionHelpers ?? {
     toSessionSummary,
     toPublicSessionRecord,
-    toSessionView,
     resolveSessionAuthor: () => CLI_ACTOR,
-    resolveSessionViewer: () => CLI_ACTOR,
     resolveDefaultAgent: () => settings.get().defaultAgent,
     listAgentsForNewSessionError: () => listAgentDrivers({ visible: true, available: true }).map((driver) => driver.id).join(", "),
     narrowNewSessionAgent: narrowNewSessionAgent,
@@ -417,20 +395,6 @@ export function createControlServer(options: ControlServerOptions = {}) {
     });
   });
 
-  app.get("/api/v1/sessions/:id/transcript", (req, res) => {
-    if (!sessions.get(req.params.id)) return res.status(404).json({ error: "unknown session" });
-    try {
-      const pagination = parseTranscriptPageRequest(req.query.limit, req.query.cursor);
-      if (!pagination) return res.json({ events: sessions.getTranscript(req.params.id) });
-      res.json(paginateTranscript(req.params.id, sessions.getTranscriptEntries(req.params.id), pagination));
-    } catch (error) {
-      if (error instanceof TranscriptPaginationError) {
-        return res.status(400).json({ error: error.message, code: error.code });
-      }
-      throw error;
-    }
-  });
-
   // Session-scoped workspace access. The session cwd is the authority here,
   // rather than projectKey: ad-hoc sessions may not belong to a registered
   // project, and a project session may deliberately run in a nested cwd.
@@ -611,99 +575,6 @@ export function createControlServer(options: ControlServerOptions = {}) {
     req.on("close", () => {
       if (timer) clearTimeout(timer);
       watcher?.close();
-    });
-  });
-
-  app.get("/api/v1/sessions/:id/stream", (req, res) => {
-    if (!sessions.get(req.params.id)) return res.status(404).json({ error: "unknown session" });
-    // Defensive — this route already sits behind the global auth-gate
-    // middleware, which 401s before this handler ever runs, so this
-    // shouldn't trigger in practice.
-    const username = CLI_ACTOR;
-    let resumeEventId: string | undefined;
-    try {
-      const lastEventIdHeader = req.headers["last-event-id"];
-      resumeEventId = parseTranscriptResumeEventId(
-        typeof lastEventIdHeader === "string" ? lastEventIdHeader : req.query.afterEventId,
-      );
-    } catch (error) {
-      if (error instanceof TranscriptPaginationError) {
-        return res.status(400).json({ error: error.message, code: error.code });
-      }
-      throw error;
-    }
-
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-    res.flushHeaders();
-    res.on("error", () => {});
-    let closed = false;
-    const send = (event: string, data: unknown, eventId?: string) => {
-      if (closed) return;
-      const idLine = eventId === undefined ? "" : `id: ${eventId}\n`;
-      try {
-        res.write(`event: ${event}\n${idLine}data: ${JSON.stringify(data)}\n\n`);
-      } catch {
-        closed = true;
-      }
-    };
-    // The SSE id is the same immutable id returned on paginated snapshot
-    // events, so snapshot/live overlap can be merged without payload guesses.
-    const onEvent = (payload: { sessionId: string; event: unknown; eventId: string }) => {
-      if (payload.sessionId === req.params.id) send("event", payload.event, payload.eventId);
-    };
-    const onChange = (record: SessionRecord) => {
-      if (record.id === req.params.id) send("change", toPublicSessionRecord(record));
-    };
-    sessions.on("event", onEvent);
-    sessions.on("change", onChange);
-
-    // The client fetches a bounded snapshot first, then supplies its newest
-    // immutable id here. Subscribe before reading so events accepted during
-    // this handoff are either in the replay snapshot or delivered live.
-    if (resumeEventId !== undefined) {
-      const transcript = sessions.getTranscriptEntries(req.params.id);
-      const startAt = transcriptResumeIndex(transcript, resumeEventId);
-      for (let i = startAt; i < transcript.length; i++) {
-        send("event", transcript[i].event, transcript[i].id);
-      }
-    }
-
-    // Presence: join immediately, send this connection its own initial
-    // snapshot unconditionally (a second tab from the same user won't
-    // trigger a "change" broadcast, but still needs its own first render),
-    // then subscribe to future changes for this session. This connection's
-    // own username is filtered out of every "viewers" payload — the badge is
-    // for *other* viewers, so being the sole viewer of your own session
-    // should show nothing (matches toSessionView's exclusion).
-    const withoutSelf = (viewers: string[]) => viewers.filter((u) => u !== username);
-    sessionPresence.join(req.params.id, username);
-    send("presence", { viewers: withoutSelf(sessionPresence.list(req.params.id)) });
-    const onPresenceChange = (payload: { sessionId: string; viewers: string[] }) => {
-      if (payload.sessionId === req.params.id) send("presence", { viewers: withoutSelf(payload.viewers) });
-    };
-    sessionPresence.on("change", onPresenceChange);
-
-    const heartbeat = setInterval(() => {
-      if (closed) return;
-      try {
-        res.write(": ping\n\n");
-      } catch {
-        closed = true;
-      }
-    }, SSE_HEARTBEAT_MS);
-    heartbeat.unref?.();
-
-    req.on("close", () => {
-      closed = true;
-      clearInterval(heartbeat);
-      sessions.off("event", onEvent);
-      sessions.off("change", onChange);
-      sessionPresence.off("change", onPresenceChange);
-      sessionPresence.leave(req.params.id, username);
     });
   });
 

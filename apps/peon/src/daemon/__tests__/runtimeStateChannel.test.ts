@@ -17,7 +17,6 @@ function sender(sent: PeonSocketFrame[]): PeonSocketSender {
     authority: "test",
     generation: 1,
     send: () => true,
-    sendBinary: () => true,
     sendDurable: (frame) => {
       sent.push(frame);
       return { accepted: true, epoch: "delivery", cursor: String(sent.length), messageId: String(sent.length) };

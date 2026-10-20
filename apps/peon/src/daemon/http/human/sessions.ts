@@ -10,9 +10,7 @@ export type HumanSessionService = SessionJsonService;
 export interface HumanSessionResponseHelpers {
   toSessionSummary(record: SessionRecord): SessionSummary | Record<string, unknown>;
   toPublicSessionRecord(record: SessionRecord): Record<string, unknown>;
-  toSessionView(record: SessionRecord, viewerUsername: string | null): Record<string, unknown>;
   resolveSessionAuthor(req: express.Request): string | undefined;
-  resolveSessionViewer(req: express.Request): string | null;
   resolveDefaultAgent(): CodingAgent;
   listAgentsForNewSessionError(): string;
   narrowNewSessionAgent(value: unknown): CodingAgent | undefined;
@@ -64,7 +62,6 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
   const service = options.sessionService;
   const {
     resolveSessionAuthor,
-    resolveSessionViewer,
     resolveDefaultAgent,
     listAgentsForNewSessionError,
     narrowNewSessionAgent,
@@ -72,7 +69,6 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
     narrowReasoningEffort,
     toPublicSessionRecord,
     toSessionSummary,
-    toSessionView,
   } = options.helpers;
 
   const assignSessionId = (req: express.Request, _res: express.Response, next: express.NextFunction): void => {
@@ -151,7 +147,7 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
   router.get("/sessions/:id", (req, res) => {
     const record = service.get(req.params.id);
     if (!record) return res.status(404).json({ error: "unknown session" });
-    res.json(toSessionView(record, resolveSessionViewer(req)));
+    res.json(toPublicSessionRecord(record));
   });
 
   router.patch("/sessions/:id", (req, res) => {
@@ -160,7 +156,7 @@ export function createHumanSessionsRouter(options: HumanSessionRouterOptions): e
     }
     const record = service.rename(req.params.id, req.body.title);
     if (!record) return res.status(404).json({ error: "unknown session" });
-    res.json(toSessionView(record, resolveSessionViewer(req)));
+    res.json(toPublicSessionRecord(record));
   });
 
   router.delete("/sessions/:id", (req, res) => {

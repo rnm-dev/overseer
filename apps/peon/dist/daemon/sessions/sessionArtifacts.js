@@ -1,4 +1,4 @@
-import { closeSync, createReadStream, existsSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, renameSync, rmSync, writeFileSync, } from "node:fs";
+import { createReadStream, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync, } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -480,75 +480,9 @@ export class CommittedTranscriptLimitError extends Error {
     }
 }
 /**
- * Read only rows which crossed the JSONL append boundary. The normal transcript
- * reader intentionally includes accepted-but-not-yet-flushed cache entries;
- * reverse publication must not expose those as durable history.
- */
-export function readCommittedTranscriptEntries(id, agent) {
-    return readTranscriptEntriesFromDisk(id, agent).map((entry) => ({ ...entry }));
-}
-/**
- * Stream the canonical JSONL through fixed buffers for reverse publication.
- * Bounds are enforced while bytes and physical lines are read, before the
- * complete transcript can be materialized in memory.
- */
-export function readCommittedTranscriptEntriesBounded(id, agent, limits) {
-    const file = transcriptPath(id);
-    if (!existsSync(file))
-        return { entries: [], sourceBytes: 0 };
-    const handle = openSync(file, "r");
-    const entries = [];
-    const seen = new Set();
-    const chunk = Buffer.alloc(64 * 1024);
-    let carry = Buffer.alloc(0);
-    let sourceBytes = 0;
-    let lineNumber = 0;
-    const accept = (lineBytes) => {
-        if (lineBytes.length > limits.maxLineBytes)
-            throw new CommittedTranscriptLimitError("line_bytes");
-        const entry = parseTranscriptLine(id, agent, lineBytes.toString("utf8"), lineNumber, seen);
-        lineNumber += 1;
-        if (!entry)
-            return;
-        if (entries.length >= limits.maxEvents)
-            throw new CommittedTranscriptLimitError("events");
-        entries.push(entry);
-    };
-    try {
-        for (;;) {
-            const bytesRead = readSync(handle, chunk, 0, chunk.length, null);
-            if (bytesRead === 0)
-                break;
-            sourceBytes += bytesRead;
-            if (sourceBytes > limits.maxSourceBytes)
-                throw new CommittedTranscriptLimitError("source_bytes");
-            const combined = carry.length > 0
-                ? Buffer.concat([carry, chunk.subarray(0, bytesRead)])
-                : Buffer.from(chunk.subarray(0, bytesRead));
-            let start = 0;
-            for (;;) {
-                const newline = combined.indexOf(0x0a, start);
-                if (newline < 0)
-                    break;
-                accept(combined.subarray(start, newline));
-                start = newline + 1;
-            }
-            carry = Buffer.from(combined.subarray(start));
-            if (carry.length > limits.maxLineBytes)
-                throw new CommittedTranscriptLimitError("line_bytes");
-        }
-        if (carry.length > 0)
-            accept(carry);
-        return { entries, sourceBytes };
-    }
-    finally {
-        closeSync(handle);
-    }
-}
-/**
- * Non-blocking counterpart used by bounded daemon request paths. The sync
- * reader remains available for offline tools and compatibility tests, but
- * request handlers must not scan a complete JSONL file synchronously.
+ * Stream committed JSONL rows through fixed buffers. Bounds are enforced while
+ * bytes and physical lines are read, before the complete transcript can be
+ * materialized in memory, and the scan yields so request paths stay responsive.
  */
 export async function readCommittedTranscriptEntriesBoundedAsync(id, agent, limits) {
     return withTranscriptReadPermit(async () => {

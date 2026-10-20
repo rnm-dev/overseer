@@ -20,7 +20,6 @@ export interface PeonSocketSender {
   readonly authority?: string | null;
   readonly generation?: number;
   send(frame: PeonSocketFrame): boolean;
-  sendBinary(frame: Uint8Array): boolean;
   sendDurable(frame: PeonSocketFrame, options?: PeonSocketDurableOptions): PeonSocketDurableResult;
   disconnect(reason: string): void;
 }
@@ -37,10 +36,6 @@ export interface PeonSocketChannel {
   disconnected(resetAuthority: boolean): void;
   handles(frame: PeonSocketFrame): boolean;
   receive(frame: PeonSocketFrame, sender: PeonSocketSender): void;
-  handlesBinary?(frame: Uint8Array): boolean;
-  receiveBinary?(frame: Uint8Array, sender: PeonSocketSender): void;
-  durableAcknowledging?(cursor: string): boolean;
-  durableAcknowledged?(cursor: string): void;
 }
 
 export class PeonSocketMultiplexer {
@@ -82,22 +77,7 @@ export class PeonSocketMultiplexer {
     return true;
   }
 
-  receiveBinary(frame: Uint8Array, sender: PeonSocketSender): boolean {
-    const channel = this.channels.find((candidate) => candidate.handlesBinary?.(frame));
-    if (!channel?.receiveBinary) return false;
-    channel.receiveBinary(frame, sender);
-    return true;
-  }
-
   disconnected(resetAuthority = false): void {
     for (const channel of this.channels) channel.disconnected(resetAuthority);
-  }
-
-  durableAcknowledged(cursor: string): void {
-    for (const channel of this.channels) channel.durableAcknowledged?.(cursor);
-  }
-
-  durableAcknowledging(cursor: string): boolean {
-    return this.channels.every((channel) => channel.durableAcknowledging?.(cursor) !== false);
   }
 }

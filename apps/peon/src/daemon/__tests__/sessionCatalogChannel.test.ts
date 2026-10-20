@@ -42,7 +42,6 @@ function capture(durable = false) {
   const sender: PeonSocketSender = {
     durable,
     send: (frame) => { frames.push(frame); return true; },
-    sendBinary: () => true,
     sendDurable: (frame) => {
       if (!durable) return { accepted: false, code: "PERSIST_FAILED", error: "disabled" };
       frames.push(frame);
@@ -137,7 +136,6 @@ test("output backpressure disconnects so reconnect can resume safely", () => {
   const sender: PeonSocketSender = {
     durable: true,
     send: () => false,
-    sendBinary: () => false,
     sendDurable: () => ({ accepted: false, code: "OUTBOX_FULL", error: "full" }),
     disconnect: (reason) => disconnects.push(reason),
   };
@@ -154,7 +152,6 @@ test("durable catalog production continues across a transient socket disconnect"
   const sender: PeonSocketSender = {
     durable: true,
     send: () => false,
-    sendBinary: () => false,
     sendDurable: (frame) => {
       durableFrames.push(frame);
       return { accepted: true, epoch: "outbox", cursor: "cursor", messageId: "message" };
