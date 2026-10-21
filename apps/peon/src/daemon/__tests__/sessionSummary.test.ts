@@ -47,6 +47,9 @@ test("canonical session summary includes only bounded collection fields", () => 
 
   assert.deepEqual(Object.keys(summary), [
     "id",
+    "kind",
+    "threadState",
+    "threadSource",
     "status",
     "projectKey",
     "projectId",

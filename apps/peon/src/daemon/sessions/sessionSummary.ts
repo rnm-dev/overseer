@@ -5,6 +5,9 @@ import type { SessionOutcome, SessionRecord, SessionStatus, SessionTerminalReaso
 // change events. Detail-only state stays on GET /sessions/:id.
 export interface SessionSummary {
   id: string;
+  kind: "agent" | "thread";
+  threadState: "discussion" | "active" | null;
+  threadSource: SessionRecord["threadSource"];
   status: SessionStatus | null;
   projectKey: string | null;
   projectId: string | null;
@@ -25,6 +28,9 @@ export function toSessionSummary(record: SessionRecord): SessionSummary {
   const promptPreview = title ? null : bounded(record.prompt);
   return {
     id: record.id,
+    kind: record.kind ?? "agent",
+    threadState: record.threadState ?? null,
+    threadSource: record.threadSource ?? null,
     status: record.status,
     projectKey: record.projectKey,
     projectId: record.projectId,

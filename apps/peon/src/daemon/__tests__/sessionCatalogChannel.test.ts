@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
+import { mkdtempSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
+import { PeonSocketOutbox } from "../overseer/socket/peonSocketOutbox.js";
 import type { PeonSocketFrame, PeonSocketSender } from "../overseer/socket/peonSocketProtocol.js";
 import { SessionCatalog } from "../sessions/sessionCatalog.js";
 import { SessionCatalogChannel } from "../overseer/socket/channels/sessionCatalogChannel.js";
@@ -167,4 +171,30 @@ test("durable catalog production continues across a transient socket disconnect"
   channel.disconnected(true);
   source.change(record("a", 3));
   assert.equal(durableFrames.length, 1);
+});
+
+test("queued changes to one session keep every seq so Overseer can apply them in order", () => {
+  // Overseer applies a catalog event only when seq === acknowledgedSeq + 1.
+  // Collapsing an unsent event into a newer one would skip a seq and force a
+  // full resnapshot on every reconnect.
+  const directory = mkdtempSync(path.join(os.tmpdir(), "peon-session-catalog-outbox-"));
+  try {
+    const outbox = new PeonSocketOutbox({ fileBase: path.join(directory, "outbox") });
+    const source = new Source([record("a", 1)]);
+    const catalog = new SessionCatalog(source);
+    catalog.start();
+    const channel = new SessionCatalogChannel(catalog);
+    const output = capture(true);
+    channel.negotiated(true, {
+      channels: { "session-catalog-v1": { epoch: catalog.epoch, acknowledgedSeq: 0 } },
+    }, { ...output.sender, sendDurable: (frame, options) => outbox.enqueue(frame, options) });
+
+    source.change(record("a", 2));
+    source.change(record("a", 3));
+    source.change(record("a", 4));
+
+    assert.deepEqual(outbox.pendingForDelivery().map((message) => message.payload.seq), [1, 2, 3]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

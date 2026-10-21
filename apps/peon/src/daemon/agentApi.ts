@@ -9,12 +9,13 @@ import { DaemonConfigurationState, settings, type SettingsPatchError } from "./s
 import {
   sessionArtifactInventory,
   flushTranscript,
-  readCommittedTranscriptEntries,
+  readCommittedTranscriptTail,
   subscribeTranscriptCommits,
   type SessionCatalogReader,
   type SessionTranscriptEventContract,
   type ProjectSessionContract,
   CONTEXT_ONLY_MESSAGES_CAPABILITY,
+  MESSAGE_THREADS_CAPABILITY,
   sessions,
   toPublicSessionRecord,
   type StatsPeriod,
@@ -36,7 +37,7 @@ import { applyUpdate, checkUpdate, updateOperationStatus } from "./updates/updat
 import type { QuotaProvider } from "./providers/providerQuota.js";
 import { ARMORY_PROJECT_PACKAGES_CAPABILITY, createArmoryReadRouter, type ArmoryApiServices, type ArmoryInventoryReader } from "./armory/index.js";
 import { AtomicFileUpload, type FileAccessContract, FileAccessService, moveProjectFile } from "./files/index.js";
-import { parseTranscriptPageRequest, parseTranscriptResumeEventId, transcriptResumeIndex, TranscriptPaginationError } from "./sessions/index.js";
+import { DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT, parseTranscriptPageRequest, parseTranscriptResumeEventId, TranscriptPaginationError } from "./sessions/index.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { attachProjectRoutes, type SessionProjectReader } from "./http/fleet/projects.js";
 import { attachSessionRoutes, type FleetSessionService, type FleetSessionRouterDeps } from "./http/fleet/sessions.js";
@@ -257,7 +258,7 @@ function agentStatusView() {
     activeSessionCount: sessions.activeCount(),
     sessionCount: sessions.list().length,
     filesEnabled: Boolean(settings.get().fileTransferRoot),
-    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY],
+    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY],
     agentAuth: (() => {
       const s = getAgentDriver("claude-code")?.services.status?.() as { authState?: string; available?: boolean; checkedAt?: number } | undefined;
       return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };
@@ -318,18 +319,19 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     get: (id) => sessions.get(id),
     replayContextMessage: (commandId, id, request) => sessions.replayContextMessage(commandId, id, request),
     appendContextMessage: (commandId, id, input, request) => sessions.appendContextMessage(commandId, id, input, request),
+    listMessageThreads: (id) => sessions.listMessageThreads(id),
+    createMessageThread: (id, anchorEventId, commandId) => sessions.createMessageThread(id, anchorEventId, commandId),
+    appendMessageThreadMessage: (id, threadId, commandId, text, author) => sessions.appendMessageThreadMessage(id, threadId, commandId, text, author),
+    invokeMessageThread: (id, threadId, commandId, prompt, author) => sessions.invokeMessageThread(id, threadId, commandId, prompt, author),
     rename: (id, title) => sessions.rename(id, title),
     start: (sessionOptions) => sessions.start(sessionOptions),
     branch: (id, branchOptions) => sessions.branch(id, branchOptions),
     validateReplyTo: (id, replyTo) => sessions.validateReplyTo(id, replyTo),
-    resume: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, notifyParentOnComplete, replyTo) => sessions.resume(
-      id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, notifyParentOnComplete, replyTo,
-    ),
-    enqueue: (id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow, replyTo) => sessions.enqueue(
-      id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, startNow, replyTo,
-    ),
+    // Forward every argument: a hand-copied list silently dropped attribution.
+    resume: (...args) => sessions.resume(...args),
+    enqueue: (...args) => sessions.enqueue(...args),
     queued: (id) => sessions.queued(id),
-    editQueued: (id, itemId, prompt, replyTo) => sessions.editQueued(id, itemId, prompt, replyTo),
+    editQueued: (...args) => sessions.editQueued(...args),
     steerQueued: (id, itemId) => sessions.steerQueued(id, itemId),
     sendQueuedNow: (id, itemId) => sessions.sendQueuedNow(id, itemId),
     removeQueued: (id, itemId) => sessions.removeQueued(id, itemId),
@@ -774,12 +776,12 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
       else send("event", payload.entry.event, payload.entry.id);
     });
 
-    let transcript: ReturnType<typeof readCommittedTranscriptEntries>;
+    let replay: Awaited<ReturnType<typeof readCommittedTranscriptTail>>;
     try {
       // Capture everything accepted before this request, then read only disk
       // rows. Commits racing the read are buffered by the listener above.
       await flushTranscript(id);
-      transcript = readCommittedTranscriptEntries(id, record.agent);
+      replay = await readCommittedTranscriptTail(id, record.agent, resumeEventId, DEFAULT_TRANSCRIPT_TAIL_REPLAY_LIMIT);
     } catch (error) {
       cleanup();
       return fail(res, 503, "TRANSCRIPT_UNAVAILABLE", error instanceof Error ? error.message : "transcript unavailable");
@@ -804,8 +806,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
     sessions.on("change", onChange);
 
     // Replay after subscribing, then drain commits that raced the disk read.
-    const startAt = transcriptResumeIndex(transcript, resumeEventId);
-    for (let i = startAt; i < transcript.length; i++) send("event", transcript[i].event, transcript[i].id);
+    for (const entry of replay) send("event", entry.event, entry.id);
     for (const entry of pending) {
       if (!sent.has(entry.id)) send("event", entry.event, entry.id);
     }

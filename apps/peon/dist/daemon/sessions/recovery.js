@@ -44,6 +44,11 @@ export function restoreFromDisk() {
         }
         const hadPendingSystemPrompts = Object.prototype.hasOwnProperty.call(record, "pendingSystemPrompts");
         record.pendingSystemPrompts ??= [];
+        const hadSessionKind = Object.prototype.hasOwnProperty.call(record, "kind")
+            && Object.prototype.hasOwnProperty.call(record, "threadState");
+        record.kind ??= "agent";
+        record.threadState ??= null;
+        record.threadSource ??= null;
         record.taskKey ??= null;
         record.taskTitle ??= null;
         record.initiator ??= null;
@@ -57,7 +62,7 @@ export function restoreFromDisk() {
         record.spawnRequestId ??= null;
         record.parentCompletionNotifiedAt ??= null;
         record.parentCompletionNotificationPending ??= false;
-        if (!hadOrchestrationFields || !hadPendingSystemPrompts || !hadQueueTypes || !hadQueueReplyTo)
+        if (!hadOrchestrationFields || !hadPendingSystemPrompts || !hadQueueTypes || !hadQueueReplyTo || !hadSessionKind)
             persistSummary(record);
         record.title ??= null;
         record.candidateProjectKeys ??= [];

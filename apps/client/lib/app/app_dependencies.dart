@@ -41,6 +41,8 @@ import 'package:overseer_mobile/features/projects/application/projects_controlle
 import 'package:overseer_mobile/features/projects/application/project_detail_controller.dart';
 import 'package:overseer_mobile/features/projects/data/default_project_repository.dart';
 import 'package:overseer_mobile/features/projects/data/dio_project_detail_repository.dart';
+import 'package:overseer_mobile/features/projects/data/project_file_transfers.dart';
+import 'package:overseer_mobile/features/projects/application/project_files_controller.dart';
 import 'package:overseer_mobile/features/peon/application/peon_settings_controller.dart';
 import 'package:overseer_mobile/features/peon/peon.dart';
 import 'package:overseer_mobile/features/peon/application/peon_management_controller.dart';
@@ -221,6 +223,9 @@ class AppDependencies extends StatelessWidget {
             database: ref.watch(appDatabaseProvider),
             dio: ref.watch(overseerHttpClientProvider),
           );
+        }),
+        projectFileTransfersProvider.overrideWith((ref) {
+          return DioProjectFileTransfers(ref.watch(overseerHttpClientProvider));
         }),
         projectDetailRepositoryProvider.overrideWith((ref) {
           return DioProjectDetailRepository(

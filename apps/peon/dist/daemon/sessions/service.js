@@ -8,7 +8,7 @@ import { settings } from "../settings/index.js";
 import { buildAugmentedPrompt } from "./sessionPrompts.js";
 import { paginateSessions } from "./sessionPagination.js";
 import { statsForPeriod as calculateStatsForPeriod } from "./sessionStats.js";
-import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, previewText, readTranscript, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
+import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, previewText, findTranscriptEntry, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
 import { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, } from "./constants.js";
 import { sessionPreviewDir } from "./preview.js";
 import { appendPreviewEvent, appendUserTurn, finalizeSession as finalize, runProcess, scheduleQueuedDispatch, rememberReceipt, rememberSteeredItem, } from "./runtime.js";
@@ -16,6 +16,7 @@ import { inferProjectKey, isRestartInterrupted, restoreFromDisk, } from "./recov
 import { sessionState } from "./state.js";
 import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
 import { appendContextMessage as appendParticipantContext, initializeBranchedContext, replayContextMessage } from "./contextMessages.js";
+import { appendThreadMessage, createThread, invokeThread, listThreads, messageThreadAnchors, withMessageThreadAnchor } from "./messageThreads.js";
 export { attachmentsDir } from "./sessionArtifacts.js";
 const pendingSessionBranches = new Map();
 export { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, };
@@ -110,11 +111,14 @@ export const sessions = {
             // Caller-supplied ids let external task systems link their own durable
             // records to the session before the process spawns.
             id,
+            kind: opts.kind ?? "agent",
+            threadState: opts.threadState ?? null,
             prompt: opts.prompt,
             title: opts.title?.trim() || null,
             followUpPrompts: [],
             queuedFollowUps: [],
             pendingSystemPrompts: [],
+            bootstrapContext: opts.bootstrapContext ?? null,
             dir,
             agent,
             backendSessionId: requireAgentDriver(agent).conversation.initialBackendId(id),
@@ -131,17 +135,18 @@ export const sessions = {
             taskKey: opts.taskKey ?? null,
             taskTitle: opts.taskTitle ?? null,
             initiator: opts.author ?? null,
+            threadSource: opts.threadSource ?? null,
             parentSessionId: opts.parentSessionId ?? null,
             spawnDepth: opts.spawnDepth ?? 0,
             spawnRequestId: opts.spawnRequestId ?? null,
             parentCompletionNotifiedAt: null,
             parentCompletionNotificationPending: Boolean(opts.parentSessionId),
             expectsOutcome: opts.expectsOutcome ?? false,
-            status: "running",
+            status: opts.deferStart ? "completed" : "running",
             outcome: null,
             terminalReason: null,
             startedAt: Date.now(),
-            endedAt: null,
+            endedAt: opts.deferStart ? Date.now() : null,
             turnCount: 0,
             // runProcess() bumps this by the live maxTurns on the spawn below, so it
             // starts at zero here rather than being pre-seeded with a portion.
@@ -158,8 +163,84 @@ export const sessions = {
             eventCount: 0,
         };
         sessionState.records.set(record);
+        if (opts.deferStart) {
+            persistSummary(record);
+            sessionState.emitter.emit("change", record);
+            return record;
+        }
         runProcess(record, opts.prompt, false, opts.attachments ?? [], opts.permissionMode, opts.author, undefined, undefined, opts.commandId);
         return record;
+    },
+    listMessageThreads(id) {
+        if (!sessionState.records.get(id))
+            throw new Error("unknown session");
+        return listThreads(id);
+    },
+    async createMessageThread(id, anchorEventId, commandId) {
+        const record = sessionState.records.get(id);
+        if (!record)
+            throw new Error("unknown session");
+        const thread = await createThread(record, anchorEventId, commandId);
+        if (!sessionState.records.get(thread.id)) {
+            this.start({
+                id: thread.id,
+                prompt: "",
+                title: record.title ? `${record.title} · thread` : "Message thread",
+                dir: record.dir,
+                projectKey: record.projectKey ?? undefined,
+                agent: record.agent,
+                model: record.model ?? undefined,
+                reasoningEffort: record.reasoningEffort ?? undefined,
+                author: record.initiator ?? undefined,
+                kind: "thread",
+                threadState: "discussion",
+                threadSource: { sessionId: record.id, threadId: thread.id, anchorEventId },
+                deferStart: true,
+            });
+        }
+        return thread;
+    },
+    async appendMessageThreadMessage(id, threadId, commandId, text, author) {
+        if (!sessionState.records.get(id))
+            throw new Error("unknown session");
+        const thread = await appendThreadMessage(id, threadId, commandId, text, author);
+        const threadRecord = sessionState.records.get(thread.id);
+        if (threadRecord) {
+            threadRecord.lastActivityAt = thread.updatedAt;
+            threadRecord.lastUserMessageAt = thread.updatedAt;
+            threadRecord.lastMessagePreview = previewText(text);
+            persistSummary(threadRecord);
+            sessionState.emitter.emit("change", threadRecord);
+        }
+        return thread;
+    },
+    async invokeMessageThread(id, threadId, commandId, prompt, author) {
+        const source = sessionState.records.get(id);
+        if (!source)
+            throw new Error("unknown session");
+        return invokeThread(source, threadId, commandId, prompt, author, (options) => {
+            const existing = options.id ? sessionState.records.get(options.id) : undefined;
+            if (!existing)
+                return this.start(options);
+            if (existing.kind !== "thread")
+                throw new Error("message thread target is not a thread session");
+            if (existing.threadState === "active")
+                return existing;
+            existing.prompt = options.prompt;
+            existing.initiator = options.author ?? existing.initiator;
+            existing.bootstrapContext = options.bootstrapContext ?? null;
+            existing.threadState = "active";
+            existing.status = "running";
+            existing.endedAt = null;
+            existing.outcome = null;
+            existing.lastActivityAt = Date.now();
+            persistSummary(existing);
+            // Publish only once runProcess holds its launch barrier or has
+            // registered the run; a `running` record without either is an orphan.
+            runProcess(existing, options.prompt, false, [], options.permissionMode, options.author, undefined, undefined, options.commandId);
+            sessionState.emitter.emit("change", existing);
+            return existing;
+        });
     },
     async branch(id, opts = {}) {
         const source = sessionState.records.get(id);
@@ -303,27 +384,13 @@ export const sessions = {
         // CLI's own session file must be released before a fresh `--resume`
         // reopens it, and the record must not flip through a spurious "completed".
         const spawnResume = () => {
-            // Keep a dispatch barrier across the whole synchronous setup. runProcess
-            // publishes the durable user message before it installs the new entry in
-            // activeRuns; an event listener can read the session in that interval.
-            // Without this barrier, read-time orphan reconciliation observes
-            // `running` with neither an active run nor a pending resume and
-            // incorrectly finalizes the session while its replacement is starting.
-            sessionState.resumePending.add(id);
-            try {
-                record.followUpPrompts.push(prompt);
-                record.parentCompletionNotificationPending = notifyParentOnComplete;
-                record.status = "running";
-                record.outcome = null;
-                record.terminalReason = null;
-                record.endedAt = null;
-                runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo, attribution);
-            }
-            finally {
-                // runProcess returns only after the replacement is registered, or
-                // after it has finalized the record with a bounded setup failure.
-                sessionState.resumePending.delete(id);
-            }
+            record.followUpPrompts.push(prompt);
+            record.parentCompletionNotificationPending = notifyParentOnComplete;
+            record.status = "running";
+            record.outcome = null;
+            record.terminalReason = null;
+            record.endedAt = null;
+            runProcess(record, prompt, true, attachments, permissionMode, author, model, reasoningEffort, commandId, [], 0, true, replyTo, attribution);
         };
         if (record.status === "running") {
             // A previous interrupt is still tearing down its old process; spawning now
@@ -472,10 +539,10 @@ export const sessions = {
         const record = sessionState.records.get(id);
         if (!record)
             throw new Error("unknown session");
-        const entry = readTranscriptEntries(id, record.agent).find((candidate) => candidate.id === replyTo.eventId);
+        const entry = findTranscriptEntry(id, record.agent, replyTo.eventId);
         if (!entry) {
             for (const other of sessionState.records.values()) {
-                if (other.id !== id && readTranscriptEntries(other.id, other.agent).some((candidate) => candidate.id === replyTo.eventId)) {
+                if (other.id !== id && findTranscriptEntry(other.id, other.agent, replyTo.eventId)) {
                     throw new ReplyToError("REPLY_SOURCE_WRONG_SESSION", "replyTo.eventId belongs to a different session");
                 }
             }
@@ -666,15 +733,29 @@ export const sessions = {
     },
     getTranscript(id) {
         const agent = sessionState.records.get(id)?.agent ?? "claude-code";
-        return readTranscript(id, agent);
+        const anchors = messageThreadAnchors(id);
+        return readTranscriptEntries(id, agent).map(({ id: eventId, event }) => withMessageThreadAnchor(event, eventId, anchors));
     },
     getTranscriptEntries(id) {
         const agent = sessionState.records.get(id)?.agent ?? "claude-code";
-        return readTranscriptEntries(id, agent);
+        const anchors = messageThreadAnchors(id);
+        return readTranscriptEntries(id, agent).map(({ id: eventId, event }) => ({
+            id: eventId,
+            event: withMessageThreadAnchor(event, eventId, anchors),
+        }));
     },
-    getTranscriptPage(id, options) {
+    async getTranscriptPage(id, options) {
         const agent = sessionState.records.get(id)?.agent ?? "claude-code";
-        return readTranscriptPage(id, agent, options);
+        const page = await readTranscriptPage(id, agent, options);
+        const anchors = messageThreadAnchors(id);
+        // The reader built these events for this response (concurrent identical
+        // requests share one read-only page); only anchored ones need a new object.
+        if (anchors.size === 0)
+            return page;
+        return {
+            ...page,
+            events: page.events.map((event) => withMessageThreadAnchor(event, event.eventId, anchors)),
+        };
     },
     cancel(id) {
         reconcileTerminalRegistries();

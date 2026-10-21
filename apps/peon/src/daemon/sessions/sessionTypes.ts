@@ -93,6 +93,10 @@ export interface SessionContextUsage {
 
 export interface SessionRecord {
   id: string;
+  /** First-class catalog identity. Missing on legacy records means agent. */
+  kind?: "agent" | "thread";
+  /** Threads begin as human-only discussion and become active on their first provider turn. */
+  threadState?: "discussion" | "active" | null;
   prompt: string;
   title: string | null;
   followUpPrompts: string[];
@@ -103,6 +107,8 @@ export interface SessionRecord {
   queuedCommandIds?: string[];
   /** Durable automation context coalesced into the next turn; never exposed in public session views. */
   pendingSystemPrompts: PendingSystemPrompt[];
+  /** One-time private context used to seed a session created from a message thread. */
+  bootstrapContext?: string | null;
   dir: string;
   agent: CodingAgent;
   // Provider-owned conversation id. Claude can use `id` directly; Codex
@@ -128,6 +134,8 @@ export interface SessionRecord {
   initiator: string | null;
   /** Peon session whose provider context was copied to create this session. */
   branchedFromSessionId?: string | null;
+  /** Provider-neutral lineage for a session created by invoking a message thread. */
+  threadSource?: { sessionId: string; threadId: string; anchorEventId: string } | null;
   /** Direct Peon session that delegated this work; null for human/fleet-created roots. */
   parentSessionId: string | null;
   /** Persisted delegation depth. MCP orchestration currently permits roots only (depth zero). */

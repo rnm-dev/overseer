@@ -3,6 +3,7 @@ import type { CodingAgent, ReasoningEffort } from "../providers/modelCatalog.js"
 import type { SessionPage } from "./sessionPagination.js";
 import type { AttachmentInfo, QueuedFollowUp, ReplyTo, SessionOutcome, SessionRecord, SessionStats, StatsPeriod } from "./sessionTypes.js";
 import type { ContextMention, MessageAttribution, ParticipantMessageEvent, PrincipalSnapshot } from "./contextMessages.js";
+import type { MessageThread, MessageThreadPrincipal } from "./messageThreads.js";
 
 export interface StartSessionOptions {
   prompt: string;
@@ -25,6 +26,11 @@ export interface StartSessionOptions {
   parentSessionId?: string;
   spawnDepth?: number;
   spawnRequestId?: string;
+  bootstrapContext?: string;
+  threadSource?: { sessionId: string; threadId: string; anchorEventId: string };
+  kind?: "agent" | "thread";
+  threadState?: "discussion" | "active";
+  deferStart?: boolean;
 }
 
 export interface SessionRecordEntry {
@@ -55,6 +61,10 @@ export interface SessionLifecycleContract {
     attachments: AttachmentInfo[];
     mentions: ContextMention[];
   }, request?: unknown): Promise<ParticipantMessageEvent>;
+  listMessageThreads(id: string): MessageThread[];
+  createMessageThread(id: string, anchorEventId: string, commandId: string): Promise<MessageThread>;
+  appendMessageThreadMessage(id: string, threadId: string, commandId: string, text: string, author: MessageThreadPrincipal): Promise<MessageThread>;
+  invokeMessageThread(id: string, threadId: string, commandId: string, prompt: string | undefined, author?: string): Promise<MessageThread>;
   start(options: StartSessionOptions): SessionRecord;
   branch(id: string, options?: { id?: string; title?: string; lastTurnId?: string; author?: string }): Promise<SessionRecord>;
   resume(
@@ -108,7 +118,7 @@ export interface SessionQueueContract {
 
 export type SessionJsonService =
   & Pick<SessionCatalogReader, "get" | "list" | "page">
-  & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete" | "replayContextMessage" | "appendContextMessage">
+  & Pick<SessionLifecycleContract, "start" | "branch" | "resume" | "rename" | "cancel" | "delete" | "replayContextMessage" | "appendContextMessage" | "listMessageThreads" | "createMessageThread" | "appendMessageThreadMessage" | "invokeMessageThread">
   & Pick<
     SessionQueueContract,
     "validateReplyTo" | "queued" | "enqueue" | "editQueued" | "steerQueued" | "sendQueuedNow" | "removeQueued"

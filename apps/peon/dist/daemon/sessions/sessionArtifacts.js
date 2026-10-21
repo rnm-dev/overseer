@@ -14,7 +14,8 @@ import { decodeTranscriptCursor, encodeIndexedTranscriptCursor, TranscriptPagina
 export const sessionsDir = path.join(stateDir(), "sessions");
 const TRANSCRIPT_EVENT_ID_FIELD = "_peonEventId";
 const SAFE_TRANSCRIPT_EVENT_ID = /^[A-Za-z0-9_-]{1,256}$/;
-const transcriptCache = new Map();
+// Only the not-yet-appended tail lives here; the JSONL file is the store.
+const uncommittedEntries = new Map();
 const appendQueues = new Map();
 const appendErrors = new Map();
 const discardedTranscripts = new Set();
@@ -46,6 +47,7 @@ async function withTranscriptReadPermit(operation) {
 const TRANSCRIPT_INDEX_VERSION = 2;
 const TRANSCRIPT_INDEX_READ_CHUNK = 64 * 1024;
 const TRANSCRIPT_INDEX_CACHE_LIMIT = 256;
+const TRANSCRIPT_TAIL_SCAN_PAGE = 500;
 let transcriptReadObserver = null;
 const warmTranscriptIndexes = new Map();
 export function observeTranscriptReads(observer) {
@@ -178,11 +180,11 @@ export function appendTranscriptEvent(id, event, now = Date.now, preservedEventI
     // keeps a copied user_message.replyTo.eventId resolvable inside the branch.
     // Normal appends always mint a new ID; never accept an unsafe persisted ID.
     const entry = { id: preservedEventId && SAFE_TRANSCRIPT_EVENT_ID.test(preservedEventId) ? preservedEventId : randomUUID(), event: committedEvent };
-    const cached = transcriptCache.get(id);
-    if (cached)
-        cached.push(entry);
+    const uncommitted = uncommittedEntries.get(id);
+    if (uncommitted)
+        uncommitted.push(entry);
     else
-        transcriptCache.set(id, [entry]);
+        uncommittedEntries.set(id, [entry]);
     const previous = appendQueues.get(id) ?? Promise.resolve();
     const next = previous.catch(() => { }).then(async () => {
         if (discardedTranscripts.has(id))
@@ -222,6 +224,13 @@ export function appendTranscriptEvent(id, event, now = Date.now, preservedEventI
         publishTranscriptCommit(id, entry);
         if (!needsSeparator)
             await appendTranscriptIndexRecord(id, beforeBytes, beforeMtimeMs, Buffer.byteLength(row) - 1, entry.id);
+    }).finally(() => {
+        // Committed rows are read from disk; a failed append is not history.
+        const remaining = uncommittedEntries.get(id)?.filter((candidate) => candidate !== entry);
+        if (remaining?.length)
+            uncommittedEntries.set(id, remaining);
+        else
+            uncommittedEntries.delete(id);
     });
     appendQueues.set(id, next);
     next.catch((error) => {
@@ -606,13 +615,83 @@ export async function readCommittedTranscriptEntriesBoundedAsync(id, agent, limi
         }
     });
 }
+/** Committed rows plus events accepted but not yet appended. */
 export function readTranscriptEntries(id, agent) {
-    const cached = transcriptCache.get(id);
-    if (cached)
-        return cached.map((entry) => ({ ...entry }));
     const entries = readTranscriptEntriesFromDisk(id, agent);
-    transcriptCache.set(id, entries);
-    return entries.map((entry) => ({ ...entry }));
+    const uncommitted = uncommittedEntries.get(id);
+    if (!uncommitted)
+        return entries;
+    // A row may land on disk before its append continuation removes it here.
+    const committed = new Set(entries.map((entry) => entry.id));
+    return [...entries, ...uncommitted.filter((entry) => !committed.has(entry.id)).map((entry) => ({ ...entry }))];
+}
+/**
+ * Find one event without parsing the whole transcript. Rows carry their id as
+ * `"_peonEventId":"<id>"`, which cannot occur unescaped inside a JSON string,
+ * so a substring search finds the candidate rows. Legacy ids are derived from
+ * the physical line and still need the full parse.
+ */
+export function findTranscriptEntry(id, agent, eventId) {
+    const uncommitted = uncommittedEntries.get(id)?.find((entry) => entry.id === eventId);
+    if (uncommitted)
+        return { ...uncommitted };
+    if (eventId.startsWith("legacy_"))
+        return readTranscriptEntriesFromDisk(id, agent).find((entry) => entry.id === eventId) ?? null;
+    const file = transcriptPath(id);
+    if (!existsSync(file))
+        return null;
+    const content = readFileSync(file, "utf8");
+    const needle = `"${TRANSCRIPT_EVENT_ID_FIELD}":${JSON.stringify(eventId)}`;
+    for (let at = content.indexOf(needle); at >= 0; at = content.indexOf(needle, at + needle.length)) {
+        const start = content.lastIndexOf("\n", at) + 1;
+        const end = content.indexOf("\n", at);
+        const line = content.slice(start, end < 0 ? undefined : end);
+        // Line numbers only feed legacy ids, which this path never returns.
+        const entry = parseTranscriptLine(id, agent, line, 0, new Set());
+        if (entry?.id === eventId)
+            return entry;
+    }
+    return null;
+}
+/**
+ * Committed events strictly after `afterEventId`, walking the index backward
+ * so the cost follows the gap rather than the transcript size. A missing or
+ * unknown boundary yields only the newest `fallbackLimit` events.
+ */
+export async function readCommittedTranscriptTail(id, agent, afterEventId, fallbackLimit) {
+    const toEntry = ({ eventId, ...event }) => ({ id: eventId, event });
+    // The usual reconnect boundary is recent, so the first page stays small.
+    const newest = await readTranscriptPage(id, agent, { limit: fallbackLimit });
+    const fallback = () => newest.events.map(toEntry);
+    if (!afterEventId)
+        return fallback();
+    const newestFirst = [];
+    for (let page = newest;;) {
+        const boundary = page.events.findIndex((event) => event.eventId === afterEventId);
+        if (boundary >= 0) {
+            newestFirst.push(page.events.slice(boundary + 1).map(toEntry));
+            return newestFirst.reverse().flat();
+        }
+        newestFirst.push(page.events.map(toEntry));
+        if (!page.hasMore || !page.nextCursor)
+            return fallback();
+        // Before walking older pages, a raw substring check is far cheaper than
+        // parsing every row only to learn the boundary is foreign or stale.
+        // Legacy ids are derived, not stored in the row, so they must walk.
+        if (page === newest && !afterEventId.startsWith("legacy_") && !await committedTranscriptMentions(id, afterEventId))
+            return fallback();
+        page = await readTranscriptPage(id, agent, { limit: TRANSCRIPT_TAIL_SCAN_PAGE, cursor: page.nextCursor });
+    }
+}
+async function committedTranscriptMentions(id, eventId) {
+    try {
+        return (await readFile(transcriptPath(id), "utf8")).includes(`"${TRANSCRIPT_EVENT_ID_FIELD}":${JSON.stringify(eventId)}`);
+    }
+    catch (error) {
+        if (error.code === "ENOENT")
+            return false;
+        throw error;
+    }
 }
 export function readTranscript(id, agent) {
     return readTranscriptEntries(id, agent).map((entry) => entry.event);
@@ -897,7 +976,7 @@ export async function flushTranscript(id) {
         throw errors[0];
 }
 export function forgetTranscript(id) {
-    transcriptCache.delete(id);
+    uncommittedEntries.delete(id);
     appendQueues.delete(id);
     appendErrors.delete(id);
     warmTranscriptIndexes.delete(id);
@@ -908,7 +987,7 @@ export function forgetTranscript(id) {
 export function discardTranscript(id) {
     discardedTranscripts.add(id);
     const pending = appendQueues.get(id);
-    transcriptCache.delete(id);
+    uncommittedEntries.delete(id);
     appendQueues.delete(id);
     appendErrors.delete(id);
     try {

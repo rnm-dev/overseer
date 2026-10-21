@@ -77,6 +77,7 @@ repository — that content lives here.
   participants, limits, revocation and presence on the canonical session.
 - [selected-text replies](selected-text-replies.md) — the durable `replyTo`
   object on Peon's authoritative user message.
+- [message threads](message-threads.md) — private anchored discussion, bounded context capsules and linked agent sessions without transcript pollution.
 - [context-only participant messages](context-only-participant-messages.md) —
   durable human conversation and mentions that reach the next invoked turn
   without waking the agent themselves.

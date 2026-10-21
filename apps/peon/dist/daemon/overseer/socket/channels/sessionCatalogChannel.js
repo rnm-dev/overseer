@@ -10,13 +10,11 @@ export class SessionCatalogChannel extends CatalogProducerChannel {
             start: () => catalog.start(),
             pageFrame: (page) => ({ type: "session_catalog_snapshot_page", ...page }),
             eventFrame: (event, epoch) => ({ type: "session_catalog_event", epoch, ...event }),
-            eventOptions: (event, epoch) => {
-                const sessionId = "session" in event ? event.session.id : event.deletedSessionId;
-                return {
-                    dedupeKey: `session-catalog:${epoch}:${event.seq}`,
-                    coalesceKey: `session-summary:${sessionId}`,
-                };
-            },
+            // No coalesceKey: Overseer applies catalog events only in exact seq
+            // order, so replacing an unsent event with a newer seq leaves a gap and
+            // forces a full resnapshot. The outbox limit bounds an offline backlog;
+            // past it, journal replay or a snapshot takes over.
+            eventOptions: (event, epoch) => ({ dedupeKey: `session-catalog:${epoch}:${event.seq}` }),
             error: (error) => error instanceof SessionCatalogError ? { code: error.code, message: error.message } : null,
         });
     }

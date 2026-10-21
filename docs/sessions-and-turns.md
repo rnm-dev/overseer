@@ -29,6 +29,13 @@ pending registry attached to a terminal/missing summary is fenced, interrupted
 and removed. Thus fleet `activeSessions`, session status and Stop converge
 without requiring a daemon restart.
 
+Every caller flips a record to `running` before its provider process exists,
+and turn setup can emit `change` (a sticky model/effort pin) whose listeners
+read the catalog. `runProcess` therefore holds the resume barrier for the whole
+synchronous setup, for every caller, and drops it the moment the run is
+registered. Without it a queued follow-up with a model override was finalized
+as orphaned mid-dispatch and the message was lost (OVSR-591).
+
 ## Branching
 
 Branching calls Codex app-server `thread/fork` or Claude Code
@@ -193,6 +200,12 @@ follow-up clears the old terminal reason as soon as the session starts running
 again.
 
 ## A failed turn explains itself, and a transient one is replayed
+
+Claude Code receives Peon's appended system prompt through a private temporary
+file and `--append-system-prompt-file`, not as an argv value. The file is mode
+`0600` and is removed when the CLI exits or fails to start. This keeps injected
+project documentation independent of Linux's per-argument `MAX_ARG_STRLEN`
+limit; prompt size is instead bounded by the provider/context-window contract.
 
 The provider's terminal `result` event carries the human-readable reason in
 `errors[]`, then `result`, then its `subtype`. Both transcripts render that

@@ -77,6 +77,9 @@ function createHarness() {
     start: 0,
     resume: 0,
     appendContextMessage: 0,
+    createMessageThread: 0,
+    appendMessageThreadMessage: 0,
+    invokeMessageThread: 0,
     enqueue: 0,
     queued: 0,
     editQueued: 0,
@@ -162,6 +165,19 @@ function createHarness() {
       };
     },
     replayContextMessage: () => null,
+    listMessageThreads: () => [],
+    createMessageThread: async (id, anchorEventId) => {
+      calls.createMessageThread++;
+      return { id: "018f06c2-1c2a-7b35-8f2d-6f2f9024ac80", sourceSessionId: id, anchorEventId, createdAt: 1, updatedAt: 1, messages: [], agentSessionId: null, invokeState: "none", hasCapsule: false };
+    },
+    appendMessageThreadMessage: async (id, threadId, commandId, text, author) => {
+      calls.appendMessageThreadMessage++;
+      return { id: threadId, sourceSessionId: id, anchorEventId: "anchor", createdAt: 1, updatedAt: 2, messages: [{ id: randomUUID(), commandId, text, author, createdAt: 2 }], agentSessionId: null, invokeState: "none", hasCapsule: false };
+    },
+    invokeMessageThread: async (id, threadId) => {
+      calls.invokeMessageThread++;
+      return { id: threadId, sourceSessionId: id, anchorEventId: "anchor", createdAt: 1, updatedAt: 3, messages: [], agentSessionId: randomUUID(), invokeState: "started", hasCapsule: true };
+    },
     enqueue: (_id, _prompt, _attachments, permissionMode, author, _model, reasoningEffort, commandId, _startNow) => {
       calls.enqueue++;
       calls.queueArgs.push({ id: _id, author, commandId });
@@ -228,7 +244,7 @@ function createHarness() {
 }
 
 test("route inventory includes expected session JSON families", () => {
-  assert.equal(INCLUDED_FLEET_SESSION_ROUTES.length, 15);
+  assert.equal(INCLUDED_FLEET_SESSION_ROUTES.length, 19);
 });
 
 test("context-only route requires idempotency and relays normalized principals without invoking an agent", async () => {
@@ -254,6 +270,42 @@ test("context-only route requires idempotency and relays normalized principals w
   assert.equal(missingId.status, 400);
   assert.equal((await missingId.json() as { code: string }).code, "BAD_CONTEXT_MESSAGE");
   await harness.close();
+});
+
+test("message-thread routes require idempotency and expose no private capsule fields", async () => {
+  const harness = createHarness();
+  const base = await harness.base;
+  harness.records.set("shared", makeRecord("shared"));
+  try {
+    const missingId = await fetch(`${base}/sessions/shared/message-threads`, {
+      method: "POST", headers: { ...headers, "content-type": "application/json", "Peon-Actor": "alice@example.test" },
+      body: JSON.stringify({ anchorEventId: "anchor" }),
+    });
+    assert.equal(missingId.status, 400);
+    assert.equal((await missingId.json() as { code: string }).code, "BAD_THREAD");
+
+    const created = await fetch(`${base}/sessions/shared/message-threads`, {
+      method: "POST", headers: { ...headers, "content-type": "application/json", "Peon-Actor": "alice@example.test", "peon-request-id": randomUUID() },
+      body: JSON.stringify({ anchorEventId: "anchor" }),
+    });
+    assert.equal(created.status, 201);
+    const body = await created.json() as Record<string, unknown>;
+    assert.equal(body.hasCapsule, false);
+    assert.equal("capsule" in body, false);
+    assert.equal("invokeCommandId" in body, false);
+    assert.equal(harness.calls.createMessageThread, 1);
+
+    const invoked = await fetch(`${base}/sessions/shared/message-threads/${body.id}/invoke`, {
+      method: "POST", headers: { ...headers, "content-type": "application/json", "Peon-Actor": "alice@example.test", "peon-request-id": randomUUID() }, body: "{}",
+    });
+    assert.equal(invoked.status, 201);
+    const invokedBody = await invoked.json() as Record<string, unknown>;
+    assert.equal(invokedBody.hasCapsule, true);
+    assert.equal("capsule" in invokedBody, false);
+    assert.equal(harness.calls.invokeMessageThread, 1);
+  } finally {
+    await harness.close();
+  }
 });
 
 test("list sessions with pagination delegates to session service", async () => {

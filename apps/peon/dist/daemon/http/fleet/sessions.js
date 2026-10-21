@@ -4,7 +4,7 @@ import path from "node:path";
 import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads.js";
 import { listAgentDrivers } from "../../agents/index.js";
 import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "../../providers/modelCatalog.js";
-import { ContextMessageError, parseContextMessage, parseMessageAttribution, parseReplyTo, ReplyToError } from "../../sessions/index.js";
+import { ContextMessageError, MessageThreadError, parseContextMessage, parseMessageAttribution, parseReplyTo, ReplyToError } from "../../sessions/index.js";
 import { toPublicSessionRecord } from "../../sessions/index.js";
 import { toSessionSummary } from "../../sessions/index.js";
 import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
@@ -37,6 +37,10 @@ export const INCLUDED_FLEET_SESSION_ROUTES = [
     "POST /sessions",
     "POST /sessions/:id/followup",
     "POST /sessions/:id/context-messages",
+    "GET /sessions/:id/message-threads",
+    "POST /sessions/:id/message-threads",
+    "POST /sessions/:id/message-threads/:threadId/messages",
+    "POST /sessions/:id/message-threads/:threadId/invoke",
     "POST /sessions/:id/branch",
     "POST /sessions/:id/queue",
     "GET /sessions/:id/queue",
@@ -346,6 +350,71 @@ export function attachSessionRoutes(router, options) {
             }
             if (error instanceof AttachmentError)
                 return fail(res, 400, "BAD_CONTEXT_MESSAGE", "context message attachments are invalid");
+            throw error;
+        }
+    });
+    const threadError = (res, error) => {
+        if (!(error instanceof MessageThreadError))
+            return false;
+        const status = error.code === "THREAD_NOT_FOUND" || error.code === "ANCHOR_NOT_FOUND" ? 404
+            : error.code === "IDEMPOTENCY_CONFLICT" || error.code === "THREAD_FULL" || error.code === "THREAD_INVOKED" || error.code === "THREAD_STORAGE_FULL" ? 409
+                : error.code === "TRANSCRIPT_TOO_LARGE" ? 413 : 400;
+        fail(res, status, error.code, error.message);
+        return true;
+    };
+    router.get("/sessions/:id/message-threads", (req, res) => {
+        try {
+            res.json({ threads: sessions.listMessageThreads(req.params.id) });
+        }
+        catch (error) {
+            if (error.message === "unknown session")
+                return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+            throw error;
+        }
+    });
+    router.post("/sessions/:id/message-threads", async (req, res) => {
+        const requestId = typeof req.headers["peon-request-id"] === "string" ? req.headers["peon-request-id"] : "";
+        if (!COMMAND_ID_RE.test(requestId))
+            return fail(res, 400, "BAD_THREAD", "Peon-Request-Id is required");
+        const anchorEventId = typeof req.body?.anchorEventId === "string" ? req.body.anchorEventId : "";
+        try {
+            res.status(201).json(await sessions.createMessageThread(req.params.id, anchorEventId, requestId));
+        }
+        catch (error) {
+            if (error.message === "unknown session")
+                return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+            if (threadError(res, error))
+                return;
+            throw error;
+        }
+    });
+    router.post("/sessions/:id/message-threads/:threadId/messages", async (req, res) => {
+        const requestId = typeof req.headers["peon-request-id"] === "string" ? req.headers["peon-request-id"] : "";
+        if (!COMMAND_ID_RE.test(requestId))
+            return fail(res, 400, "BAD_THREAD", "Peon-Request-Id is required");
+        try {
+            res.status(201).json(await sessions.appendMessageThreadMessage(req.params.id, req.params.threadId, requestId, req.body?.text, req.body?.author));
+        }
+        catch (error) {
+            if (error.message === "unknown session")
+                return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+            if (threadError(res, error))
+                return;
+            throw error;
+        }
+    });
+    router.post("/sessions/:id/message-threads/:threadId/invoke", async (req, res) => {
+        const requestId = typeof req.headers["peon-request-id"] === "string" ? req.headers["peon-request-id"] : "";
+        if (!COMMAND_ID_RE.test(requestId))
+            return fail(res, 400, "BAD_THREAD", "Peon-Request-Id is required");
+        try {
+            res.status(201).json(await sessions.invokeMessageThread(req.params.id, req.params.threadId, requestId, req.body?.prompt, req.actor ?? undefined));
+        }
+        catch (error) {
+            if (error.message === "unknown session")
+                return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+            if (threadError(res, error))
+                return;
             throw error;
         }
     });

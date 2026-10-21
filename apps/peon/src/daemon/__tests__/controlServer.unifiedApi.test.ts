@@ -175,7 +175,7 @@ test("human API can re-point a project through its settings path", async () => {
   const summary = listed.sessions.find((item) => item.id === session.id);
   assert.equal(summary?.projectId, created.projectId);
   assert.deepEqual(Object.keys(summary ?? {}), [
-    "id", "status", "projectKey", "projectId", "title", "promptPreview",
+    "id", "kind", "threadState", "threadSource", "status", "projectKey", "projectId", "title", "promptPreview",
     "lastMessagePreview", "initiator", "outcome", "terminalReason", "startedAt", "endedAt", "lastActivityAt",
   ]);
   assert.equal(summary?.promptPreview, "keep running");
