@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -8,8 +6,10 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
+import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_markdown.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
+import '../../../shared/widgets/app_pinned_section_header.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../application/project_detail_controller.dart';
 import '../application/project_files_controller.dart';
@@ -232,7 +232,7 @@ class _ProjectDetailPageState extends ConsumerState<ProjectDetailPage> {
       sessionListBuilder: widget.sessionListBuilder,
     ),
     ProjectDetailTab.files => _FilesPane(
-      scope: ProjectFilesScope(
+      scope: (
         workspaceId: widget.workspaceId,
         peonId: widget.peonId,
         projectKey: state.project.key,
@@ -387,7 +387,7 @@ class _ProjectSessionsEmptyFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _EmptyPane(
+    return AppEmptyState(
       icon: LucideIcons.messagesSquare,
       title: 'Sessions not available',
       message: message,
@@ -431,20 +431,20 @@ class _OverviewPane extends StatelessWidget {
                 else if (listing == null && state.loading)
                   const _DocumentationSkeleton()
                 else if (listing == null)
-                  const _EmptyPane(
+                  const AppEmptyState(
                     icon: LucideIcons.bookOpen,
                     title: 'Documentation unavailable',
                     message: 'Refresh to try loading this project’s docs.',
                   )
                 else if (!listing.exists)
-                  const _EmptyPane(
+                  const AppEmptyState(
                     icon: LucideIcons.bookOpen,
                     title: 'No documentation yet',
                     message:
                         'Add docs/index.md to the project to show documentation here.',
                   )
                 else if (listing.entries.isEmpty)
-                  const _EmptyPane(
+                  const AppEmptyState(
                     icon: LucideIcons.folder,
                     title: 'Empty docs folder',
                     message: 'There are no documentation files yet.',
@@ -479,9 +479,6 @@ class _ProjectPaneHeader extends StatelessWidget {
     this.actionKey,
   });
 
-  static const double extent = 28;
-  static const double blurSigma = 12;
-
   final String title;
   final String? actionLabel;
   final VoidCallback? onAction;
@@ -489,57 +486,15 @@ class _ProjectPaneHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SliverPersistentHeader(
-      pinned: true,
-      delegate: _ProjectPaneHeaderDelegate(
+    return AppPinnedSectionHeader(
+      blurKey: const Key('project-overview-path-blur'),
+      child: _ProjectPaneHeaderSurface(
         title: title,
         actionLabel: actionLabel,
         onAction: onAction,
         actionKey: actionKey,
       ),
     );
-  }
-}
-
-class _ProjectPaneHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _ProjectPaneHeaderDelegate({
-    required this.title,
-    required this.actionLabel,
-    required this.onAction,
-    required this.actionKey,
-  });
-
-  final String title;
-  final String? actionLabel;
-  final VoidCallback? onAction;
-  final Key? actionKey;
-
-  @override
-  double get minExtent => _ProjectPaneHeader.extent;
-
-  @override
-  double get maxExtent => _ProjectPaneHeader.extent;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return _ProjectPaneHeaderSurface(
-      title: title,
-      actionLabel: actionLabel,
-      onAction: onAction,
-      actionKey: actionKey,
-    );
-  }
-
-  @override
-  bool shouldRebuild(_ProjectPaneHeaderDelegate oldDelegate) {
-    return oldDelegate.title != title ||
-        oldDelegate.actionLabel != actionLabel ||
-        oldDelegate.onAction != onAction ||
-        oldDelegate.actionKey != actionKey;
   }
 }
 
@@ -559,58 +514,49 @@ class _ProjectPaneHeaderSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return ClipRect(
-      child: BackdropFilter(
-        key: const Key('project-overview-path-blur'),
-        filter: ImageFilter.blur(
-          sigmaX: _ProjectPaneHeader.blurSigma,
-          sigmaY: _ProjectPaneHeader.blurSigma,
-        ),
-        child: SizedBox.expand(
-          child: ColoredBox(
-            color: colors.onSurface.withValues(alpha: 0.05),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      title,
-                      key: const Key('project-overview-path'),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTypography.display(
-                        fontSize: 8.8,
-                        fontWeight: FontWeight.w600,
-                        color: colors.onSurfaceVariant,
-                        letterSpacing: 1.408,
-                        height: 1,
-                      ),
+    return SizedBox.expand(
+      child: ColoredBox(
+        color: colors.onSurface.withValues(alpha: 0.05),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 12, 0),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  key: const Key('project-overview-path'),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.display(
+                    fontSize: 8.8,
+                    fontWeight: FontWeight.w600,
+                    color: colors.onSurfaceVariant,
+                    letterSpacing: 1.408,
+                    height: 1,
+                  ),
+                ),
+              ),
+              if (actionLabel case final label?)
+                TextButton(
+                  key: actionKey,
+                  onPressed: onAction,
+                  style: TextButton.styleFrom(
+                    minimumSize: Size.zero,
+                    padding: EdgeInsets.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    label,
+                    style: AppTypography.display(
+                      fontSize: 8.8,
+                      fontWeight: FontWeight.w600,
+                      color: colors.onSurfaceVariant,
+                      letterSpacing: 1.408,
+                      height: 1,
                     ),
                   ),
-                  if (actionLabel case final label?)
-                    TextButton(
-                      key: actionKey,
-                      onPressed: onAction,
-                      style: TextButton.styleFrom(
-                        minimumSize: Size.zero,
-                        padding: EdgeInsets.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        label,
-                        style: AppTypography.display(
-                          fontSize: 8.8,
-                          fontWeight: FontWeight.w600,
-                          color: colors.onSurfaceVariant,
-                          letterSpacing: 1.408,
-                          height: 1,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+                ),
+            ],
           ),
         ),
       ),
@@ -639,7 +585,7 @@ class _FilesPane extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          height: _ProjectPaneHeader.extent,
+          height: AppPinnedSectionHeader.defaultExtent,
           child: _ProjectPaneHeaderSurface(
             title: 'FILES',
             actionLabel: 'REFRESH',
@@ -705,7 +651,7 @@ class _SkillsPane extends StatelessWidget {
               if (skills == null)
                 const _DocumentationSkeleton()
               else if (skills.isEmpty)
-                const _EmptyPane(
+                const AppEmptyState(
                   icon: LucideIcons.sparkles,
                   title: 'No project skills',
                   message: 'This project does not expose any skills yet.',
@@ -772,7 +718,7 @@ class _MembersPane extends StatelessWidget {
                     ),
                   ),
                 if (members.isEmpty)
-                  const _EmptyPane(
+                  const AppEmptyState(
                     icon: LucideIcons.users,
                     title: 'No workspace members',
                     message: 'Invite a member before assigning project access.',

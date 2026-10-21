@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../features/auth/application/auth_controller.dart';
-import '../features/auth/application/auth_state.dart';
-import '../features/auth/presentation/backend_unavailable_page.dart';
-import '../features/auth/presentation/sign_in_page.dart';
 import '../features/fleet/application/fleet_controller.dart';
 import '../features/projects/application/projects_controller.dart';
 import '../features/projects/domain/project_models.dart';
@@ -13,7 +9,7 @@ import '../features/projects/presentation/project_detail_page.dart';
 import '../features/sessions/presentation/session_detail_page.dart';
 import '../features/sessions/presentation/session_list.dart';
 import '../features/projects/presentation/project_file_viewer_page.dart';
-import '../features/shell/shell.dart';
+import 'require_auth.dart';
 
 class ProjectDetailRoutePage extends ConsumerWidget {
   const ProjectDetailRoutePage({
@@ -37,60 +33,45 @@ class ProjectDetailRoutePage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authControllerProvider);
-    final controller = ref.read(authControllerProvider.notifier);
     final project = _resolveProject(ref);
 
-    if (auth.phase == AuthPhase.signingIn) {
-      return SignInPage(onSignIn: controller.signIn, isSigningIn: true);
-    }
-
-    return switch (auth.phase) {
-      AuthPhase.restoring => const ShellPage.loading(),
-      AuthPhase.unavailable => BackendUnavailablePage(
-        onRetry: controller.retryRestore,
+    return RequireAuth(
+      // Fleet state is only watched once authenticated.
+      child: Consumer(
+        builder: (context, ref, _) => ProjectDetailPage(
+          workspaceId: workspaceId,
+          peonId: peonId,
+          project: project,
+          online: _isPeonOnline(ref),
+          isOwner: isOwner,
+          onNewSession: _openProjectSession,
+          onOpenFile: _openProjectFile,
+          sessionListBuilder:
+              (
+                context, {
+                required String workspaceId,
+                required String peonId,
+                required String projectId,
+                required String projectKey,
+              }) {
+                return SessionList(
+                  workspaceId: workspaceId,
+                  peonId: peonId,
+                  projectId: projectId,
+                  projectKey: projectKey,
+                  onSessionSelected: (session) => context.pushNamed(
+                    'session',
+                    queryParameters: {
+                      'workspaceId': session.workspaceId,
+                      'peonId': session.peonId,
+                      'sessionId': session.sessionId,
+                    },
+                  ),
+                );
+              },
+        ),
       ),
-      AuthPhase.unauthenticated => SignInPage(
-        onSignIn: controller.signIn,
-        errorMessage: auth.errorMessage,
-      ),
-      AuthPhase.signingIn => SignInPage(
-        onSignIn: controller.signIn,
-        isSigningIn: true,
-      ),
-      AuthPhase.authenticated => ProjectDetailPage(
-        workspaceId: workspaceId,
-        peonId: peonId,
-        project: project,
-        online: _isPeonOnline(ref),
-        isOwner: isOwner,
-        onNewSession: _openProjectSession,
-        onOpenFile: _openProjectFile,
-        sessionListBuilder:
-            (
-              context, {
-              required String workspaceId,
-              required String peonId,
-              required String projectId,
-              required String projectKey,
-            }) {
-              return SessionList(
-                workspaceId: workspaceId,
-                peonId: peonId,
-                projectId: projectId,
-                projectKey: projectKey,
-                onSessionSelected: (session) => context.pushNamed(
-                  'session',
-                  queryParameters: {
-                    'workspaceId': session.workspaceId,
-                    'peonId': session.peonId,
-                    'sessionId': session.sessionId,
-                  },
-                ),
-              );
-            },
-      ),
-    };
+    );
   }
 
   void _openProjectSession(

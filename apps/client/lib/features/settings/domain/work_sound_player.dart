@@ -56,8 +56,7 @@ class WorkSoundSelector {
     return assets[index];
   }
 
-  void finish() => _playing = false;
-
+  /// Releases the overlap gate (clip finished, failed, or was stopped).
   void stop() => _playing = false;
 }
 

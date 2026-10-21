@@ -193,6 +193,5 @@ class _PresenceStackState extends State<PresenceStack> {
     UserAvatarSize.sm => 20,
     UserAvatarSize.md => 28,
     UserAvatarSize.lg => 36,
-    UserAvatarSize.xl => 40,
   };
 }

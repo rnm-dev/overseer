@@ -4,30 +4,26 @@ import 'dart:math';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
-import 'non_interrupting_sound_audio_context.dart';
 import '../domain/sound_pack.dart';
 import '../domain/work_sound_player.dart';
 
+/// Audio context that mixes with other audio instead of taking focus.
+AudioContext nonInterruptingSoundAudioContext() {
+  return AudioContextConfig(
+    focus: AudioContextConfigFocus.mixWithOthers,
+  ).build();
+}
+
 class AudioplayersWorkSoundPlayer implements WorkSoundPlayer {
-  AudioplayersWorkSoundPlayer({
-    AudioPlayer? player,
-    AudioPlayer? cuePlayer,
-    Random? random,
-    WorkSoundSelector? selector,
-    WorkSoundCueSelector? cueSelector,
-  }) : _player = player ?? AudioPlayer(),
-       _cuePlayer = cuePlayer ?? AudioPlayer(),
-       _random = random ?? Random(),
-       _selector = selector ?? WorkSoundSelector(),
-       _cueSelector = cueSelector ?? WorkSoundCueSelector() {
-    _completion = _player.onPlayerComplete.listen((_) => _selector.finish());
+  AudioplayersWorkSoundPlayer() {
+    _completion = _player.onPlayerComplete.listen((_) => _selector.stop());
   }
 
-  final AudioPlayer _player;
-  final AudioPlayer _cuePlayer;
-  final Random _random;
-  final WorkSoundSelector _selector;
-  final WorkSoundCueSelector _cueSelector;
+  final _player = AudioPlayer();
+  final _cuePlayer = AudioPlayer();
+  final _random = Random();
+  final _selector = WorkSoundSelector();
+  final _cueSelector = WorkSoundCueSelector();
   late final StreamSubscription<void> _completion;
 
   @override
@@ -38,7 +34,7 @@ class AudioplayersWorkSoundPlayer implements WorkSoundPlayer {
       await _player.setAudioContext(nonInterruptingSoundAudioContext());
       await _player.play(AssetSource(asset));
     } catch (error) {
-      _selector.finish();
+      _selector.stop();
       debugPrint(
         '[WorkSound] playback failed pack=${pack.id}: ${error.runtimeType}',
       );

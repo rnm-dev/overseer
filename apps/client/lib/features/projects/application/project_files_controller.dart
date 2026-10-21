@@ -17,27 +17,11 @@ final projectFilesControllerProvider = AsyncNotifierProvider.autoDispose
       retry: (_, _) => null,
     );
 
-class ProjectFilesScope {
-  const ProjectFilesScope({
-    required this.workspaceId,
-    required this.peonId,
-    required this.projectKey,
-  });
-
-  final String workspaceId;
-  final String peonId;
-  final String projectKey;
-
-  @override
-  bool operator ==(Object other) =>
-      other is ProjectFilesScope &&
-      other.workspaceId == workspaceId &&
-      other.peonId == peonId &&
-      other.projectKey == projectKey;
-
-  @override
-  int get hashCode => Object.hash(workspaceId, peonId, projectKey);
-}
+typedef ProjectFilesScope = ({
+  String workspaceId,
+  String peonId,
+  String projectKey,
+});
 
 class ProjectDirectoryState {
   const ProjectDirectoryState({

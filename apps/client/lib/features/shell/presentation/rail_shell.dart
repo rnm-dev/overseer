@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+
 import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
 import 'shell_chrome.dart';
 
-class WideShell extends ConsumerWidget {
-  const WideShell({
+/// Medium and wide layouts: a connection rail beside the fleet overview.
+class RailShell extends ConsumerWidget {
+  const RailShell({
     super.key,
+    required this.wide,
     required this.user,
     required this.onSignOut,
     this.onOpenPeon,
@@ -16,6 +19,7 @@ class WideShell extends ConsumerWidget {
     this.onBackToConnections,
   });
 
+  final bool wide;
   final OperatorIdentity? user;
   final Future<void> Function()? onSignOut;
   final void Function(
@@ -32,13 +36,13 @@ class WideShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      key: const Key('wide-shell'),
+      key: Key(wide ? 'wide-shell' : 'medium-shell'),
       body: SafeArea(
         child: Row(
           children: [
             ShellConnectionRail(
-              key: const Key('wide-sidebar'),
-              width: 232,
+              key: Key(wide ? 'wide-sidebar' : 'medium-navigation-rail'),
+              width: wide ? 232 : 208,
               overseerName: overseerName,
               user: user,
               onBackToConnections: onBackToConnections,
@@ -49,35 +53,29 @@ class WideShell extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   ShellDesktopHeader(overseerName: overseerName),
-                  const Divider(height: 1),
+                  if (wide) const Divider(height: 1),
                   Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          key: const Key('wide-master-pane'),
-                          child: ColoredBox(
-                            color: Theme.of(context).colorScheme.surface,
-                            child: user == null
-                                ? const FleetOverviewLoading()
-                                : Center(
-                                    child: ConstrainedBox(
-                                      constraints: BoxConstraints(
-                                        maxWidth: ref.watch(
-                                          fleetOverviewMaxWidthProvider,
-                                        ),
-                                      ),
-                                      child: FleetOverview(
-                                        user: user!,
-                                        onSignOut: onSignOut!,
-                                        onOpenPeon: onOpenPeon,
-                                        onOpenSession: onOpenSession,
-                                        onNewSession: onNewSession,
-                                      ),
-                                    ),
+                    key: wide ? const Key('wide-master-pane') : null,
+                    child: ColoredBox(
+                      color: Theme.of(context).colorScheme.surface,
+                      child: user == null
+                          ? const FleetOverviewLoading()
+                          : Center(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: ref.watch(
+                                    fleetOverviewMaxWidthProvider,
                                   ),
-                          ),
-                        ),
-                      ],
+                                ),
+                                child: FleetOverview(
+                                  user: user!,
+                                  onSignOut: onSignOut!,
+                                  onOpenPeon: onOpenPeon,
+                                  onOpenSession: onOpenSession,
+                                  onNewSession: onNewSession,
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                 ],

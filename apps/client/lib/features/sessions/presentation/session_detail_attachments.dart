@@ -1,10 +1,37 @@
 part of 'session_detail_page.dart';
 
-mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
+const _maxAttachmentFiles = 10;
+const _maxAttachmentBytes = 25 * 1024 * 1024;
+
+/// Composer attachment state and the pickers that fill it.
+mixin _SessionDetailAttachments on ConsumerState<SessionDetailPage> {
+  List<NewSessionAttachment> _composerAttachments = const [];
+  String? _attachmentError;
+  bool _readingAttachments = false;
+
+  void _resetSubmissionIdentity();
+
+  /// Appends [added], invalidating the pending submission identity when
+  /// anything was added, and records [error] (or clears it).
+  void _appendAttachments(
+    Iterable<NewSessionAttachment> added, {
+    String? error,
+  }) {
+    // Pickers await per-file reads after their own mounted check.
+    if (!mounted) return;
+    final list = added.toList();
+    if (list.isNotEmpty) _resetSubmissionIdentity();
+    setState(() {
+      _composerAttachments = [..._composerAttachments, ...list];
+      _attachmentError = error;
+    });
+  }
+
+  String? _joinErrors(List<String> errors) =>
+      errors.isEmpty ? null : errors.join(' ');
+
   Future<void> _pickImages(ImageSource source) async {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
-    final available = maxFiles - _composerAttachments.length;
+    final available = _maxAttachmentFiles - _composerAttachments.length;
     if (available <= 0) {
       setState(
         () => _attachmentError = _attachmentLimitErrors(
@@ -33,7 +60,7 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
       var rejectedExtraFiles = 0;
       for (final image in images) {
         final size = await image.length();
-        if (size > maxBytes) {
+        if (size > _maxAttachmentBytes) {
           rejectedLargeFiles++;
           continue;
         }
@@ -49,15 +76,15 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
           ),
         );
       }
-      final errors = _attachmentLimitErrors(
-        skippedTooLarge: rejectedLargeFiles,
-        skippedForLimit: rejectedExtraFiles,
+      _appendAttachments(
+        selected,
+        error: _joinErrors(
+          _attachmentLimitErrors(
+            skippedTooLarge: rejectedLargeFiles,
+            skippedForLimit: rejectedExtraFiles,
+          ),
+        ),
       );
-      if (selected.isNotEmpty) _resetSubmissionIdentity();
-      setState(() {
-        _composerAttachments = [..._composerAttachments, ...selected];
-        _attachmentError = errors.isEmpty ? null : errors.join(' ');
-      });
     } catch (_) {
       if (!mounted) return;
       setState(
@@ -75,8 +102,6 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
   }
 
   Future<void> _pickAttachments() async {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
     setState(() {
       _readingAttachments = true;
       _attachmentError = null;
@@ -87,10 +112,10 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
       final selected = <NewSessionAttachment>[];
       var rejectedLargeFiles = 0;
       var rejectedExtraFiles = 0;
-      final available = maxFiles - _composerAttachments.length;
+      final available = _maxAttachmentFiles - _composerAttachments.length;
       for (final file in result) {
         final size = file.lengthSync() ?? await file.length();
-        if (size > maxBytes) {
+        if (size > _maxAttachmentBytes) {
           rejectedLargeFiles++;
           continue;
         }
@@ -107,19 +132,15 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
           ),
         );
       }
-      final errors = <String>[
-        if (rejectedLargeFiles > 0)
-          '$rejectedLargeFiles '
-              '${rejectedLargeFiles == 1 ? 'file is' : 'files are'} larger than 25 MB.',
-        if (rejectedExtraFiles > 0)
-          'You can attach up to 10 files; '
-              '$rejectedExtraFiles ${rejectedExtraFiles == 1 ? 'file was' : 'files were'} not added.',
-      ];
-      if (selected.isNotEmpty) _resetSubmissionIdentity();
-      setState(() {
-        _composerAttachments = [..._composerAttachments, ...selected];
-        _attachmentError = errors.isEmpty ? null : errors.join(' ');
-      });
+      _appendAttachments(
+        selected,
+        error: _joinErrors(
+          _attachmentLimitErrors(
+            skippedTooLarge: rejectedLargeFiles,
+            skippedForLimit: rejectedExtraFiles,
+          ),
+        ),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(() => _attachmentError = 'Files could not be selected.');
@@ -188,8 +209,6 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
   }
 
   Future<void> _pasteAttachments() async {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
     setState(() {
       _readingAttachments = true;
       _attachmentError = null;
@@ -198,33 +217,26 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
       final result = await ref
           .read(attachmentClipboardProvider)
           .read(
-            availableFiles: maxFiles - _composerAttachments.length,
-            maxBytes: maxBytes,
+            availableFiles: _maxAttachmentFiles - _composerAttachments.length,
+            maxBytes: _maxAttachmentBytes,
           );
       if (!mounted) return;
       final errors = _attachmentLimitErrors(
         skippedTooLarge: result.skippedTooLarge,
         skippedForLimit: result.skippedForLimit,
       );
-      if (result.attachments.isNotEmpty) {
-        _resetSubmissionIdentity();
-      }
-      setState(() {
-        _composerAttachments = [
-          ..._composerAttachments,
-          for (final attachment in result.attachments)
-            NewSessionAttachment(
-              name: attachment.name,
-              type: attachment.type,
-              bytes: attachment.bytes,
-            ),
-        ];
-        _attachmentError = result.attachments.isEmpty && errors.isEmpty
+      _appendAttachments(
+        result.attachments.map(
+          (attachment) => NewSessionAttachment(
+            name: attachment.name,
+            type: attachment.type,
+            bytes: attachment.bytes,
+          ),
+        ),
+        error: result.attachments.isEmpty && errors.isEmpty
             ? 'The clipboard does not contain an image or file.'
-            : errors.isEmpty
-            ? null
-            : errors.join(' ');
-      });
+            : _joinErrors(errors),
+      );
     } catch (_) {
       if (!mounted) return;
       setState(
@@ -243,32 +255,23 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
   /// Returns false when it cannot be taken — the composer then pastes it
   /// inline rather than dropping it.
   bool _attachPastedText(String text) {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
-    if (_composerAttachments.length >= maxFiles) return false;
+    if (_composerAttachments.length >= _maxAttachmentFiles) return false;
     final bytes = Uint8List.fromList(utf8.encode(text));
-    if (bytes.length > maxBytes) return false;
-    _resetSubmissionIdentity();
-    setState(() {
-      _composerAttachments = [
-        ..._composerAttachments,
-        NewSessionAttachment(
-          name: pastedTextName(
-            DateTime.now().millisecondsSinceEpoch,
-            index: _composerAttachments.length,
-          ),
-          type: 'file',
-          bytes: bytes,
+    if (bytes.length > _maxAttachmentBytes) return false;
+    _appendAttachments([
+      NewSessionAttachment(
+        name: pastedTextName(
+          DateTime.now().millisecondsSinceEpoch,
+          index: _composerAttachments.length,
         ),
-      ];
-      _attachmentError = null;
-    });
+        type: 'file',
+        bytes: bytes,
+      ),
+    ]);
     return true;
   }
 
   void _insertKeyboardContent(KeyboardInsertedContent content) {
-    const maxFiles = 10;
-    const maxBytes = 25 * 1024 * 1024;
     final bytes = content.data;
     if (bytes == null || bytes.isEmpty) {
       final uri = content.uri;
@@ -279,17 +282,15 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
         return;
       }
       unawaited(
-        _insertKeyboardUriContent(
-          uri: uri,
-          mimeType: content.mimeType,
-          maxBytes: maxBytes,
-        ),
+        _insertKeyboardUriContent(uri: uri, mimeType: content.mimeType),
       );
       return;
     }
     final errors = _attachmentLimitErrors(
-      skippedTooLarge: bytes.length > maxBytes ? 1 : 0,
-      skippedForLimit: _composerAttachments.length >= maxFiles ? 1 : 0,
+      skippedTooLarge: bytes.length > _maxAttachmentBytes ? 1 : 0,
+      skippedForLimit: _composerAttachments.length >= _maxAttachmentFiles
+          ? 1
+          : 0,
     );
     if (errors.isNotEmpty) {
       setState(() => _attachmentError = errors.join(' '));
@@ -301,28 +302,21 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
       'image/webp' => 'webp',
       _ => 'png',
     };
-    _resetSubmissionIdentity();
-    setState(() {
-      _composerAttachments = [
-        ..._composerAttachments,
-        NewSessionAttachment(
-          name:
-              'pasted-image-${DateTime.now().millisecondsSinceEpoch}.$extension',
-          type: 'image',
-          bytes: bytes,
-        ),
-      ];
-      _attachmentError = null;
-    });
+    _appendAttachments([
+      NewSessionAttachment(
+        name:
+            'pasted-image-${DateTime.now().millisecondsSinceEpoch}.$extension',
+        type: 'image',
+        bytes: bytes,
+      ),
+    ]);
   }
 
   Future<void> _insertKeyboardUriContent({
     required String uri,
     required String mimeType,
-    required int maxBytes,
   }) async {
-    const maxFiles = 10;
-    if (_composerAttachments.length >= maxFiles) {
+    if (_composerAttachments.length >= _maxAttachmentFiles) {
       setState(
         () => _attachmentError = _attachmentLimitErrors(
           skippedTooLarge: 0,
@@ -341,33 +335,25 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
           .readInsertedContent(
             uri: uri,
             mimeType: mimeType,
-            maxBytes: maxBytes,
+            maxBytes: _maxAttachmentBytes,
           );
       if (!mounted) return;
       final errors = _attachmentLimitErrors(
         skippedTooLarge: result.skippedTooLarge,
         skippedForLimit: result.skippedForLimit,
       );
-      if (result.attachments.isNotEmpty) {
-        _resetSubmissionIdentity();
-      }
-      setState(() {
-        _composerAttachments = [
-          ..._composerAttachments,
-          ...result.attachments.map(
-            (attachment) => NewSessionAttachment(
-              name: attachment.name,
-              type: attachment.type,
-              bytes: attachment.bytes,
-            ),
+      _appendAttachments(
+        result.attachments.map(
+          (attachment) => NewSessionAttachment(
+            name: attachment.name,
+            type: attachment.type,
+            bytes: attachment.bytes,
           ),
-        ];
-        _attachmentError = result.attachments.isEmpty && errors.isEmpty
+        ),
+        error: result.attachments.isEmpty && errors.isEmpty
             ? 'The pasted image could not be read.'
-            : errors.isEmpty
-            ? null
-            : errors.join(' ');
-      });
+            : _joinErrors(errors),
+      );
     } catch (_) {
       if (mounted) {
         setState(
@@ -395,22 +381,6 @@ mixin _SessionDetailAttachmentMethods on _SessionDetailAttachmentHost {
             '${skippedForLimit == 1 ? 'file was' : 'files were'} not added.',
     ];
   }
-
-  void _resetSubmissionIdentity() {
-    ref
-        .read(
-          sessionComposerControllerProvider(
-            FollowupScope(
-              workspaceId: workspaceId,
-              peonId: peonId,
-              sessionId:
-                  session?.sessionId ??
-                  _SessionDetailPageState._newSessionDraftId,
-            ),
-          ).notifier,
-        )
-        .resetSubmissionIdentity();
-  }
 }
 
 class _AttachmentOption extends StatelessWidget {
@@ -430,11 +400,10 @@ class _AttachmentOption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final palette = Theme.of(context).extension<AppThemePalette>()?.package;
     return ListTile(
       onTap: onTap,
       shape: RoundedRectangleBorder(borderRadius: AppMotion.optionShape),
-      tileColor: palette?.surfaceHover ?? colors.surfaceContainerHighest,
+      tileColor: AppThemePalette.of(context).surfaceHover,
       leading: Icon(icon, size: 20, color: colors.primary),
       title: Text(
         title,

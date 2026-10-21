@@ -5,6 +5,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../core/platform/html_preview_launcher.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
+import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
 import '../../../shared/widgets/file_view_block.dart';
 import '../application/project_file_viewer_controller.dart';
@@ -35,7 +36,7 @@ class _ProjectFileViewerPageState extends ConsumerState<ProjectFileViewerPage> {
       ? FileViewMode.preview
       : FileViewMode.source;
 
-  ProjectFileViewerScope get _scope => ProjectFileViewerScope(
+  ProjectFileViewerScope get _scope => (
     workspaceId: widget.workspaceId,
     peonId: widget.peonId,
     projectKey: widget.projectKey,
@@ -95,7 +96,7 @@ class _ProjectFileViewerPageState extends ConsumerState<ProjectFileViewerPage> {
             Expanded(
               child: file.when(
                 loading: () => const _ViewerLoading(),
-                error: (error, _) => _ViewerMessage(
+                error: (error, _) => AppEmptyState(
                   icon: LucideIcons.triangleAlert,
                   title: 'Couldn’t open file',
                   message: _errorMessage(error),
@@ -141,56 +142,6 @@ class _ViewerLoading extends StatelessWidget {
         child: CircularProgressIndicator(
           strokeWidth: 2,
           color: Theme.of(context).colorScheme.primary,
-        ),
-      ),
-    );
-  }
-}
-
-class _ViewerMessage extends StatelessWidget {
-  const _ViewerMessage({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.action,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 30, color: colors.onSurfaceVariant),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: AppTypography.display(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: colors.onSurface,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTypography.body(
-                fontSize: 13,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            if (action != null) ...[const SizedBox(height: 16), action!],
-          ],
         ),
       ),
     );

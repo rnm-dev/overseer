@@ -27,30 +27,12 @@ final aiCapabilitiesControllerProvider = AsyncNotifierProvider.autoDispose
       retry: (_, _) => null,
     );
 
-class AiStatsScope {
-  const AiStatsScope({
-    required this.workspaceId,
-    required this.peonId,
-    required this.period,
-    this.online = true,
-  });
-
-  final String workspaceId;
-  final String peonId;
-  final AiStatsPeriod period;
-  final bool online;
-
-  @override
-  bool operator ==(Object other) =>
-      other is AiStatsScope &&
-      other.workspaceId == workspaceId &&
-      other.peonId == peonId &&
-      other.period == period &&
-      other.online == online;
-
-  @override
-  int get hashCode => Object.hash(workspaceId, peonId, period, online);
-}
+typedef AiStatsScope = ({
+  String workspaceId,
+  String peonId,
+  AiStatsPeriod period,
+  bool online,
+});
 
 class AiStatsController extends AsyncNotifier<AiStats> {
   AiStatsController(this.scope);
@@ -94,27 +76,11 @@ class AiStatsController extends AsyncNotifier<AiStats> {
   }
 }
 
-class AiProviderScope {
-  const AiProviderScope({
-    required this.workspaceId,
-    required this.peonId,
-    required this.provider,
-  });
-
-  final String workspaceId;
-  final String peonId;
-  final AiProvider provider;
-
-  @override
-  bool operator ==(Object other) =>
-      other is AiProviderScope &&
-      other.workspaceId == workspaceId &&
-      other.peonId == peonId &&
-      other.provider == provider;
-
-  @override
-  int get hashCode => Object.hash(workspaceId, peonId, provider);
-}
+typedef AiProviderScope = ({
+  String workspaceId,
+  String peonId,
+  AiProvider provider,
+});
 
 class AiQuotaController extends AsyncNotifier<AiProviderQuota> {
   AiQuotaController(this.scope);

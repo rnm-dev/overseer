@@ -26,9 +26,7 @@ final projectLiveProjectionSinkProvider = Provider<LiveProjectionSink?>(
   (ref) => null,
 );
 final workspaceConnectionRecorderProvider =
-    Provider<WorkspaceConnectionRecorder>(
-      (ref) => const NoopWorkspaceConnectionRecorder(),
-    );
+    Provider<WorkspaceConnectionRecorder>((ref) => (_) async {});
 
 final fleetControllerProvider =
     AsyncNotifierProvider.autoDispose<FleetController, List<WorkspaceFleet>>(
@@ -49,8 +47,9 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
         : await repository.loadFleet();
     unawaited(
       ref
-          .read(workspaceConnectionRecorderProvider)
-          .recordWorkspaceIds(fleet.map((item) => item.workspace.id))
+          .read(workspaceConnectionRecorderProvider)(
+            fleet.map((item) => item.workspace.id),
+          )
           .catchError((error) {
             ref
                 .read(appDiagnosticsProvider)

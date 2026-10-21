@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../domain/project_file_transfer_repository.dart';
-import '../domain/project_models.dart';
+import 'project_http.dart';
 
 /// Uploads are a streamed `PUT` of one file; a move is a `PATCH` carrying the
 /// destination path. Both are relative to the project root and land on the
@@ -35,7 +35,7 @@ class DioProjectFileTransfers implements ProjectFileTransferRepository {
         ),
       );
     } on DioException catch (error) {
-      throw _exception(error, 'Could not upload this file.');
+      throw projectsExceptionFrom(error, 'Could not upload this file.');
     }
   }
 
@@ -53,7 +53,7 @@ class DioProjectFileTransfers implements ProjectFileTransferRepository {
         data: {'destination': destination},
       );
     } on DioException catch (error) {
-      throw _exception(error, 'Could not move this item.');
+      throw projectsExceptionFrom(error, 'Could not move this item.');
     }
   }
 
@@ -63,20 +63,8 @@ class DioProjectFileTransfers implements ProjectFileTransferRepository {
     String projectKey,
     String path,
   ) {
-    final encodedPath = path
-        .split('/')
-        .where((segment) => segment.isNotEmpty)
-        .map(Uri.encodeComponent)
-        .join('/');
     return 'workspaces/${Uri.encodeComponent(workspaceId)}/peons/'
         '${Uri.encodeComponent(peonId)}/projects/'
-        '${Uri.encodeComponent(projectKey)}/files/$encodedPath';
-  }
-
-  ProjectsException _exception(DioException error, String fallback) {
-    final data = error.response?.data;
-    final message = data is Map ? data['error'] as String? : null;
-    final code = data is Map ? data['code'] as String? : null;
-    return ProjectsException(message ?? fallback, code: code);
+        '${Uri.encodeComponent(projectKey)}/files/${encodeProjectPath(path)}';
   }
 }

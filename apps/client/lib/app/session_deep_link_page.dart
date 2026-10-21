@@ -2,13 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/time/app_time.dart';
-import '../features/auth/application/auth_controller.dart';
-import '../features/auth/application/auth_state.dart';
-import '../features/auth/presentation/backend_unavailable_page.dart';
-import '../features/auth/presentation/sign_in_page.dart';
 import '../features/sessions/application/sessions_controller.dart';
 import '../features/sessions/sessions.dart';
-import '../features/shell/shell.dart';
+import 'require_auth.dart';
 
 class SessionDeepLinkPage extends ConsumerWidget {
   const SessionDeepLinkPage({
@@ -24,26 +20,13 @@ class SessionDeepLinkPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final auth = ref.watch(authControllerProvider);
-    return switch (auth.phase) {
-      AuthPhase.restoring => const ShellPage.loading(),
-      AuthPhase.unavailable => BackendUnavailablePage(
-        onRetry: ref.read(authControllerProvider.notifier).retryRestore,
-      ),
-      AuthPhase.unauthenticated => SignInPage(
-        onSignIn: ref.read(authControllerProvider.notifier).signIn,
-        errorMessage: auth.errorMessage,
-      ),
-      AuthPhase.signingIn => SignInPage(
-        onSignIn: ref.read(authControllerProvider.notifier).signIn,
-        isSigningIn: true,
-      ),
-      AuthPhase.authenticated => _ResolvedSessionPage(
+    return RequireAuth(
+      child: _ResolvedSessionPage(
         workspaceId: workspaceId,
         peonId: peonId,
         sessionId: sessionId,
       ),
-    };
+    );
   }
 }
 

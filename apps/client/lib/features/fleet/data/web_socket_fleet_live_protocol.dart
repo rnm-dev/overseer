@@ -30,9 +30,6 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       _onActiveSessionSnapshot?.call(workspaceId, null);
       state.pendingSessions.clear();
       final rawPeons = decoded['peonPresence'];
-      if (rawPeons is List && rawPeons.length > 10000) {
-        throw const FormatException('Peon snapshot exceeds its item limit');
-      }
       final peonSnapshot = ResourceSnapshot<Map<String, dynamic>>.validated(
         authority: ResourceAuthority.peon,
         items: (rawPeons as List? ?? const []).whereType<Map>().map(

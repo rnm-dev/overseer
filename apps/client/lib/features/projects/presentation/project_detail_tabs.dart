@@ -495,52 +495,6 @@ class _InlineNotice extends StatelessWidget {
   }
 }
 
-class _EmptyPane extends StatelessWidget {
-  const _EmptyPane({
-    required this.icon,
-    required this.title,
-    required this.message,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 30, color: AppThemePalette.of(context).inkFaint),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: AppTypography.display(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTypography.body(
-                fontSize: 11,
-                color: AppThemePalette.of(context).inkFaint,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _LoadingPane extends StatelessWidget {
   const _LoadingPane();
 

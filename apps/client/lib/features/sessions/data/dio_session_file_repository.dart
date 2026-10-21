@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 
 import '../domain/session_file_repository.dart';
+import 'session_data_helpers.dart';
 
 class DioSessionFileRepository implements SessionFileRepository {
   DioSessionFileRepository({required this._dio});
@@ -50,7 +51,9 @@ class DioSessionFileRepository implements SessionFileRepository {
         truncated: payload['truncated'] == true,
       );
     } on DioException catch (error) {
-      throw SessionFileException(_message(error, 'Could not open this file.'));
+      throw SessionFileException(
+        error.serverMessage ?? 'Could not open this file.',
+      );
     } on FormatException {
       throw const SessionFileException(
         'Overseer returned an invalid file preview.',
@@ -106,7 +109,7 @@ class DioSessionFileRepository implements SessionFileRepository {
       );
     } on DioException catch (error) {
       throw SessionFileException(
-        _message(error, 'Could not open this attachment.'),
+        error.serverMessage ?? 'Could not open this attachment.',
       );
     }
   }
@@ -137,11 +140,4 @@ String? _contentTypeForPath(String path) {
   }
   if (lower.endsWith('.json')) return 'application/json';
   return 'text/plain';
-}
-
-String _message(DioException error, String fallback) {
-  final data = error.response?.data;
-  return data is Map && data['error'] is String
-      ? data['error'] as String
-      : fallback;
 }

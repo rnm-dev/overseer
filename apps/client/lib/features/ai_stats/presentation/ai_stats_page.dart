@@ -27,7 +27,7 @@ class AiStatsPage extends ConsumerStatefulWidget {
 class _AiStatsPageState extends ConsumerState<AiStatsPage> {
   AiStatsPeriod _period = AiStatsPeriod.day;
 
-  AiStatsScope get _scope => AiStatsScope(
+  AiStatsScope get _scope => (
     workspaceId: widget.workspaceId,
     peonId: widget.peonId,
     period: _period,
@@ -401,7 +401,7 @@ class _ProviderCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = Theme.of(context).colorScheme;
-    final scope = AiProviderScope(
+    final AiProviderScope scope = (
       workspaceId: workspaceId,
       peonId: peonId,
       provider: provider,

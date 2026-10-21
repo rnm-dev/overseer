@@ -10,7 +10,7 @@ import 'package:overseer_mobile/features/peon/domain/peon_settings_models.dart';
 void main() {
   late AppDatabase database;
 
-  const scope = PeonSettingsScope(
+  const PeonSettingsScope scope = (
     workspaceId: 'workspace/a',
     peonId: 'peon/b',
     online: true,

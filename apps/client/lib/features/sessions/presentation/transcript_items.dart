@@ -167,6 +167,20 @@ double transcriptWorkingGap(
   return 16;
 }
 
+/// What a tool call does, independent of the agent's tool naming case.
+enum TranscriptToolKind { read, search, web, edit, analysis, command, generic }
+
+TranscriptToolKind transcriptToolKind(String? name) =>
+    switch (name?.trim().toLowerCase()) {
+      'read' => TranscriptToolKind.read,
+      'grep' || 'glob' => TranscriptToolKind.search,
+      'webfetch' || 'websearch' => TranscriptToolKind.web,
+      'edit' || 'write' || 'notebookedit' => TranscriptToolKind.edit,
+      'task' || 'agent' => TranscriptToolKind.analysis,
+      'bash' => TranscriptToolKind.command,
+      _ => TranscriptToolKind.generic,
+    };
+
 class TranscriptWorkingActivity {
   const TranscriptWorkingActivity({required this.label, this.startedAt});
 
@@ -185,14 +199,14 @@ TranscriptWorkingActivity transcriptWorkingActivity(
       if (block['type'] == 'tool_use') {
         final name = _string(block['name']);
         return TranscriptWorkingActivity(
-          label: switch (name) {
-            'Bash' => 'Running a command…',
-            'Read' => 'Reading a file…',
-            'Edit' || 'Write' || 'NotebookEdit' => 'Editing files…',
-            'Grep' || 'Glob' => 'Searching the code…',
-            'WebFetch' || 'WebSearch' => 'Searching the web…',
-            'Task' || 'Agent' => 'Running a sub-agent…',
-            _ => 'Working: ${name ?? 'tool'}…',
+          label: switch (transcriptToolKind(name)) {
+            TranscriptToolKind.command => 'Running a command…',
+            TranscriptToolKind.read => 'Reading a file…',
+            TranscriptToolKind.edit => 'Editing files…',
+            TranscriptToolKind.search => 'Searching the code…',
+            TranscriptToolKind.web => 'Searching the web…',
+            TranscriptToolKind.analysis => 'Running a sub-agent…',
+            TranscriptToolKind.generic => 'Working: ${name ?? 'tool'}…',
           },
           startedAt: startedAt,
         );
@@ -445,14 +459,29 @@ String textFromTranscriptContent(Object? content) {
       .join('\n');
 }
 
+const _toolPathKeys = ['file_path', 'filePath', 'path', 'filename'];
+final _patchFileHeader = RegExp(
+  r'^\*\*\* (?:Update|Add|Delete) File:\s*(.+)$',
+  multiLine: true,
+);
+
+/// Non-empty, trimmed paths of an apply-patch style `changes` list.
+List<String> _changePaths(Map input) {
+  final changes = input['changes'];
+  if (changes is! List) return const [];
+  return changes
+      .whereType<Map>()
+      .map((change) => _string(change['path'])?.trim())
+      .whereType<String>()
+      .where((path) => path.isNotEmpty)
+      .toList();
+}
+
 String transcriptToolSummary(Object? input, {String? name}) {
   if (input is! Map) return '';
   for (final key in const [
     'command',
-    'file_path',
-    'filePath',
-    'path',
-    'filename',
+    ..._toolPathKeys,
     'pattern',
     'url',
     'description',
@@ -463,24 +492,13 @@ String transcriptToolSummary(Object? input, {String? name}) {
     if (value?.trim().isNotEmpty == true) return value!;
   }
   if (name?.trim().toLowerCase() == 'edit') {
-    final changes = input['changes'];
-    if (changes is List) {
-      final paths = changes
-          .whereType<Map>()
-          .map((change) => _string(change['path']))
-          .whereType<String>()
-          .where((path) => path.trim().isNotEmpty)
-          .toList();
-      if (paths.length == 1) return paths.first;
-      if (paths.length > 1) return '${paths.first} (+${paths.length - 1})';
-    }
+    final paths = _changePaths(input);
+    if (paths.length == 1) return paths.first;
+    if (paths.length > 1) return '${paths.first} (+${paths.length - 1})';
     final patch = _string(input['patch'] ?? input['diff']);
     if (patch?.isNotEmpty == true) {
-      final match = RegExp(
-        r'^\*\*\* (?:Update|Add|Delete) File:\s*(.+)$',
-        multiLine: true,
-      ).firstMatch(patch!);
-      return match?.group(1)?.trim() ?? patch.split('\n').first;
+      return _patchFileHeader.firstMatch(patch!)?.group(1)?.trim() ??
+          patch.split('\n').first;
     }
   }
   return '';
@@ -494,7 +512,7 @@ String? transcriptEditFileName(Object? input) {
   if (input is! Map) return null;
   String? path;
   var additionalFiles = 0;
-  for (final key in const ['file_path', 'filePath', 'path', 'filename']) {
+  for (final key in _toolPathKeys) {
     final candidate = _string(input[key])?.trim();
     if (candidate?.isNotEmpty == true) {
       path = candidate;
@@ -502,14 +520,8 @@ String? transcriptEditFileName(Object? input) {
     }
   }
 
-  final changes = input['changes'];
-  if (path == null && changes is List) {
-    final paths = changes
-        .whereType<Map>()
-        .map((change) => _string(change['path'])?.trim())
-        .whereType<String>()
-        .where((candidate) => candidate.isNotEmpty)
-        .toList();
+  if (path == null) {
+    final paths = _changePaths(input);
     if (paths.isNotEmpty) {
       path = paths.first;
       additionalFiles = paths.length - 1;
@@ -520,10 +532,7 @@ String? transcriptEditFileName(Object? input) {
     final patch = _string(input['patch'] ?? input['diff']);
     if (patch != null) {
       path =
-          RegExp(
-            r'^\*\*\* (?:Update|Add|Delete) File:\s*(.+)$',
-            multiLine: true,
-          ).firstMatch(patch)?.group(1)?.trim() ??
+          _patchFileHeader.firstMatch(patch)?.group(1)?.trim() ??
           RegExp(
             r'^\+\+\+\s+(?:b/)?(.+)$',
             multiLine: true,

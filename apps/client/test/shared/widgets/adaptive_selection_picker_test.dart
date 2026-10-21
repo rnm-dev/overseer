@@ -6,6 +6,13 @@ import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/adaptive_selection_picker.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';
 
+Widget _trigger(
+  BuildContext context,
+  String selectedLabel,
+  bool expanded,
+  VoidCallback onTap,
+) => TextButton(onPressed: onTap, child: Text(selectedLabel));
+
 void main() {
   Future<void> pumpPicker(
     WidgetTester tester, {
@@ -32,6 +39,7 @@ void main() {
                 SelectionOption(value: 'SCV', label: 'SCV'),
               ],
               onSelected: onSelected,
+              triggerBuilder: _trigger,
             ),
           ),
         ),
@@ -108,6 +116,7 @@ void main() {
               SelectionOption(value: 'SCV', label: 'SCV'),
             ],
             onSelected: (_) {},
+            triggerBuilder: _trigger,
           ),
         ),
       ),

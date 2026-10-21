@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum UserAvatarSize { xs, sm, md, lg, xl }
+enum UserAvatarSize { xs, sm, md, lg }
 
 @immutable
 class UserAvatar extends StatelessWidget {
@@ -23,20 +23,17 @@ class UserAvatar extends StatelessWidget {
   static const double _diameterSm = 20;
   static const double _diameterMd = 28;
   static const double _diameterLg = 36;
-  static const double _diameterXl = 40;
 
   static const double _fontSizeXs = 9;
   static const double _fontSizeSm = 10;
   static const double _fontSizeMd = 12;
   static const double _fontSizeLg = 14;
-  static const double _fontSizeXl = 14;
 
   double get _diameter => switch (size) {
     UserAvatarSize.xs => _diameterXs,
     UserAvatarSize.sm => _diameterSm,
     UserAvatarSize.md => _diameterMd,
     UserAvatarSize.lg => _diameterLg,
-    UserAvatarSize.xl => _diameterXl,
   };
 
   double get _fontSize => switch (size) {
@@ -44,7 +41,6 @@ class UserAvatar extends StatelessWidget {
     UserAvatarSize.sm => _fontSizeSm,
     UserAvatarSize.md => _fontSizeMd,
     UserAvatarSize.lg => _fontSizeLg,
-    UserAvatarSize.xl => _fontSizeXl,
   };
 
   String get _initial =>

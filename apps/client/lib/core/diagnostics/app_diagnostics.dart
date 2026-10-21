@@ -13,7 +13,6 @@ class AppDiagnosticEvent {
   const AppDiagnosticEvent({
     required this.name,
     this.level = AppDiagnosticLevel.info,
-    this.connectionId,
     this.workspaceId,
     this.sessionId,
     this.state,
@@ -25,7 +24,6 @@ class AppDiagnosticEvent {
 
   final String name;
   final AppDiagnosticLevel level;
-  final String? connectionId;
   final String? workspaceId;
   final String? sessionId;
   final String? state;
@@ -37,7 +35,6 @@ class AppDiagnosticEvent {
   Map<String, Object?> toJson() => {
     'event': name,
     'level': level.name,
-    if (connectionId != null) 'connectionId': connectionId,
     if (workspaceId != null) 'workspaceId': workspaceId,
     if (sessionId != null) 'sessionId': sessionId,
     if (state != null) 'state': state,

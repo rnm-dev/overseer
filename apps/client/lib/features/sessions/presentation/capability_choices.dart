@@ -5,7 +5,6 @@ class CapabilityChoice {
   const CapabilityChoice({
     required this.value,
     required this.label,
-    required this.name,
     required this.selected,
   });
 
@@ -13,7 +12,6 @@ class CapabilityChoice {
   /// separately-labelled inherit/reset action.
   final String value;
   final String label;
-  final String name;
   final bool selected;
 }
 
@@ -22,20 +20,13 @@ class CapabilityChoice {
 List<CapabilityChoice> capabilityChoices(
   List<ModelCatalogOption> options,
   String? value, {
-  String? inherited,
   String resetLabel = 'Use Peon default',
 }) => [
-  CapabilityChoice(
-    value: '',
-    label: resetLabel,
-    name: resetLabel,
-    selected: value == null,
-  ),
+  CapabilityChoice(value: '', label: resetLabel, selected: value == null),
   for (final option in options)
     CapabilityChoice(
       value: option.id,
       label: option.label,
-      name: option.label,
       selected: value == option.id || value == option.alias,
     ),
 ];

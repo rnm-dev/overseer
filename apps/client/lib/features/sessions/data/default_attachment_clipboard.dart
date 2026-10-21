@@ -1,4 +1,4 @@
-import '../../../core/platform/attachment_clipboard_reader.dart';
+import '../../../core/platform/attachment_clipboard_reader_io.dart';
 import '../domain/attachment_clipboard.dart';
 
 class DefaultAttachmentClipboard implements AttachmentClipboard {

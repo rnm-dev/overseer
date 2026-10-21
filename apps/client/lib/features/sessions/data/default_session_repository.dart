@@ -11,6 +11,7 @@ import '../../../core/time/app_time.dart';
 import '../domain/session_models.dart';
 import '../domain/session_repository.dart';
 import 'project_session_count_cache.dart';
+import 'session_data_helpers.dart';
 
 class DefaultSessionRepository
     implements SessionRepository, AttentionProjectionSink {
@@ -145,12 +146,8 @@ class DefaultSessionRepository
         catalogStale: catalogStale,
       );
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final message = data is Map<String, dynamic>
-          ? data['error'] as String?
-          : null;
       throw SessionsException(
-        message ??
+        error.serverMessage ??
             'Could not refresh sessions. Cached sessions are still available.',
       );
     } on FormatException {
@@ -219,12 +216,9 @@ class DefaultSessionRepository
         '/peons/${Uri.encodeComponent(peonId)}'
         '/sessions/${Uri.encodeComponent(sessionId)}/attention/read',
       );
-      await (database.update(database.cachedSessions)..where(
-            (row) =>
-                row.workspaceId.equals(workspaceId) &
-                row.peonId.equals(peonId) &
-                row.sessionId.equals(sessionId),
-          ))
+      await (database.update(
+            database.cachedSessions,
+          )..where((row) => row.matchesSession(workspaceId, peonId, sessionId)))
           .write(
             CachedSessionsCompanion(
               attentionUnread: const Value(false),
@@ -251,10 +245,8 @@ class DefaultSessionRepository
         '/sessions/${Uri.encodeComponent(sessionId)}/cancel',
       );
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final serverMessage = data is Map ? data['error'] as String? : null;
       throw SessionsException(
-        serverMessage ??
+        error.serverMessage ??
             switch (error.response?.statusCode) {
               409 => 'This session is no longer running.',
               404 => 'Stopping is unavailable. Update the Peon.',
@@ -278,18 +270,13 @@ class DefaultSessionRepository
         '/sessions/${Uri.encodeComponent(sessionId)}',
         data: {'title': title},
       );
-      await (database.update(database.cachedSessions)..where(
-            (row) =>
-                row.workspaceId.equals(workspaceId) &
-                row.peonId.equals(peonId) &
-                row.sessionId.equals(sessionId),
-          ))
+      await (database.update(
+            database.cachedSessions,
+          )..where((row) => row.matchesSession(workspaceId, peonId, sessionId)))
           .write(CachedSessionsCompanion(title: Value(title)));
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final serverMessage = data is Map ? data['error'] as String? : null;
       throw SessionsException(
-        serverMessage ??
+        error.serverMessage ??
             switch (error.response?.statusCode) {
               404 => 'Renaming is unavailable. Update the Peon.',
               _ => 'Could not rename this session.',
@@ -313,17 +300,11 @@ class DefaultSessionRepository
       await database.transaction(() async {
         final existing =
             await (database.select(database.cachedSessions)..where(
-                  (row) =>
-                      row.workspaceId.equals(workspaceId) &
-                      row.peonId.equals(peonId) &
-                      row.sessionId.equals(sessionId),
+                  (row) => row.matchesSession(workspaceId, peonId, sessionId),
                 ))
                 .getSingleOrNull();
         await (database.delete(database.cachedSessions)..where(
-              (row) =>
-                  row.workspaceId.equals(workspaceId) &
-                  row.peonId.equals(peonId) &
-                  row.sessionId.equals(sessionId),
+              (row) => row.matchesSession(workspaceId, peonId, sessionId),
             ))
             .go();
         if (existing != null) {
@@ -338,10 +319,8 @@ class DefaultSessionRepository
         }
       });
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final serverMessage = data is Map ? data['error'] as String? : null;
       throw SessionsException(
-        serverMessage ??
+        error.serverMessage ??
             switch (error.response?.statusCode) {
               404 => 'This session is no longer available.',
               _ => 'Could not delete this session.',
@@ -357,12 +336,7 @@ class DefaultSessionRepository
     required String sessionId,
   }) {
     return database.select(database.cachedTranscriptEvents)
-      ..where(
-        (row) =>
-            row.workspaceId.equals(workspaceId) &
-            row.peonId.equals(peonId) &
-            row.sessionId.equals(sessionId),
-      )
+      ..where((row) => row.matchesSession(workspaceId, peonId, sessionId))
       ..orderBy([(row) => OrderingTerm.asc(row.orderKey)]);
   }
 
@@ -379,10 +353,7 @@ class DefaultSessionRepository
     ).get();
     final metadata =
         await (database.select(database.cachedTranscripts)..where(
-              (row) =>
-                  row.workspaceId.equals(workspaceId) &
-                  row.peonId.equals(peonId) &
-                  row.sessionId.equals(sessionId),
+              (row) => row.matchesSession(workspaceId, peonId, sessionId),
             ))
             .getSingleOrNull();
     return TranscriptCache(
@@ -503,10 +474,7 @@ class DefaultSessionRepository
             incomingIds.every((eventId) => !existingSet.contains(eventId));
         if (replaceDisjointLatest) {
           await (database.delete(database.cachedTranscriptEvents)..where(
-                (row) =>
-                    row.workspaceId.equals(workspaceId) &
-                    row.peonId.equals(peonId) &
-                    row.sessionId.equals(sessionId),
+                (row) => row.matchesSession(workspaceId, peonId, sessionId),
               ))
               .go();
           existingIds = [];
@@ -523,9 +491,7 @@ class DefaultSessionRepository
           final eventId = orderedIds[index];
           await (database.update(database.cachedTranscriptEvents)..where(
                 (row) =>
-                    row.workspaceId.equals(workspaceId) &
-                    row.peonId.equals(peonId) &
-                    row.sessionId.equals(sessionId) &
+                    row.matchesSession(workspaceId, peonId, sessionId) &
                     row.eventId.equals(eventId),
               ))
               .write(CachedTranscriptEventsCompanion(orderKey: Value(index)));
@@ -584,9 +550,9 @@ class DefaultSessionRepository
         insertedCount: insertedCount,
       );
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final message = data is Map ? data['error'] as String? : null;
-      throw SessionsException(message ?? 'Could not load the transcript.');
+      throw SessionsException(
+        error.serverMessage ?? 'Could not load the transcript.',
+      );
     } on FormatException {
       throw const SessionsException(
         'Overseer returned an invalid transcript response.',
@@ -617,9 +583,7 @@ class DefaultSessionRepository
       final existing =
           await (database.select(database.cachedTranscriptEvents)..where(
                 (row) =>
-                    row.workspaceId.equals(workspaceId) &
-                    row.peonId.equals(peonId) &
-                    row.sessionId.equals(sessionId) &
+                    row.matchesSession(workspaceId, peonId, sessionId) &
                     row.eventId.equals(eventId),
               ))
               .getSingleOrNull();
@@ -647,10 +611,7 @@ class DefaultSessionRepository
           );
       final metadata =
           await (database.select(database.cachedTranscripts)..where(
-                (row) =>
-                    row.workspaceId.equals(workspaceId) &
-                    row.peonId.equals(peonId) &
-                    row.sessionId.equals(sessionId),
+                (row) => row.matchesSession(workspaceId, peonId, sessionId),
               ))
               .getSingleOrNull();
       await database
@@ -692,9 +653,7 @@ class DefaultSessionRepository
         if (envelope.deleted) {
           await (database.delete(database.cachedSessions)..where(
                 (row) =>
-                    row.workspaceId.equals(workspaceId) &
-                    row.peonId.equals(peonId) &
-                    row.sessionId.equals(sessionId) &
+                    row.matchesSession(workspaceId, peonId, sessionId) &
                     row.syncedAt.isSmallerOrEqualValue(syncedAt),
               ))
               .go();

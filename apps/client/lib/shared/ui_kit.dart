@@ -15,8 +15,6 @@ export 'widgets/app_markdown.dart';
 export 'widgets/app_page_header.dart';
 export 'widgets/app_section_header.dart';
 export 'widgets/app_text_field.dart';
-export 'widgets/entity_list_tile.dart';
 export 'widgets/status_badge.dart';
 export 'widgets/status_dot.dart';
-export 'widgets/surface.dart';
 export 'widgets/user_avatar.dart';

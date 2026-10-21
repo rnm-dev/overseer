@@ -7,35 +7,26 @@ class VoiceCapabilities {
     required this.enabled,
     required this.maxDuration,
     required this.maxBytes,
-    required this.mediaTypes,
-    required this.polish,
   });
 
   final bool enabled;
   final Duration maxDuration;
   final int maxBytes;
-  final List<String> mediaTypes;
-  final bool polish;
 }
 
 class VoiceTranscription {
-  const VoiceTranscription({required this.text, this.language, this.latency});
+  const VoiceTranscription({required this.text});
 
   final String text;
-  final String? language;
-  final Duration? latency;
 }
 
 enum VoiceInputErrorKind {
-  permissionDenied,
-  permissionPermanentlyDenied,
   disabled,
   rateLimited,
   provider,
   network,
   tooLarge,
   unsupported,
-  nothingSaid,
   unavailable,
 }
 

@@ -14,7 +14,6 @@ class AppNavigationBar extends StatelessWidget {
     this.onBack,
     this.backButtonKey,
     this.backTooltip = 'Back',
-    this.applyTopSafeArea = true,
     this.topInsetReduction = 0,
     this.contentPadding = const EdgeInsets.fromLTRB(8, 2, 12, 2),
   }) : assert(topInsetReduction >= 0);
@@ -25,16 +24,16 @@ class AppNavigationBar extends StatelessWidget {
   final VoidCallback? onBack;
   final Key? backButtonKey;
   final String backTooltip;
-  final bool applyTopSafeArea;
   final double topInsetReduction;
   final EdgeInsetsGeometry contentPadding;
 
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final topInset = applyTopSafeArea
-        ? math.max(0.0, MediaQuery.paddingOf(context).top - topInsetReduction)
-        : 0.0;
+    final topInset = math.max(
+      0.0,
+      MediaQuery.paddingOf(context).top - topInsetReduction,
+    );
 
     return DecoratedBox(
       decoration: BoxDecoration(

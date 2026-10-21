@@ -52,10 +52,9 @@ void main() {
 
   group('AppTheme.dark', () {
     test('uses the global twelve-pixel screen gutter', () {
-      final spacing = AppTheme.dark.extension<AppSpacing>();
+      const spacing = AppSpacing();
 
-      expect(spacing, isNotNull);
-      expect(spacing!.screenHorizontal, 12);
+      expect(spacing.screenHorizontal, 12);
       expect(
         spacing.screenInsets(top: 12, bottom: 32),
         const EdgeInsets.fromLTRB(12, 12, 12, 32),

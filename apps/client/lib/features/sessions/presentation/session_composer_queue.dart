@@ -3,18 +3,16 @@ part of 'session_composer.dart';
 class _QueuedFollowupList extends StatelessWidget {
   const _QueuedFollowupList({
     required this.items,
-    required this.editing,
-    required this.removing,
-    required this.sending,
+    required this.busy,
     required this.onEdit,
     required this.onRemove,
     required this.onSteer,
   });
 
   final List<QueuedFollowup> items;
-  final Set<String> editing;
-  final Set<String> removing;
-  final Set<String> sending;
+
+  /// Ids of queued items with an edit, remove or send in flight.
+  final Set<String> busy;
   final Future<void> Function(String itemId, String prompt)? onEdit;
   final Future<void> Function(String itemId)? onRemove;
   final Future<void> Function(String itemId)? onSteer;
@@ -35,10 +33,7 @@ class _QueuedFollowupList extends StatelessWidget {
           separatorBuilder: (_, _) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
             final item = items[index];
-            final isEditing = editing.contains(item.id);
-            final isRemoving = removing.contains(item.id);
-            final isSending = sending.contains(item.id);
-            final busy = isEditing || isRemoving || isSending;
+            final busy = this.busy.contains(item.id);
             const shape = BorderRadius.only(
               topLeft: Radius.circular(12),
               topRight: Radius.circular(12),
@@ -112,7 +107,9 @@ class _QueuedFollowupList extends StatelessWidget {
                                 if (item.replyTo case final reply?)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 6),
-                                    child: _ComposerReplyCard(replyTo: reply),
+                                    child: SelectedTextReplyCard(
+                                      replyTo: reply,
+                                    ),
                                   ),
                                 if (item.attachments.isNotEmpty) ...[
                                   const SizedBox(height: 4),
@@ -247,7 +244,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final palette = Theme.of(context).extension<AppThemePalette>()?.package;
+    final palette = AppThemePalette.of(context);
     final height = MediaQuery.sizeOf(context).height * 0.8;
     final busy = _busyAction != null;
     return Dialog(
@@ -258,7 +255,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
         constraints: BoxConstraints(maxWidth: 560, maxHeight: height),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: palette?.surfaceRaised ?? colors.surfaceContainerHighest,
+            color: palette.surfaceRaised,
             border: Border.all(color: colors.outlineVariant),
             borderRadius: AppMotion.surfaceShape,
             boxShadow: [
@@ -325,7 +322,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                         ),
                       if (widget.item.replyTo case final reply?) ...[
                         const SizedBox(height: 12),
-                        _ComposerReplyCard(replyTo: reply),
+                        SelectedTextReplyCard(replyTo: reply),
                       ],
                       if (widget.item.attachments.isNotEmpty) ...[
                         const SizedBox(height: 14),
@@ -340,8 +337,7 @@ class _QueuedFollowupDialogState extends State<_QueuedFollowupDialog> {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color:
-                                      palette?.surfaceHover ?? colors.surface,
+                                  color: palette.surfaceHover,
                                   border: Border.all(
                                     color: colors.outlineVariant,
                                   ),
@@ -694,8 +690,10 @@ class _VoiceDictationButton extends StatelessWidget {
     final colors = Theme.of(context).colorScheme;
     final recording = state.phase == VoiceDictationPhase.recording;
     final transcribing = state.phase == VoiceDictationPhase.transcribing;
-    return IconButton(
+    final active = recording || transcribing;
+    return _composerSquareButton(
       key: const Key('session-composer-voice'),
+      visualKey: const Key('session-composer-voice-visual'),
       tooltip: transcribing
           ? 'Cancel transcription'
           : recording
@@ -708,84 +706,19 @@ class _VoiceDictationButton extends StatelessWidget {
           : recording
           ? onStop
           : onStart,
-      padding: EdgeInsets.zero,
       alignment: Alignment.centerLeft,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 44),
-      style: IconButton.styleFrom(
-        minimumSize: const Size(38, 44),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: recording || transcribing
-            ? colors.error
-            : colors.onSurfaceVariant,
-        disabledForegroundColor: colors.onSurfaceVariant.withValues(
-          alpha: 0.45,
-        ),
-      ),
-      icon: Container(
-        key: const Key('session-composer-voice-visual'),
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: recording || transcribing
-              ? colors.error.withValues(alpha: 0.14)
-              : colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        alignment: Alignment.center,
-        child: Icon(
-          transcribing
-              ? LucideIcons.x
-              : recording
-              ? LucideIcons.square
-              : LucideIcons.mic,
-          size: 16,
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerIconButton extends StatelessWidget {
-  const _ComposerIconButton({
-    super.key,
-    required this.tooltip,
-    required this.icon,
-    required this.onPressed,
-    required this.visualKey,
-    required this.alignment,
-  });
-
-  final String tooltip;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final Key visualKey;
-  final AlignmentGeometry alignment;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return IconButton(
-      tooltip: tooltip,
-      onPressed: onPressed,
-      padding: EdgeInsets.zero,
-      alignment: alignment,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 44),
-      style: IconButton.styleFrom(
-        minimumSize: const Size(38, 44),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: colors.onSurfaceVariant,
-        disabledForegroundColor: colors.onSurfaceVariant.withValues(alpha: 0.3),
-      ),
-      icon: Container(
-        key: visualKey,
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        alignment: Alignment.center,
-        child: Icon(icon, size: 16),
+      foregroundColor: active ? colors.error : colors.onSurfaceVariant,
+      disabledForegroundColor: colors.onSurfaceVariant.withValues(alpha: 0.45),
+      background: active
+          ? colors.error.withValues(alpha: 0.14)
+          : colors.surfaceContainerHighest,
+      child: Icon(
+        transcribing
+            ? LucideIcons.x
+            : recording
+            ? LucideIcons.square
+            : LucideIcons.mic,
+        size: 16,
       ),
     );
   }
@@ -793,21 +726,15 @@ class _ComposerIconButton extends StatelessWidget {
 
 class _ComposerSubmitButton extends StatelessWidget {
   const _ComposerSubmitButton({
-    required this.buttonKey,
-    required this.visualKey,
     required this.tooltip,
     required this.icon,
-    required this.alignment,
     required this.enabled,
-    this.pending = false,
+    required this.pending,
     required this.onPressed,
   });
 
-  final Key buttonKey;
-  final Key visualKey;
   final String tooltip;
   final IconData icon;
-  final AlignmentGeometry alignment;
   final bool enabled;
   final bool pending;
   final VoidCallback? onPressed;
@@ -815,40 +742,66 @@ class _ComposerSubmitButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    return IconButton(
-      key: buttonKey,
+    return _composerSquareButton(
+      key: const Key('session-composer-submit'),
+      visualKey: const Key('session-composer-submit-visual'),
       tooltip: tooltip,
       onPressed: enabled ? onPressed : null,
-      padding: EdgeInsets.zero,
-      alignment: alignment,
-      constraints: const BoxConstraints.tightFor(width: 38, height: 44),
-      style: IconButton.styleFrom(
-        minimumSize: const Size(38, 44),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        foregroundColor: enabled ? colors.onPrimary : colors.onSurfaceVariant,
-        disabledForegroundColor: colors.onSurfaceVariant,
-      ),
-      icon: Container(
-        key: visualKey,
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: enabled ? colors.primary : colors.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        alignment: Alignment.center,
-        child: pending
-            ? SizedBox.square(
-                dimension: 15,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colors.onPrimary,
-                ),
-              )
-            : Icon(icon, size: 15),
-      ),
+      alignment: Alignment.centerRight,
+      foregroundColor: enabled ? colors.onPrimary : colors.onSurfaceVariant,
+      disabledForegroundColor: colors.onSurfaceVariant,
+      background: enabled ? colors.primary : colors.surfaceContainerHighest,
+      child: pending
+          ? SizedBox.square(
+              dimension: 15,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: colors.onPrimary,
+              ),
+            )
+          : Icon(icon, size: 15),
     );
   }
+}
+
+/// The composer's 38x44 tap target around a 32px rounded square. A function
+/// rather than a widget so [key] lands on the [IconButton] itself.
+IconButton _composerSquareButton({
+  Key? key,
+  required Key visualKey,
+  required String tooltip,
+  required VoidCallback? onPressed,
+  required AlignmentGeometry alignment,
+  required Color foregroundColor,
+  required Color disabledForegroundColor,
+  required Color background,
+  required Widget child,
+}) {
+  return IconButton(
+    key: key,
+    tooltip: tooltip,
+    onPressed: onPressed,
+    padding: EdgeInsets.zero,
+    alignment: alignment,
+    constraints: const BoxConstraints.tightFor(width: 38, height: 44),
+    style: IconButton.styleFrom(
+      minimumSize: const Size(38, 44),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      foregroundColor: foregroundColor,
+      disabledForegroundColor: disabledForegroundColor,
+    ),
+    icon: Container(
+      key: visualKey,
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      alignment: Alignment.center,
+      child: child,
+    ),
+  );
 }
 
 class _ComposerCapabilityPicker extends StatefulWidget {
@@ -917,7 +870,6 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
           final modelChoices = capabilityChoices(
             provider.models,
             model,
-            inherited: switchedAgent ? null : widget.inheritedModel,
             resetLabel: switchedAgent || widget.inheritedModel == null
                 ? 'Use Peon default'
                 : 'Use session default',
@@ -931,14 +883,9 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
             provider,
             effectiveModel,
           );
-          final inheritedEffort = effectiveReasoningEffort(
-            effortOptions,
-            inherited: switchedAgent ? null : widget.inheritedReasoningEffort,
-          );
           final effortChoices = capabilityChoices(
             effortOptions,
             effort,
-            inherited: inheritedEffort,
             resetLabel: switchedAgent || widget.inheritedReasoningEffort == null
                 ? 'Use Peon default'
                 : 'Use session default',
@@ -966,7 +913,6 @@ class _ComposerCapabilityPickerState extends State<_ComposerCapabilityPicker> {
                               CapabilityChoice(
                                 value: item.agent,
                                 label: item.label,
-                                name: item.label,
                                 selected: item.agent == agent,
                               ),
                           ],
@@ -1170,7 +1116,7 @@ class _CapabilityRadioSection extends StatelessWidget {
                   RadioListTile<String>(
                     key: ValueKey(
                       'session-capability-${title.toLowerCase()}-'
-                      '${choice.name}',
+                      '${choice.label}',
                     ),
                     value: choice.value,
                     title: Text(

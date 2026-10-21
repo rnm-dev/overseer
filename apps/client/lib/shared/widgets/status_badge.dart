@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:overseer_mobile/shared/design/colors.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 
-enum StatusBadgeTone { neutral, success, warning, danger }
+enum StatusBadgeTone { neutral, success, danger }
 
 class StatusBadge extends StatelessWidget {
   const StatusBadge({
@@ -50,11 +50,6 @@ class StatusBadge extends StatelessWidget {
         text: theme.accentStrong,
         fill: theme.accent.withValues(alpha: 0.13),
         border: theme.accent.withValues(alpha: 0.30),
-      ),
-      StatusBadgeTone.warning => _StatusBadgePalette(
-        text: theme.warningStrong,
-        fill: theme.warning.withValues(alpha: 0.10),
-        border: theme.warning.withValues(alpha: 0.32),
       ),
       StatusBadgeTone.danger => _StatusBadgePalette(
         text: theme.danger,

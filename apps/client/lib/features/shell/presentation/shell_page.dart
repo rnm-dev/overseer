@@ -6,8 +6,7 @@ import '../../auth/domain/auth_models.dart';
 import '../../fleet/fleet.dart';
 import '../../../shared/layout/responsive_breakpoints.dart';
 import 'compact_shell.dart';
-import 'medium_shell.dart';
-import 'wide_shell.dart';
+import 'rail_shell.dart';
 
 /// Set by the persistent desktop frame to avoid nesting a second sidebar.
 final externalShellRailProvider = Provider<bool>((ref) => false);
@@ -90,16 +89,8 @@ class ShellPage extends ConsumerWidget {
             overseerName: overseerName,
             onBackToConnections: onBackToConnections,
           ),
-          ResponsiveLayoutSize.medium => MediumShell(
-            user: user,
-            onSignOut: onSignOut,
-            onOpenPeon: onOpenPeon,
-            onOpenSession: onOpenSession,
-            onNewSession: onNewSession,
-            overseerName: overseerName,
-            onBackToConnections: onBackToConnections,
-          ),
-          ResponsiveLayoutSize.wide => WideShell(
+          final size => RailShell(
+            wide: size == ResponsiveLayoutSize.wide,
             user: user,
             onSignOut: onSignOut,
             onOpenPeon: onOpenPeon,

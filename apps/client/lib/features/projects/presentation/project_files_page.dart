@@ -7,6 +7,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../../../shared/design/typography.dart';
 import '../../../shared/widgets/app_button.dart';
+import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
 import '../application/project_files_controller.dart';
 import '../domain/project_models.dart';
@@ -32,11 +33,7 @@ class ProjectFilesPage extends ConsumerWidget {
     final key = projectKey?.trim();
     final scope = key == null || key.isEmpty
         ? null
-        : ProjectFilesScope(
-            workspaceId: workspaceId,
-            peonId: peonId,
-            projectKey: key,
-          );
+        : (workspaceId: workspaceId, peonId: peonId, projectKey: key);
     final files = scope == null
         ? null
         : ref.watch(projectFilesControllerProvider(scope));
@@ -147,7 +144,7 @@ class ProjectFilesPage extends ConsumerWidget {
             ),
             Expanded(
               child: scope == null
-                  ? const _FilesEmptyState(
+                  ? const AppEmptyState(
                       icon: LucideIcons.folderX,
                       title: 'No project files',
                       message:
@@ -172,7 +169,7 @@ class ProjectFilesPage extends ConsumerWidget {
                         onMove: actions.move,
                       ),
                       loading: () => const _TreeLoading(),
-                      error: (_, _) => _FilesEmptyState(
+                      error: (_, _) => AppEmptyState(
                         icon: LucideIcons.triangleAlert,
                         title: 'Couldn’t load files',
                         message: 'The project tree is unavailable right now.',
@@ -303,7 +300,7 @@ class _ProjectFileTreeViewState extends State<ProjectFileTreeView> {
       return const _TreeLoading();
     }
     if (root.message != null) {
-      return _FilesEmptyState(
+      return AppEmptyState(
         icon: LucideIcons.triangleAlert,
         title: 'Couldn’t load files',
         message: root.message!,
@@ -318,7 +315,7 @@ class _ProjectFileTreeViewState extends State<ProjectFileTreeView> {
     }
     final rootUploads = state.uploads.where((u) => u.parent.isEmpty);
     if (root.entries.isEmpty && rootUploads.isEmpty) {
-      return const _FilesEmptyState(
+      return const AppEmptyState(
         icon: LucideIcons.folder,
         title: 'Empty project',
         message: 'There are no files in this project yet.',
@@ -834,7 +831,7 @@ class _FileTreeRow extends StatelessWidget {
           ),
           if (!entry.isDirectory && entry.size != null)
             Text(
-              _formatFileSize(entry.size!),
+              formatFileSize(entry.size!),
               style: AppTypography.mono(
                 fontSize: 10,
                 color: colors.onSurfaceVariant,
@@ -1044,56 +1041,6 @@ class _TreeLoading extends StatelessWidget {
   }
 }
 
-class _FilesEmptyState extends StatelessWidget {
-  const _FilesEmptyState({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.action,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 28, color: colors.onSurfaceVariant),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: AppTypography.display(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: colors.onSurface,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTypography.body(
-                fontSize: 13,
-                color: colors.onSurfaceVariant,
-              ),
-            ),
-            if (action != null) ...[const SizedBox(height: 16), action!],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 IconData _fileIcon(String name) {
   final extension = name.contains('.')
       ? name.split('.').last.toLowerCase()
@@ -1116,12 +1063,6 @@ IconData _fileIcon(String name) {
     'json' || 'yaml' || 'yml' || 'toml' => LucideIcons.fileJson,
     _ => LucideIcons.file,
   };
-}
-
-String _formatFileSize(int size) {
-  if (size < 1024) return '$size B';
-  if (size < 1024 * 1024) return '${(size / 1024).round()} KB';
-  return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
 String _titleize(String value) {

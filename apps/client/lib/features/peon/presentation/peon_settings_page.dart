@@ -7,6 +7,7 @@ import '../../../shared/design/typography.dart';
 import '../../../shared/models/ai_capabilities.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_card.dart';
+import '../../../shared/widgets/app_empty_state.dart';
 import '../../../shared/widgets/app_option_bottom_sheet.dart';
 import '../../../shared/widgets/app_text_field.dart';
 import '../../../shared/widgets/confirmation_bottom_sheet.dart';
@@ -38,7 +39,7 @@ class PeonSettingsPage extends ConsumerStatefulWidget {
 class _PeonSettingsPageState extends ConsumerState<PeonSettingsPage> {
   _SettingsSection _section = _SettingsSection.general;
 
-  PeonSettingsScope get _scope => PeonSettingsScope(
+  PeonSettingsScope get _scope => (
     workspaceId: widget.workspace.id,
     peonId: widget.peon.id,
     online: widget.peon.online,
@@ -47,7 +48,7 @@ class _PeonSettingsPageState extends ConsumerState<PeonSettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (widget.workspace.role != null && widget.workspace.role != 'owner') {
-      return const _Notice(
+      return const AppEmptyState(
         icon: LucideIcons.lock,
         title: 'Owner access required',
         message: 'Peon management settings are available to workspace owners.',
@@ -80,7 +81,7 @@ class _PeonSettingsPageState extends ConsumerState<PeonSettingsPage> {
                 ),
                 _SettingsSection.agent =>
                   value == null
-                      ? _Notice(
+                      ? AppEmptyState(
                           icon: state.unsupported
                               ? LucideIcons.triangleAlert
                               : LucideIcons.cloudOff,
@@ -116,7 +117,7 @@ class _PeonSettingsPageState extends ConsumerState<PeonSettingsPage> {
             loading: () => const Center(
               child: CircularProgressIndicator(strokeWidth: 1.7),
             ),
-            error: (error, _) => _Notice(
+            error: (error, _) => AppEmptyState(
               icon: LucideIcons.cloudOff,
               title: 'Could not load settings',
               message: error.toString(),
@@ -131,55 +132,4 @@ class _PeonSettingsPageState extends ConsumerState<PeonSettingsPage> {
       ],
     );
   }
-}
-
-class _Notice extends StatelessWidget {
-  const _Notice({
-    required this.icon,
-    required this.title,
-    required this.message,
-    this.action,
-  });
-
-  final IconData icon;
-  final String title;
-  final String message;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            icon,
-            size: 30,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: AppTypography.display(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: AppTypography.body(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              height: 1.4,
-            ),
-          ),
-          if (action != null) ...[const SizedBox(height: 16), action!],
-        ],
-      ),
-    ),
-  );
 }

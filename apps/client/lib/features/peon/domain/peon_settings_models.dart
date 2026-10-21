@@ -1,26 +1,6 @@
 import '../../../shared/models/ai_capabilities.dart';
 
-class PeonSettingsScope {
-  const PeonSettingsScope({
-    required this.workspaceId,
-    required this.peonId,
-    required this.online,
-  });
-
-  final String workspaceId;
-  final String peonId;
-  final bool online;
-
-  @override
-  bool operator ==(Object other) =>
-      other is PeonSettingsScope &&
-      other.workspaceId == workspaceId &&
-      other.peonId == peonId &&
-      other.online == online;
-
-  @override
-  int get hashCode => Object.hash(workspaceId, peonId, online);
-}
+typedef PeonSettingsScope = ({String workspaceId, String peonId, bool online});
 
 class PeonSettings {
   const PeonSettings({

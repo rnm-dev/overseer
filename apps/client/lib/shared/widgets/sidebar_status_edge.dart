@@ -2,38 +2,30 @@ import 'package:flutter/material.dart';
 
 import '../design/colors.dart';
 
-@immutable
-class SidebarStatusEdgeStyle {
-  const SidebarStatusEdgeStyle._(this.tone);
+enum SidebarStatusEdgeStyle {
+  idle,
+  running,
+  attention,
+  failure;
 
-  static const idle = SidebarStatusEdgeStyle._(SidebarStatusTone.idle);
-  static const running = SidebarStatusEdgeStyle._(SidebarStatusTone.running);
-  static const attention = SidebarStatusEdgeStyle._(
-    SidebarStatusTone.attention,
-  );
-  static const failure = SidebarStatusEdgeStyle._(SidebarStatusTone.failure);
-
-  final SidebarStatusTone tone;
-
-  Color colorFor(AppThemePackage theme) => switch (tone) {
-    SidebarStatusTone.idle => theme.inkFaint.withValues(alpha: 0.4),
-    SidebarStatusTone.running => theme.accentStrong,
-    SidebarStatusTone.attention => theme.warning,
-    SidebarStatusTone.failure => theme.danger,
+  Color colorFor(AppThemePackage theme) => switch (this) {
+    idle => theme.inkFaint.withValues(alpha: 0.4),
+    running => theme.accentStrong,
+    attention => theme.warning,
+    failure => theme.danger,
   };
 
-  Color? glowColorFor(AppThemePackage theme) => switch (tone) {
-    SidebarStatusTone.idle => null,
-    SidebarStatusTone.running => theme.accent,
-    SidebarStatusTone.attention => theme.warning,
-    SidebarStatusTone.failure => theme.danger,
+  Color? glowColorFor(AppThemePackage theme) => switch (this) {
+    idle => null,
+    running => theme.accent,
+    attention => theme.warning,
+    failure => theme.danger,
   };
 
+  /// Default-theme color; kept for tests outside this feature.
   @Deprecated('Use colorFor with the active theme package.')
   Color get color => colorFor(AppThemePackages.bundled.first);
 }
-
-enum SidebarStatusTone { idle, running, attention, failure }
 
 class SidebarStatusEdge extends StatefulWidget {
   const SidebarStatusEdge({

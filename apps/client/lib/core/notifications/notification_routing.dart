@@ -246,32 +246,6 @@ class SharedPreferencesNotificationRouteStore
   }
 }
 
-abstract interface class WorkspaceConnectionRecorder {
-  Future<void> recordWorkspaceIds(Iterable<String> workspaceIds);
-}
-
-class NoopWorkspaceConnectionRecorder implements WorkspaceConnectionRecorder {
-  const NoopWorkspaceConnectionRecorder();
-
-  @override
-  Future<void> recordWorkspaceIds(Iterable<String> workspaceIds) async {}
-}
-
-class DefaultWorkspaceConnectionRecorder
-    implements WorkspaceConnectionRecorder {
-  const DefaultWorkspaceConnectionRecorder({
-    required this.store,
-    required this.connection,
-  });
-
-  final NotificationRouteStore store;
-  final OverseerConnection connection;
-
-  @override
-  Future<void> recordWorkspaceIds(Iterable<String> workspaceIds) {
-    return store.recordConnection(
-      connection: connection,
-      workspaceIds: workspaceIds,
-    );
-  }
-}
+/// Records which Overseer connection owns the given workspace ids.
+typedef WorkspaceConnectionRecorder =
+    Future<void> Function(Iterable<String> workspaceIds);

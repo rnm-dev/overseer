@@ -6,7 +6,7 @@ import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/features/auth/presentation/overseer_connections_page.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
-import 'package:overseer_mobile/shared/widgets/entity_list_tile.dart';
+import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
 
 void main() {
   Widget subject({
@@ -40,7 +40,7 @@ void main() {
 
     expect(find.byType(Image), findsNothing);
     expect(find.text('No connections yet'), findsOneWidget);
-    expect(find.byType(EntityListTile), findsNothing);
+    expect(find.byType(AppListTile), findsNothing);
     expect(find.byType(AppButton), findsOneWidget);
     expect(find.byKey(const Key('add-overseer-panel-handle')), findsNothing);
     expect(find.byType(TextField), findsNothing);
@@ -69,14 +69,14 @@ void main() {
       serverUrl: Uri.parse('https://one.example'),
     );
     await tester.pumpWidget(subject(connections: [connection]));
-    final row = tester.getRect(find.byType(EntityListTile));
+    final row = tester.getRect(find.byType(AppListTile));
     final button = tester.getRect(find.byKey(const Key('add-overseer-button')));
     expect(button.width, lessThanOrEqualTo(520));
     expect(button.left, row.left);
     expect(button.top - row.bottom, 16);
     expect(tester.takeException(), isNull);
     await tester.tap(
-      find.byType(EntityListTile),
+      find.byType(AppListTile),
       buttons: kSecondaryMouseButton,
       kind: PointerDeviceKind.mouse,
     );
@@ -106,7 +106,7 @@ void main() {
       ),
     );
 
-    expect(find.byType(EntityListTile), findsNWidgets(2));
+    expect(find.byType(AppListTile), findsNWidgets(2));
     expect(find.text('https://one.example'), findsOneWidget);
     expect(find.text('http://two.example:3000'), findsOneWidget);
     expect(find.byIcon(LucideIcons.chevronRight), findsNothing);

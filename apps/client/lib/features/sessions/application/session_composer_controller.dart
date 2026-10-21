@@ -346,15 +346,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     final catalog = current.catalog;
     final details = scope.sessionId == 'new-session'
         ? null
-        : ref.read(
-            sessionDetailsSnapshotProvider(
-              SessionDetailsScope(
-                workspaceId: scope.workspaceId,
-                peonId: scope.peonId,
-                sessionId: scope.sessionId,
-              ),
-            ),
-          );
+        : ref.read(sessionDetailsSnapshotProvider(scope));
     final provider = providerForAgent(
       catalog?.providers ?? const [],
       current.agent ??

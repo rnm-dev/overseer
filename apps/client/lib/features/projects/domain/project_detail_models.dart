@@ -120,7 +120,6 @@ class ProjectDetailState {
     this.documentationPath,
     this.skills,
     this.members,
-    this.filePreview,
     this.loading = false,
     this.saving = false,
     this.saved = false,
@@ -135,7 +134,6 @@ class ProjectDetailState {
   final String? documentationPath;
   final List<ProjectSkill>? skills;
   final ProjectMembersSnapshot? members;
-  final ProjectFilePreview? filePreview;
   final bool loading;
   final bool saving;
   final bool saved;
@@ -150,7 +148,6 @@ class ProjectDetailState {
     String? documentationPath,
     List<ProjectSkill>? skills,
     ProjectMembersSnapshot? members,
-    ProjectFilePreview? filePreview,
     bool? loading,
     bool? saving,
     bool? saved,
@@ -169,7 +166,6 @@ class ProjectDetailState {
       documentationPath: documentationPath ?? this.documentationPath,
       skills: skills ?? this.skills,
       members: members ?? this.members,
-      filePreview: filePreview ?? this.filePreview,
       loading: loading ?? this.loading,
       saving: saving ?? this.saving,
       saved: saved ?? this.saved,

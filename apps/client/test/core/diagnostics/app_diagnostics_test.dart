@@ -6,7 +6,6 @@ void main() {
     const event = AppDiagnosticEvent(
       name: 'live.connection',
       level: AppDiagnosticLevel.warning,
-      connectionId: 'connection',
       workspaceId: 'workspace',
       sessionId: 'session',
       state: 'disconnected',
@@ -19,7 +18,6 @@ void main() {
     expect(event.toJson(), {
       'event': 'live.connection',
       'level': 'warning',
-      'connectionId': 'connection',
       'workspaceId': 'workspace',
       'sessionId': 'session',
       'state': 'disconnected',

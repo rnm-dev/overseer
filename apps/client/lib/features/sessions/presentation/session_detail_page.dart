@@ -86,24 +86,8 @@ class SessionDetailPage extends ConsumerStatefulWidget {
   ConsumerState<SessionDetailPage> createState() => _SessionDetailPageState();
 }
 
-abstract class _SessionDetailAttachmentHost
-    extends ConsumerState<SessionDetailPage> {
-  String get workspaceId;
-  String get peonId;
-  SessionSummary? get session;
-  // Accessed by the attachment-method mixin through this host contract.
-  // ignore: unused_element
-  bool get _readingAttachments;
-  set _readingAttachments(bool value);
-  // ignore: unused_element
-  String? get _attachmentError;
-  set _attachmentError(String? value);
-  List<NewSessionAttachment> get _composerAttachments;
-  set _composerAttachments(List<NewSessionAttachment> value);
-}
-
-class _SessionDetailPageState extends _SessionDetailAttachmentHost
-    with WidgetsBindingObserver, _SessionDetailAttachmentMethods {
+class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
+    with WidgetsBindingObserver, _SessionDetailAttachments {
   static const _readingColumnMaxWidth = 960.0;
 
   late final FleetLiveService? _live;
@@ -120,12 +104,6 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   final ValueNotifier<double> _composerHeight = ValueNotifier<double>(0);
   String? _stopError;
   String? _locallyStoppedSessionId;
-  @override
-  List<NewSessionAttachment> _composerAttachments = const [];
-  @override
-  String? _attachmentError;
-  @override
-  bool _readingAttachments = false;
   bool _startingSession = false;
   bool _recoveringSession = false;
   String? _recoveryError;
@@ -136,11 +114,8 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
 
   static const _newSessionDraftId = 'new-session';
 
-  @override
   SessionSummary? get session => _session;
-  @override
   String get workspaceId => session?.workspaceId ?? widget.workspaceId!;
-  @override
   String get peonId => session?.peonId ?? widget.peonId!;
 
   @override
@@ -380,7 +355,6 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
         }
       });
     }
-    final queueActions = _QueueActionSets.of(composerState?.queueActions);
     final headerSession =
         currentSession ??
         SessionSummary(
@@ -559,9 +533,9 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
                               running: isRunning,
                               queuedCount: composerState?.pending.length ?? 0,
                               queuedItems: composerState?.queue ?? const [],
-                              editingQueuedItems: queueActions.editing,
-                              removingQueuedItems: queueActions.removing,
-                              sendingQueuedItems: queueActions.sending,
+                              busyQueuedItems:
+                                  composerState?.queueActions.keys.toSet() ??
+                                  const {},
                               error:
                                   _attachmentError ??
                                   composerState?.error ??
@@ -740,14 +714,22 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
     if (_syncingComposer || !mounted) return;
     // No setState: the composer listens to this controller itself, and the
     // draft update below rebuilds whatever else depends on the text.
-    final scope = FollowupScope(
-      workspaceId: workspaceId,
-      peonId: peonId,
-      sessionId: session?.sessionId ?? _newSessionDraftId,
-    );
     ref
-        .read(sessionComposerControllerProvider(scope).notifier)
+        .read(sessionComposerControllerProvider(_composerScope).notifier)
         .updateDraft(_composerController.text);
+  }
+
+  FollowupScope get _composerScope => FollowupScope(
+    workspaceId: workspaceId,
+    peonId: peonId,
+    sessionId: session?.sessionId ?? _newSessionDraftId,
+  );
+
+  @override
+  void _resetSubmissionIdentity() {
+    ref
+        .read(sessionComposerControllerProvider(_composerScope).notifier)
+        .resetSubmissionIdentity();
   }
 
   Future<void> _submitComposer(
@@ -1126,47 +1108,6 @@ class _SessionDetailPageState extends _SessionDetailAttachmentHost
   }
 }
 
-/// The queued items each pending action applies to, read in one pass over the
-/// queue instead of once per action.
-class _QueueActionSets {
-  const _QueueActionSets({
-    required this.editing,
-    required this.removing,
-    required this.sending,
-  });
-
-  static const empty = _QueueActionSets(editing: {}, removing: {}, sending: {});
-
-  static _QueueActionSets of(Map<String, QueuedFollowupAction>? actions) {
-    if (actions == null || actions.isEmpty) return empty;
-    final editing = <String>{};
-    final removing = <String>{};
-    final sending = <String>{};
-    for (final entry in actions.entries) {
-      switch (entry.value) {
-        case QueuedFollowupAction.editing:
-          editing.add(entry.key);
-          break;
-        case QueuedFollowupAction.removing:
-          removing.add(entry.key);
-          break;
-        case QueuedFollowupAction.sending:
-          sending.add(entry.key);
-          break;
-      }
-    }
-    return _QueueActionSets(
-      editing: editing,
-      removing: removing,
-      sending: sending,
-    );
-  }
-
-  final Set<String> editing;
-  final Set<String> removing;
-  final Set<String> sending;
-}
-
 String _workingSelectionLabel(
   SessionComposerState? composer,
   SessionDetails? details,
@@ -1268,15 +1209,7 @@ class _NewSessionBody extends StatelessWidget {
                         onProjectSelected: onProjectSelected,
                         onRetry: onRetry,
                       ),
-                      loading: () => Center(
-                        child: SizedBox.square(
-                          dimension: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 1.8,
-                            color: AppThemePalette.of(context).accentStrong,
-                          ),
-                        ),
-                      ),
+                      loading: () => const _ProjectsSpinner(),
                       error: (_, _) => _ProjectSelectionNotice(
                         message: 'Could not open the project cache.',
                         onRetry: onRetry,
@@ -1287,6 +1220,23 @@ class _NewSessionBody extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProjectsSpinner extends StatelessWidget {
+  const _ProjectsSpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SizedBox.square(
+        dimension: 22,
+        child: CircularProgressIndicator(
+          strokeWidth: 1.8,
+          color: AppThemePalette.of(context).accentStrong,
         ),
       ),
     );
@@ -1309,15 +1259,7 @@ class _ProjectSelectionContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.projects.isEmpty && state.isRefreshing) {
-      return Center(
-        child: SizedBox.square(
-          dimension: 22,
-          child: CircularProgressIndicator(
-            strokeWidth: 1.8,
-            color: AppThemePalette.of(context).accentStrong,
-          ),
-        ),
-      );
+      return const _ProjectsSpinner();
     }
     if (state.projects.isEmpty) {
       return _ProjectSelectionNotice(
@@ -1516,10 +1458,7 @@ class _SessionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final projectKey = session.projectKey?.trim();
     final stats = _statsLabel(details);
-    final theme = Theme.of(context);
-    final subtitleColor =
-        theme.extension<AppThemePalette>()?.package.inkFaint ??
-        theme.colorScheme.onSurfaceVariant;
+    final subtitleColor = AppThemePalette.of(context).inkFaint;
     return AppNavigationBar(
       key: const Key('session-navbar'),
       showBackButton: true,
@@ -1615,9 +1554,9 @@ String? _statsLabel(SessionDetails? details) {
   final parts = <String>[
     if (details.turnCount > 0)
       '${details.turnCount} ${details.turnCount == 1 ? 'turn' : 'turns'}',
-    if (usage != null) '${_compactNumber(usage.inputTokens)} input',
+    if (usage != null) '${compactTranscriptNumber(usage.inputTokens)} input',
     if (usage != null && usage.outputTokens > 0)
-      '${_compactNumber(usage.outputTokens)} output',
+      '${compactTranscriptNumber(usage.outputTokens)} output',
   ];
   return parts.isEmpty ? null : parts.join('·');
 }
@@ -1650,18 +1589,6 @@ SessionDetails? _detailsFromTranscript(List<TranscriptEvent>? events) {
   }
   if (turnCount == 0 && usage == null) return null;
   return SessionDetails(turnCount: turnCount, usage: usage);
-}
-
-String _compactNumber(int value) {
-  if (value < 1000) return '$value';
-  if (value < 1000000) {
-    final compact = value / 1000;
-    return '${compact >= 10 ? compact.toStringAsFixed(0) : compact.toStringAsFixed(1)}K'
-        .replaceFirst('.0K', 'K');
-  }
-  final compact = value / 1000000;
-  return '${compact >= 10 ? compact.toStringAsFixed(0) : compact.toStringAsFixed(1)}M'
-      .replaceFirst('.0M', 'M');
 }
 
 String _titleize(String value) {

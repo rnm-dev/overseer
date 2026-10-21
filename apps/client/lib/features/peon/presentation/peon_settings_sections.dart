@@ -855,7 +855,7 @@ class _ArmorySettings extends ConsumerWidget {
     final value = ref.watch(armoryControllerProvider(scope));
     return value.when(
       loading: () => Center(child: CircularProgressIndicator(strokeWidth: 1.7)),
-      error: (error, _) => _Notice(
+      error: (error, _) => AppEmptyState(
         icon: LucideIcons.cloudOff,
         title: 'Could not load Armory',
         message: error.toString(),
@@ -867,7 +867,7 @@ class _ArmorySettings extends ConsumerWidget {
       data: (state) {
         final controller = ref.read(armoryControllerProvider(scope).notifier);
         if (state.unsupported && state.inventory == null) {
-          return _Notice(
+          return AppEmptyState(
             icon: LucideIcons.packageX,
             title: 'Armory is unsupported',
             message:

@@ -5,44 +5,28 @@ import 'package:desktop_webview_window/desktop_webview_window.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 final htmlPreviewLauncherProvider = Provider<HtmlPreviewLauncher>(
-  (ref) => const UnsupportedHtmlPreviewLauncher(),
+  (ref) => HtmlPreviewLauncher(supported: false),
 );
 
-abstract interface class HtmlPreviewLauncher {
-  bool get supported;
-
-  Future<void> open({required String title, required String document});
-}
-
-class UnsupportedHtmlPreviewLauncher implements HtmlPreviewLauncher {
-  const UnsupportedHtmlPreviewLauncher();
-
-  @override
-  bool get supported => false;
-
-  @override
-  Future<void> open({required String title, required String document}) async {
-    throw const HtmlPreviewException(
-      'HTML browser preview is unavailable on this platform.',
-    );
-  }
-}
-
-class DesktopWebViewHtmlPreviewLauncher implements HtmlPreviewLauncher {
-  DesktopWebViewHtmlPreviewLauncher({
+/// Opens HTML documents in a desktop WebView window, where [supported].
+class HtmlPreviewLauncher {
+  HtmlPreviewLauncher({
+    this.supported = true,
     DesktopHtmlPreviewWindowFactory? windowFactory,
     this.temporaryRoot,
   }) : _windowFactory =
            windowFactory ?? const PluginDesktopHtmlPreviewWindowFactory();
 
+  final bool supported;
   final DesktopHtmlPreviewWindowFactory _windowFactory;
   final Directory? temporaryRoot;
 
-  @override
-  bool get supported => true;
-
-  @override
   Future<void> open({required String title, required String document}) async {
+    if (!supported) {
+      throw const HtmlPreviewException(
+        'HTML browser preview is unavailable on this platform.',
+      );
+    }
     if (!await _windowFactory.isAvailable()) {
       throw const HtmlPreviewException(
         'The desktop browser component is not installed.',

@@ -260,7 +260,7 @@ class _MenuHeader extends StatelessWidget {
                   [
                     parent.isEmpty ? '/' : '/$parent',
                     if (!entry.isDirectory && entry.size != null)
-                      _size(entry.size!),
+                      formatFileSize(entry.size!),
                   ].join('  ·  '),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -342,7 +342,7 @@ class _MenuHint extends StatelessWidget {
   }
 }
 
-String _size(int size) {
+String formatFileSize(int size) {
   if (size < 1024) return '$size B';
   if (size < 1024 * 1024) return '${(size / 1024).round()} KB';
   return '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';

@@ -25,7 +25,7 @@ void main() {
 
     expect(selector.begin(SoundPack.scv, 0), isNotNull);
     expect(selector.begin(SoundPack.scv, 0.5), isNull);
-    selector.finish();
+    selector.stop();
     expect(selector.begin(SoundPack.scv, 0.5), isNotNull);
   });
 
@@ -33,7 +33,7 @@ void main() {
     final selector = WorkSoundSelector();
 
     expect(selector.begin(SoundPack.scv, 0), WorkSoundSelector.assets[0]);
-    selector.finish();
+    selector.stop();
     expect(selector.begin(SoundPack.scv, 0), WorkSoundSelector.assets[1]);
   });
 

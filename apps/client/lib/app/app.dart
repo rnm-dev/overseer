@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:go_router/go_router.dart';
@@ -27,7 +26,6 @@ class OverseerMobileApp extends ConsumerStatefulWidget {
     this.foregroundNotification,
     this.onOpenNotification,
     this.onDismissNotification,
-    this.autoSignIn = false,
     this.onBackToConnections,
     this.overseerName,
   });
@@ -37,7 +35,6 @@ class OverseerMobileApp extends ConsumerStatefulWidget {
   final InAppNotification? foregroundNotification;
   final ValueChanged<NotificationDestination>? onOpenNotification;
   final VoidCallback? onDismissNotification;
-  final bool autoSignIn;
   final VoidCallback? onBackToConnections;
   final String? overseerName;
 
@@ -89,12 +86,7 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
                 GoRoute(
                   path: '/settings',
                   name: 'desktop-settings',
-                  builder: (context, state) => AuthGate(
-                    autoSignIn: widget.autoSignIn,
-                    onBack: widget.onBackToConnections,
-                    overseerName: widget.overseerName,
-                    buildLoading: _buildAuthLoading,
-                    buildSignIn: _buildAuthSignIn,
+                  builder: (context, state) => _authGate(
                     buildShell:
                         ({
                           required user,
@@ -116,14 +108,7 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
     GoRoute(
       path: '/',
       name: 'home',
-      builder: (context, state) => AuthGate(
-        autoSignIn: widget.autoSignIn,
-        onBack: widget.onBackToConnections,
-        overseerName: widget.overseerName,
-        buildLoading: _buildAuthLoading,
-        buildSignIn: _buildAuthSignIn,
-        buildShell: _buildAuthShell,
-      ),
+      builder: (context, state) => _authGate(),
       routes: [
         GoRoute(
           path: 'session',
@@ -133,14 +118,7 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
             final peonId = state.uri.queryParameters['peonId'];
             final sessionId = state.uri.queryParameters['sessionId'];
             if (workspaceId == null || peonId == null || sessionId == null) {
-              return AuthGate(
-                autoSignIn: widget.autoSignIn,
-                onBack: widget.onBackToConnections,
-                overseerName: widget.overseerName,
-                buildLoading: _buildAuthLoading,
-                buildSignIn: _buildAuthSignIn,
-                buildShell: _buildAuthShell,
-              );
+              return _authGate();
             }
             return SessionDeepLinkPage(
               key: ValueKey('$workspaceId\u0000$peonId\u0000$sessionId'),
@@ -159,14 +137,7 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
         final workspaceId = state.uri.queryParameters['workspaceId'];
         final peonId = state.uri.queryParameters['peonId'];
         if (workspaceId == null || peonId == null) {
-          return AuthGate(
-            autoSignIn: widget.autoSignIn,
-            onBack: widget.onBackToConnections,
-            overseerName: widget.overseerName,
-            buildLoading: _buildAuthLoading,
-            buildSignIn: _buildAuthSignIn,
-            buildShell: _buildAuthShell,
-          );
+          return _authGate();
         }
         return PeonDeepLinkPage(
           key: ValueKey('$workspaceId\u0000$peonId'),
@@ -182,14 +153,7 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
         final workspaceId = state.uri.queryParameters['workspaceId'];
         final peonId = state.uri.queryParameters['peonId'];
         if (workspaceId == null || peonId == null) {
-          return AuthGate(
-            autoSignIn: widget.autoSignIn,
-            onBack: widget.onBackToConnections,
-            overseerName: widget.overseerName,
-            buildLoading: _buildAuthLoading,
-            buildSignIn: _buildAuthSignIn,
-            buildShell: _buildAuthShell,
-          );
+          return _authGate();
         }
         return ProjectFilesRoutePage(
           key: ValueKey('$workspaceId\u0000$peonId'),
@@ -212,14 +176,7 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
             peonId == null ||
             projectId == null ||
             projectKey == null) {
-          return AuthGate(
-            autoSignIn: widget.autoSignIn,
-            onBack: widget.onBackToConnections,
-            overseerName: widget.overseerName,
-            buildLoading: _buildAuthLoading,
-            buildSignIn: _buildAuthSignIn,
-            buildShell: _buildAuthShell,
-          );
+          return _authGate();
         }
         return ProjectDetailRoutePage(
           key: ValueKey(
@@ -236,6 +193,14 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
       },
     ),
   ];
+
+  Widget _authGate({AuthGateShellBuilder? buildShell}) => AuthGate(
+    onBack: widget.onBackToConnections,
+    overseerName: widget.overseerName,
+    buildLoading: _buildAuthLoading,
+    buildSignIn: _buildAuthSignIn,
+    buildShell: buildShell ?? _buildAuthShell,
+  );
 
   Widget _buildAuthLoading({
     required String? overseerName,
@@ -324,12 +289,7 @@ class _OverseerMobileAppState extends ConsumerState<OverseerMobileApp> {
           listenable: controller,
           builder: (context, _) => MaterialApp.router(
             onGenerateTitle: (context) => context.l10n.appTitle,
-            localizationsDelegates: const [
-              AppLocalizations.delegate,
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
             supportedLocales: AppLocalizations.supportedLocales,
             theme: AppTheme.fromPackage(controller.theme),
             routerConfig: _router,

@@ -38,14 +38,12 @@ void main() {
         environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
         credentialCleaner: const _NoopCredentialCleaner(),
         connectionAuthenticator: (_, _) => authentication.future,
-        connectionAppBuilder:
-            (config, connection, onAuthenticated, onBackToConnections) {
-              appBuilds += 1;
-              expect(onAuthenticated, isNull);
-              return const MaterialApp(
-                home: Scaffold(body: Text('Authenticated Overseer')),
-              );
-            },
+        connectionAppBuilder: (config, connection, onBackToConnections) {
+          appBuilds += 1;
+          return const MaterialApp(
+            home: Scaffold(body: Text('Authenticated Overseer')),
+          );
+        },
       ),
     );
     await tester.pump();
@@ -140,7 +138,7 @@ void main() {
       AppBootstrap(
         store: store,
         environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
-        connectionAppBuilder: (_, _, _, _) => const MaterialApp(
+        connectionAppBuilder: (_, _, _) => const MaterialApp(
           home: Scaffold(body: Text('Restored connection')),
         ),
       ),
@@ -162,15 +160,14 @@ void main() {
       AppBootstrap(
         store: _FakeConnectionStore(connections),
         environmentConfig: AppConfig.forFlavor(flavor: 'dev'),
-        connectionAppBuilder:
-            (config, connection, onAuthenticated, onBackToConnections) {
-              return _RuntimeProbe(
-                connection: connection,
-                onBack: onBackToConnections,
-                onInitialized: initialized.add,
-                onDisposed: disposed.add,
-              );
-            },
+        connectionAppBuilder: (config, connection, onBackToConnections) {
+          return _RuntimeProbe(
+            connection: connection,
+            onBack: onBackToConnections,
+            onInitialized: initialized.add,
+            onDisposed: disposed.add,
+          );
+        },
       ),
     );
     await tester.pump();

@@ -1,19 +1,19 @@
+import 'package:desktop_webview_window/desktop_webview_window.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:overseer_mobile/app/app_bootstrap.dart';
 import 'package:overseer_mobile/core/notifications/notification_routing.dart';
 import 'package:overseer_mobile/core/notifications/windows_notifications.dart';
-import 'package:overseer_mobile/core/platform/desktop_webview_bootstrap.dart';
 import 'package:overseer_mobile/firebase_options.dart';
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (handleDesktopWebViewProcess(args)) return;
+  // The desktop WebView title-bar helper process must not start the app.
+  if (runWebViewTitleBarWidget(args)) return;
 
-  if ((kIsWeb || defaultTargetPlatform != TargetPlatform.linux) &&
-      Firebase.apps.isEmpty) {
+  if (defaultTargetPlatform != TargetPlatform.linux && Firebase.apps.isEmpty) {
     try {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
@@ -24,11 +24,9 @@ Future<void> main(List<String> args) async {
   }
 
   final supportsNativePush =
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
-  final desktopNotifications =
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+  final desktopNotifications = defaultTargetPlatform == TargetPlatform.windows
       ? WindowsNotifications()
       : null;
   runApp(

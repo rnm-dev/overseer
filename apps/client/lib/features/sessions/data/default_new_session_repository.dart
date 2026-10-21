@@ -1,4 +1,3 @@
-import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
@@ -7,6 +6,7 @@ import '../../../core/time/app_time.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
 import 'project_session_count_cache.dart';
+import 'session_data_helpers.dart';
 
 class DefaultNewSessionRepository implements NewSessionRepository {
   DefaultNewSessionRepository({
@@ -22,62 +22,23 @@ class DefaultNewSessionRepository implements NewSessionRepository {
   @override
   Future<SessionSummary> createSession(NewSessionRequest request) async {
     try {
-      final attachments = <Map<String, Object>>[];
-      final usedUploadNames = <String>{};
-      for (var index = 0; index < request.attachments.length; index++) {
-        final attachment = request.attachments[index];
-        final name = _uniqueUploadName(attachment.name, usedUploadNames);
-        request.onProgress?.call(
-          NewSessionSubmissionProgress.uploading(
-            current: index + 1,
-            total: request.attachments.length,
-            fileName: attachment.name,
-          ),
-        );
-        late final Response<Map<String, dynamic>> response;
-        try {
-          response = await _dio.put<Map<String, dynamic>>(
-            'workspaces/${Uri.encodeComponent(request.workspaceId)}'
-            '/peons/${Uri.encodeComponent(request.peonId)}'
-            '/files/uploads/${Uri.encodeComponent(request.requestId)}'
-            '/${Uri.encodeComponent(name)}',
-            data: attachment.bytes,
-            options: Options(
-              headers: {
-                'Content-Type': 'application/octet-stream',
-                'Peon-Content-Sha256': sha256
-                    .convert(attachment.bytes)
-                    .toString(),
-              },
+      final attachments = attachmentPayload(
+        await uploadAttachments(
+          dio: _dio,
+          workspaceId: request.workspaceId,
+          peonId: request.peonId,
+          uploadId: request.requestId,
+          attachments: request.attachments,
+          error: (message, _) => NewSessionException(message),
+          onUploading: (current, total, fileName) => request.onProgress?.call(
+            NewSessionSubmissionProgress.uploading(
+              current: current,
+              total: total,
+              fileName: fileName,
             ),
-          );
-        } on DioException catch (error) {
-          throw NewSessionException(
-            _serverMessage(error) ??
-                'Could not upload ${attachment.name}. Press Send to retry.',
-          );
-        }
-        final path = response.data?['path'] as String?;
-        final transferId = response.data?['transferId'] as String?;
-        final size = (response.data?['size'] as num?)?.toInt();
-        final committedSha256 = response.data?['sha256'] as String?;
-        if (path == null ||
-            path.isEmpty ||
-            (transferId != null &&
-                (size != attachment.bytes.length || committedSha256 == null))) {
-          throw NewSessionException(
-            'Overseer returned an invalid upload response for '
-            '${attachment.name}.',
-          );
-        }
-        attachments.add({
-          'type': attachment.type,
-          'path': path,
-          'transferId': ?transferId,
-          'size': ?size,
-          'sha256': ?committedSha256,
-        });
-      }
+          ),
+        ),
+      );
       request.onProgress?.call(const NewSessionSubmissionProgress.starting());
       late final Response<Map<String, dynamic>> response;
       try {
@@ -102,7 +63,7 @@ class DefaultNewSessionRepository implements NewSessionRepository {
         );
       } on DioException catch (error) {
         throw NewSessionException(
-          _serverMessage(error) ??
+          error.serverMessage ??
               'Session could not be started. Press Send to retry.',
         );
       }
@@ -141,10 +102,11 @@ class DefaultNewSessionRepository implements NewSessionRepository {
       await database.transaction(() async {
         final existing =
             await (database.select(database.cachedSessions)..where(
-                  (row) =>
-                      row.workspaceId.equals(session.workspaceId) &
-                      row.peonId.equals(session.peonId) &
-                      row.sessionId.equals(session.sessionId),
+                  (row) => row.matchesSession(
+                    session.workspaceId,
+                    session.peonId,
+                    session.sessionId,
+                  ),
                 ))
                 .getSingleOrNull();
         await database
@@ -189,25 +151,4 @@ class DefaultNewSessionRepository implements NewSessionRepository {
       );
     }
   }
-}
-
-String _uniqueUploadName(String rawName, Set<String> usedNames) {
-  final safeName = rawName.replaceAll(RegExp(r'[^\w.-]+'), '_').trim();
-  final baseName = safeName.isEmpty ? 'file' : safeName;
-  var candidate = baseName;
-  var suffix = 2;
-  while (!usedNames.add(candidate.toLowerCase())) {
-    final dot = baseName.lastIndexOf('.');
-    final hasExtension = dot > 0 && dot < baseName.length - 1;
-    final stem = hasExtension ? baseName.substring(0, dot) : baseName;
-    final extension = hasExtension ? baseName.substring(dot) : '';
-    candidate = '$stem-$suffix$extension';
-    suffix++;
-  }
-  return candidate;
-}
-
-String? _serverMessage(DioException error) {
-  final data = error.response?.data;
-  return data is Map ? data['error'] as String? : null;
 }

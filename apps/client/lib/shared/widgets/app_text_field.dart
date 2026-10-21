@@ -17,8 +17,6 @@ class AppTextField extends StatelessWidget {
     this.suffix,
     this.mono = false,
     this.enabled = true,
-    this.readOnly = false,
-    this.obscureText = false,
     this.keyboardType = TextInputType.text,
     this.textInputAction = TextInputAction.done,
     this.textAlign = TextAlign.start,
@@ -33,7 +31,6 @@ class AppTextField extends StatelessWidget {
     this.smartDashesType,
     this.smartQuotesType,
     this.textCapitalization = TextCapitalization.none,
-    this.scrollPadding = const EdgeInsets.all(20),
     this.inputFormatters,
   });
 
@@ -47,8 +44,6 @@ class AppTextField extends StatelessWidget {
   final Widget? suffix;
   final bool mono;
   final bool enabled;
-  final bool readOnly;
-  final bool obscureText;
   final TextInputType keyboardType;
   final TextInputAction textInputAction;
   final TextAlign textAlign;
@@ -63,7 +58,6 @@ class AppTextField extends StatelessWidget {
   final SmartDashesType? smartDashesType;
   final SmartQuotesType? smartQuotesType;
   final TextCapitalization textCapitalization;
-  final EdgeInsets scrollPadding;
   final List<TextInputFormatter>? inputFormatters;
 
   @override
@@ -90,8 +84,6 @@ class AppTextField extends StatelessWidget {
           controller: controller,
           focusNode: focusNode,
           enabled: enabled,
-          readOnly: readOnly,
-          obscureText: obscureText,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
           textAlign: textAlign,
@@ -106,7 +98,6 @@ class AppTextField extends StatelessWidget {
           smartDashesType: smartDashesType,
           smartQuotesType: smartQuotesType,
           textCapitalization: textCapitalization,
-          scrollPadding: scrollPadding,
           inputFormatters: inputFormatters,
           style: mono
               ? AppTypography.mono(fontSize: 15, color: colors.onSurface)

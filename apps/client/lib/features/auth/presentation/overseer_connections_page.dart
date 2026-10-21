@@ -10,7 +10,7 @@ import 'package:overseer_mobile/shared/widgets/app_bottom_sheet.dart';
 import 'package:overseer_mobile/shared/widgets/app_button.dart';
 import 'package:overseer_mobile/shared/widgets/app_page_header.dart';
 import 'package:overseer_mobile/shared/widgets/confirmation_bottom_sheet.dart';
-import 'package:overseer_mobile/shared/widgets/entity_list_tile.dart';
+import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
 import 'package:overseer_mobile/shared/widgets/app_option_bottom_sheet.dart';
 import 'package:overseer_mobile/shared/widgets/loading_shimmer.dart';
 import 'package:overseer_mobile/l10n/l10n.dart';
@@ -339,7 +339,7 @@ class _ConnectionTile extends StatelessWidget {
     final l10n = context.l10n;
     return GestureDetector(
       onSecondaryTap: () => onLongPress(context),
-      child: EntityListTile(
+      child: AppListTile(
         key: ValueKey('overseer-connection-${connection.id}'),
         title: connection.title,
         subtitle: connection.serverUrl.toString(),

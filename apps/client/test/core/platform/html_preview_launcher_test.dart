@@ -17,7 +17,7 @@ void main() {
         }
       });
       final window = _FakeDesktopHtmlPreviewWindow();
-      final launcher = DesktopWebViewHtmlPreviewLauncher(
+      final launcher = HtmlPreviewLauncher(
         windowFactory: _FakeDesktopHtmlPreviewWindowFactory(window),
         temporaryRoot: temporaryRoot,
       );
@@ -47,7 +47,7 @@ void main() {
   );
 
   test('reports an unavailable desktop browser component', () async {
-    final launcher = DesktopWebViewHtmlPreviewLauncher(
+    final launcher = HtmlPreviewLauncher(
       windowFactory: const _UnavailableDesktopHtmlPreviewWindowFactory(),
     );
 

@@ -1055,7 +1055,6 @@ class _FakeFollowupRepository implements FollowupRepository {
     required String prompt,
     required bool serverQueue,
     bool startNow = false,
-    String? agent,
     String? model,
     String? reasoningEffort,
     String? commandId,

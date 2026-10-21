@@ -26,11 +26,10 @@ void main() {
     );
   });
 
-  test('reset is separately labelled as session inheritance', () {
+  test('reset uses the supplied label', () {
     final choices = capabilityChoices(
       models,
       null,
-      inherited: 'gpt-5.6-terra',
       resetLabel: 'Use session default',
     );
     expect(choices.first.label, 'Use session default');

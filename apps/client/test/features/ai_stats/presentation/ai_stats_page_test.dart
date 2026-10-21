@@ -115,16 +115,7 @@ class _FakeAiStatsRepository implements AiStatsRepository {
     lastPeriod = period;
     return AiStats(
       period: period.apiValue,
-      rangeStart: 0,
-      rangeEnd: 1,
       sessionCount: 12,
-      outcomeCounts: const {
-        'success': 8,
-        'failure': 1,
-        'needs_human': 2,
-        'running': 1,
-        'none': 0,
-      },
       totalInputTokens: 1200000,
       totalOutputTokens: 18400,
       totalCacheCreationTokens: 80000,
@@ -132,7 +123,6 @@ class _FakeAiStatsRepository implements AiStatsRepository {
       totalTokens: 15998400,
       totalDurationMs: 8280000,
       totalCostUsd: 7.42,
-      sessionsWithUsage: 11,
       sessionsMissingUsage: 1,
       byModel: const [
         AiModelUsage(
@@ -142,8 +132,6 @@ class _FakeAiStatsRepository implements AiStatsRepository {
           totalTokens: 12000000,
           inputTokens: 1000000,
           outputTokens: 15000,
-          cacheCreationTokens: 70000,
-          cacheReadTokens: 10915000,
           totalDurationMs: 7200000,
           totalCostUsd: 6.2,
         ),
@@ -154,8 +142,6 @@ class _FakeAiStatsRepository implements AiStatsRepository {
           totalTokens: 3998400,
           inputTokens: 200000,
           outputTokens: 3400,
-          cacheCreationTokens: 10000,
-          cacheReadTokens: 3785000,
           totalDurationMs: 1080000,
           totalCostUsd: 1.22,
         ),
@@ -189,12 +175,6 @@ class _FakeAiStatsRepository implements AiStatsRepository {
               : const ['gpt-5.4'],
         ),
       ],
-      credits: const AiQuotaCredits(
-        balance: 12,
-        used: 3,
-        limit: 15,
-        currency: 'USD',
-      ),
     );
   }
 

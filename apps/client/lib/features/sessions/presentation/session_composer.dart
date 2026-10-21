@@ -22,6 +22,7 @@ import '../domain/new_session_repository.dart';
 import '../domain/pasted_text.dart';
 import '../domain/session_models.dart';
 import 'capability_choices.dart';
+import 'selected_text_reply_selection_area.dart';
 part 'session_composer_queue.dart';
 
 TextEditingValue insertVoiceTranscript(
@@ -85,9 +86,7 @@ class SessionComposer extends StatefulWidget {
     this.running = false,
     this.queuedCount = 0,
     this.queuedItems = const [],
-    this.editingQueuedItems = const {},
-    this.removingQueuedItems = const {},
-    this.sendingQueuedItems = const {},
+    this.busyQueuedItems = const {},
     this.error,
     this.providers = const [],
     this.agent,
@@ -115,7 +114,6 @@ class SessionComposer extends StatefulWidget {
     this.onVoiceCancel,
     this.replyTo,
     this.onClearReplyTo,
-    this.onOpenReplySource,
   });
 
   final TextEditingController controller;
@@ -125,9 +123,9 @@ class SessionComposer extends StatefulWidget {
   final bool running;
   final int queuedCount;
   final List<QueuedFollowup> queuedItems;
-  final Set<String> editingQueuedItems;
-  final Set<String> removingQueuedItems;
-  final Set<String> sendingQueuedItems;
+
+  /// Ids of queued items with an edit, remove or send in flight.
+  final Set<String> busyQueuedItems;
   final String? error;
   final List<ModelProvider> providers;
   final String? agent;
@@ -162,84 +160,9 @@ class SessionComposer extends StatefulWidget {
   final VoidCallback? onVoiceCancel;
   final SelectedTextReply? replyTo;
   final VoidCallback? onClearReplyTo;
-  final ValueChanged<SelectedTextReply>? onOpenReplySource;
 
   @override
   State<SessionComposer> createState() => _SessionComposerState();
-}
-
-class _ComposerReplyCard extends StatelessWidget {
-  const _ComposerReplyCard({
-    required this.replyTo,
-    this.onClear,
-    this.onOpenSource,
-  });
-
-  final SelectedTextReply replyTo;
-  final VoidCallback? onClear;
-  final VoidCallback? onOpenSource;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final preview = replyTo.selectedText.length > 240
-        ? '${replyTo.selectedText.substring(0, 240)}…'
-        : replyTo.selectedText;
-    final content = Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(Icons.subdirectory_arrow_left, size: 14, color: colors.primary),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Selected text',
-                style: AppTypography.mono(
-                  fontSize: 9,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                preview,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: AppTypography.body(
-                  fontSize: 11,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (onClear != null)
-          IconButton(
-            key: const Key('session-composer-clear-reply-to'),
-            onPressed: onClear,
-            tooltip: 'Clear selected-text reply',
-            icon: const Icon(Icons.close, size: 15),
-            visualDensity: VisualDensity.compact,
-          ),
-      ],
-    );
-    final card = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: colors.primary.withValues(alpha: 0.06),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: content,
-    );
-    if (onOpenSource == null) return card;
-    return InkWell(
-      onTap: onOpenSource,
-      borderRadius: BorderRadius.circular(8),
-      child: card,
-    );
-  }
 }
 
 class _SessionComposerState extends State<SessionComposer> {
@@ -390,9 +313,7 @@ class _SessionComposerState extends State<SessionComposer> {
                 padding: const EdgeInsets.only(bottom: 12),
                 child: _QueuedFollowupList(
                   items: widget.queuedItems,
-                  editing: widget.editingQueuedItems,
-                  removing: widget.removingQueuedItems,
-                  sending: widget.sendingQueuedItems,
+                  busy: widget.busyQueuedItems,
                   onEdit: widget.onEditQueued,
                   onRemove: widget.onRemoveQueued,
                   onSteer: widget.onSteerQueued,
@@ -483,12 +404,9 @@ class _SessionComposerState extends State<SessionComposer> {
                     Padding(
                       key: const Key('session-composer-reply-to'),
                       padding: const EdgeInsets.fromLTRB(2, 2, 2, 6),
-                      child: _ComposerReplyCard(
+                      child: SelectedTextReplyCard(
                         replyTo: reply,
                         onClear: widget.pending ? null : widget.onClearReplyTo,
-                        onOpenSource: widget.onOpenReplySource == null
-                            ? null
-                            : () => widget.onOpenReplySource!(reply),
                       ),
                     ),
                   if (widget.dictation?.phase ==
@@ -597,15 +515,19 @@ class _SessionComposerState extends State<SessionComposer> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      _ComposerIconButton(
+                      _composerSquareButton(
                         key: const Key('session-composer-attach'),
                         visualKey: const Key('session-composer-attach-visual'),
                         tooltip: l10n.attachFiles,
-                        icon: LucideIcons.plus,
                         alignment: Alignment.centerLeft,
                         onPressed: widget.enabled && !widget.pending
                             ? widget.onAttach
                             : null,
+                        foregroundColor: colors.onSurfaceVariant,
+                        disabledForegroundColor: colors.onSurfaceVariant
+                            .withValues(alpha: 0.3),
+                        background: colors.surfaceContainerHighest,
+                        child: const Icon(LucideIcons.plus, size: 16),
                       ),
                       if (widget.dictation?.showMicrophone == true)
                         _VoiceDictationButton(
@@ -637,13 +559,10 @@ class _SessionComposerState extends State<SessionComposer> {
                       ],
                       if (widget.providers.isEmpty) const Spacer(),
                       _ComposerSubmitButton(
-                        buttonKey: const Key('session-composer-submit'),
-                        visualKey: const Key('session-composer-submit-visual'),
                         tooltip: widget.running ? l10n.queue : l10n.send,
                         icon: widget.running
                             ? LucideIcons.listPlus
                             : LucideIcons.sendHorizontal,
-                        alignment: Alignment.centerRight,
                         enabled: _canSubmit,
                         pending: widget.pending,
                         onPressed: _submit,

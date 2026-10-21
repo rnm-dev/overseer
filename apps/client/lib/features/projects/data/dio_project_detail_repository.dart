@@ -1,10 +1,9 @@
-import 'dart:typed_data';
-
 import 'package:dio/dio.dart';
 
 import '../domain/project_detail_models.dart';
 import '../domain/project_detail_repository.dart';
 import '../domain/project_models.dart';
+import 'project_http.dart';
 
 class DioProjectDetailRepository implements ProjectDetailRepository {
   DioProjectDetailRepository({required this._dio});
@@ -43,7 +42,7 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
         syncedAt: (json['syncedAt'] as num?)?.toDouble() ?? 0,
       );
     } on DioException catch (error) {
-      throw _exception(error, 'Could not load the project.');
+      throw projectsExceptionFrom(error, 'Could not load the project.');
     } on Object {
       throw const ProjectsException(
         'Overseer returned an invalid project response.',
@@ -64,7 +63,7 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
       );
       return _settings(response.data);
     } on DioException catch (error) {
-      throw _exception(error, 'Could not load project settings.');
+      throw projectsExceptionFrom(error, 'Could not load project settings.');
     } on Object {
       throw const ProjectsException(
         'Overseer returned invalid project settings.',
@@ -92,7 +91,7 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
       );
       return _settings(response.data);
     } on DioException catch (error) {
-      throw _exception(error, 'Could not save project settings.');
+      throw projectsExceptionFrom(error, 'Could not save project settings.');
     } on Object {
       throw const ProjectsException(
         'Overseer returned invalid project settings.',
@@ -127,7 +126,10 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
             .toList(growable: false),
       );
     } on DioException catch (error) {
-      throw _exception(error, 'Project documentation could not be loaded.');
+      throw projectsExceptionFrom(
+        error,
+        'Project documentation could not be loaded.',
+      );
     } on Object {
       throw const ProjectsException(
         'Overseer returned invalid project documentation.',
@@ -142,25 +144,14 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
     required String projectId,
     required String path,
   }) async {
-    final encoded = path
-        .split('/')
-        .where((part) => part.isNotEmpty)
-        .map(Uri.encodeComponent)
-        .join('/');
-    try {
-      final response = await _dio.get<List<int>>(
-        '${_peonBase(workspaceId, peonId)}/projects/by-id/'
-        '${Uri.encodeComponent(projectId)}/files/$encoded',
-        options: Options(responseType: ResponseType.bytes),
-      );
-      return ProjectFilePreview(
-        path: path,
-        bytes: Uint8List.fromList(response.data ?? const []),
-        contentType: response.headers.value(Headers.contentTypeHeader),
-      );
-    } on DioException catch (error) {
-      throw _exception(error, 'Could not preview this file.');
-    }
+    return fetchProjectFile(
+      _dio,
+      url:
+          '${_peonBase(workspaceId, peonId)}/projects/by-id/'
+          '${Uri.encodeComponent(projectId)}/files/${encodeProjectPath(path)}',
+      path: path,
+      fallbackMessage: 'Could not preview this file.',
+    );
   }
 
   @override
@@ -194,7 +185,7 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
           })
           .toList(growable: false);
     } on DioException catch (error) {
-      throw _exception(error, 'Could not load project skills.');
+      throw projectsExceptionFrom(error, 'Could not load project skills.');
     } on Object {
       throw const ProjectsException(
         'Overseer returned an invalid skills response.',
@@ -238,7 +229,7 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
         accessByMember: Map.fromEntries(accessEntries),
       );
     } on DioException catch (error) {
-      throw _exception(error, 'Could not load project members.');
+      throw projectsExceptionFrom(error, 'Could not load project members.');
     } on Object {
       throw const ProjectsException(
         'Overseer returned invalid project member access.',
@@ -260,7 +251,7 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
       );
       return access;
     } on DioException catch (error) {
-      throw _exception(error, 'Could not save project access.');
+      throw projectsExceptionFrom(error, 'Could not save project access.');
     }
   }
 
@@ -302,11 +293,4 @@ class DioProjectDetailRepository implements ProjectDetailRepository {
         },
     ],
   };
-
-  ProjectsException _exception(DioException error, String fallback) {
-    final data = error.response?.data;
-    final message = data is Map ? data['error'] as String? : null;
-    final code = data is Map ? data['code'] as String? : null;
-    return ProjectsException(message ?? fallback, code: code);
-  }
 }

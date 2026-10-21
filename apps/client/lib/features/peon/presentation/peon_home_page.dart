@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -21,6 +20,7 @@ import '../../../shared/design/colors.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/formatters/activity_timestamp.dart';
 import '../../../shared/widgets/app_navigation_bar.dart';
+import '../../../shared/widgets/app_pinned_section_header.dart';
 import '../../../shared/widgets/loading_shimmer.dart';
 import '../../../shared/widgets/sidebar_status_edge.dart';
 import '../../../shared/widgets/status_dot.dart';
@@ -158,7 +158,7 @@ class _PeonHomePageState extends ConsumerState<PeonHomePage> {
                         ),
                         SliverMainAxisGroup(
                           slivers: [
-                            _PinnedSectionHeader(
+                            AppPinnedSectionHeader(
                               child: _SectionHeader(
                                 title: 'Sessions',
                                 actionLabel: 'New session',
@@ -262,7 +262,7 @@ class _ProjectsSectionState extends ConsumerState<_ProjectsSection> {
     );
     return SliverMainAxisGroup(
       slivers: [
-        _PinnedSectionHeader(
+        AppPinnedSectionHeader(
           child: _SectionHeaderSurface(
             section: 'projects',
             child: Row(
@@ -979,58 +979,6 @@ class _SectionHeaderSurface extends StatelessWidget {
         child: child,
       ),
     );
-  }
-}
-
-class _PinnedSectionHeader extends StatelessWidget {
-  const _PinnedSectionHeader({required this.child});
-
-  static const extent = 28.0;
-  static const blurSigma = 12.0;
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return SliverPersistentHeader(
-      pinned: true,
-      delegate: _PinnedSectionHeaderDelegate(child: child),
-    );
-  }
-}
-
-class _PinnedSectionHeaderDelegate extends SliverPersistentHeaderDelegate {
-  const _PinnedSectionHeaderDelegate({required this.child});
-
-  final Widget child;
-
-  @override
-  double get minExtent => _PinnedSectionHeader.extent;
-
-  @override
-  double get maxExtent => _PinnedSectionHeader.extent;
-
-  @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
-    return ClipRect(
-      child: BackdropFilter(
-        key: const Key('pinned-section-header-blur'),
-        filter: ImageFilter.blur(
-          sigmaX: _PinnedSectionHeader.blurSigma,
-          sigmaY: _PinnedSectionHeader.blurSigma,
-        ),
-        child: SizedBox.expand(child: child),
-      ),
-    );
-  }
-
-  @override
-  bool shouldRebuild(_PinnedSectionHeaderDelegate oldDelegate) {
-    return oldDelegate.child != child;
   }
 }
 

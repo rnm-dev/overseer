@@ -36,12 +36,6 @@ class DioVoiceInputRepository implements VoiceInputRepository {
           milliseconds: (data['maxDurationMs'] as num?)?.toInt() ?? 120000,
         ),
         maxBytes: (data['maxBytes'] as num?)?.toInt() ?? 4 * 1024 * 1024,
-        mediaTypes:
-            (data['mediaTypes'] as List<dynamic>?)?.whereType<String>().toList(
-              growable: false,
-            ) ??
-            const ['audio/mp4'],
-        polish: data['polish'] == true,
       );
     } on DioException catch (error) {
       throw _mapError(error);
@@ -79,12 +73,7 @@ class DioVoiceInputRepository implements VoiceInputRepository {
           cancelToken: cancelToken,
         );
         final data = response.data ?? const <String, dynamic>{};
-        final latencyMs = (data['latencyMs'] as num?)?.toInt();
-        return VoiceTranscription(
-          text: data['text'] as String? ?? '',
-          language: data['language'] as String?,
-          latency: latencyMs == null ? null : Duration(milliseconds: latencyMs),
-        );
+        return VoiceTranscription(text: data['text'] as String? ?? '');
       } on DioException catch (error) {
         if (attempt == 0 && _isRetryableNetworkError(error)) continue;
         throw _mapError(error);

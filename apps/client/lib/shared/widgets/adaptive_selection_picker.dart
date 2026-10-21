@@ -31,14 +31,14 @@ class AdaptiveSelectionPicker<T extends Object> extends StatefulWidget {
     required this.value,
     required this.options,
     required this.onSelected,
-    this.triggerBuilder,
+    required this.triggerBuilder,
   });
 
   final String title;
   final T value;
   final List<SelectionOption<T>> options;
   final ValueChanged<T> onSelected;
-  final AdaptiveSelectionTriggerBuilder? triggerBuilder;
+  final AdaptiveSelectionTriggerBuilder triggerBuilder;
 
   @override
   State<AdaptiveSelectionPicker<T>> createState() =>
@@ -81,18 +81,11 @@ class _AdaptiveSelectionPickerState<T extends Object>
         ResponsiveLayoutSize.compact;
 
     if (compact) {
-      if (widget.triggerBuilder case final triggerBuilder?) {
-        return triggerBuilder(
-          context,
-          _selected.label,
-          _compactPickerOpen,
-          _showCompactPicker,
-        );
-      }
-      return _PickerTrigger(
-        label: _selected.label,
-        expanded: _compactPickerOpen,
-        onTap: _showCompactPicker,
+      return widget.triggerBuilder(
+        context,
+        _selected.label,
+        _compactPickerOpen,
+        _showCompactPicker,
       );
     }
 
@@ -149,81 +142,13 @@ class _AdaptiveSelectionPickerState<T extends Object>
           setState(() {});
         }
 
-        if (widget.triggerBuilder case final triggerBuilder?) {
-          return triggerBuilder(
-            context,
-            _selected.label,
-            controller.isOpen,
-            toggleMenu,
-          );
-        }
-        return _PickerTrigger(
-          label: _selected.label,
-          expanded: controller.isOpen,
-          onTap: toggleMenu,
+        return widget.triggerBuilder(
+          context,
+          _selected.label,
+          controller.isOpen,
+          toggleMenu,
         );
       },
-    );
-  }
-}
-
-class _PickerTrigger extends StatelessWidget {
-  const _PickerTrigger({
-    required this.label,
-    required this.expanded,
-    required this.onTap,
-  });
-
-  final String label;
-  final bool expanded;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      expanded: expanded,
-      label: label,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: const BorderRadius.all(Radius.circular(10)),
-          overlayColor: WidgetStatePropertyAll(
-            colors.primary.withValues(alpha: 0.1),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                AnimatedSwitcher(
-                  duration: AppMotion.fast,
-                  switchInCurve: AppMotion.softSettle,
-                  switchOutCurve: Curves.easeIn,
-                  child: Text(
-                    label,
-                    key: ValueKey(label),
-                    style: AppTypography.controlValue(),
-                  ),
-                ),
-                const SizedBox(width: 4),
-                AnimatedRotation(
-                  turns: expanded ? 0.5 : 0,
-                  duration: AppMotion.base,
-                  curve: AppMotion.iosQuick,
-                  child: Icon(
-                    LucideIcons.chevronDown,
-                    size: 18,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }

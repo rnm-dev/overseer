@@ -52,7 +52,6 @@ class PendingFollowup {
     required this.serverQueue,
     required this.startNow,
     required this.createdAt,
-    this.agent,
     this.model,
     this.reasoningEffort,
     this.attachments = const [],
@@ -65,7 +64,6 @@ class PendingFollowup {
   final bool serverQueue;
   final bool startNow;
   final double createdAt;
-  final String? agent;
   final String? model;
   final String? reasoningEffort;
   final List<FollowupAttachment> attachments;
@@ -148,7 +146,6 @@ class QueuedFollowup {
     required this.prompt,
     required this.queuedAt,
     this.attachments = const [],
-    this.permissionMode,
     this.author,
     this.model,
     this.reasoningEffort,
@@ -160,7 +157,6 @@ class QueuedFollowup {
   final String sessionId;
   final String prompt;
   final List<QueuedFollowupAttachment> attachments;
-  final String? permissionMode;
   final String? author;
   final String? model;
   final String? reasoningEffort;
@@ -192,7 +188,6 @@ abstract interface class FollowupRepository {
     required String prompt,
     required bool serverQueue,
     bool startNow = false,
-    String? agent,
     String? model,
     String? reasoningEffort,
     String? commandId,
@@ -205,11 +200,10 @@ abstract interface class FollowupRepository {
 }
 
 class FollowupException implements Exception {
-  const FollowupException(this.message, {this.statusCode, this.code});
+  const FollowupException(this.message, {this.statusCode});
 
   final String message;
   final int? statusCode;
-  final String? code;
 
   @override
   String toString() => message;

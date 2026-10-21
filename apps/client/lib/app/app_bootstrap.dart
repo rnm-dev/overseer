@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:overseer_mobile/app/app.dart';
 import 'package:overseer_mobile/app/app_dependencies.dart';
@@ -19,7 +18,6 @@ typedef OverseerConnectionAppBuilder =
     Widget Function(
       AppConfig config,
       OverseerConnection connection,
-      VoidCallback? onAuthenticated,
       VoidCallback onBackToConnections,
     );
 
@@ -265,36 +263,12 @@ class _AppBootstrapState extends State<AppBootstrap>
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return MaterialApp(
-        onGenerateTitle: (context) => context.l10n.appTitle,
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: AppTheme.dark,
-        home: const OverseerConnectionsLoadingPage(),
-        builder: (context, child) =>
-            _withForegroundSurface(child ?? const SizedBox.shrink()),
-      );
+      return _buildPickerApp(const OverseerConnectionsLoadingPage());
     }
 
     if (_restoreFailed) {
-      return MaterialApp(
-        onGenerateTitle: (context) => context.l10n.appTitle,
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
-        theme: AppTheme.dark,
-        home: OverseerConnectionsRestoreErrorPage(onRetry: _restore),
-        builder: (context, child) =>
-            _withForegroundSurface(child ?? const SizedBox.shrink()),
+      return _buildPickerApp(
+        OverseerConnectionsRestoreErrorPage(onRetry: _restore),
       );
     }
 
@@ -319,23 +293,24 @@ class _AppBootstrapState extends State<AppBootstrap>
   }
 
   Widget _buildConnectionPicker() {
-    return MaterialApp(
-      onGenerateTitle: (context) => context.l10n.appTitle,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: AppLocalizations.supportedLocales,
-      theme: AppTheme.dark,
-      home: OverseerConnectionsPage(
+    return _buildPickerApp(
+      OverseerConnectionsPage(
         connections: _connections,
         initialUrl: _environmentConfig.serverUrl.toString(),
         onAdd: _beginAdd,
         onSelect: _select,
         onDelete: _delete,
       ),
+    );
+  }
+
+  Widget _buildPickerApp(Widget home) {
+    return MaterialApp(
+      onGenerateTitle: (context) => context.l10n.appTitle,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      theme: AppTheme.dark,
+      home: home,
       builder: (context, child) =>
           _withForegroundSurface(child ?? const SizedBox.shrink()),
     );
@@ -346,7 +321,7 @@ class _AppBootstrapState extends State<AppBootstrap>
     final isSelected = _selectedConnection?.serverUrl == connection.serverUrl;
     final appBuilder = widget.connectionAppBuilder;
     final child = appBuilder != null
-        ? appBuilder(config, connection, null, _returnToConnections)
+        ? appBuilder(config, connection, _returnToConnections)
         : AppDependencies(
             key: ValueKey(connection.id),
             config: config,

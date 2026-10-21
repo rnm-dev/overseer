@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
 
-import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
@@ -11,30 +10,25 @@ import '../../../shared/models/ai_capabilities.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
 import '../domain/session_models.dart';
+import 'session_data_helpers.dart';
 
 class DefaultFollowupRepository implements FollowupRepository {
   DefaultFollowupRepository({
     required this.database,
     required this._dio,
-    Random? random,
     this._clock = const SystemAppClock(),
-  }) : _random = random ?? Random.secure();
+  });
 
   final AppDatabase database;
   final Dio _dio;
-  final Random _random;
+  final Random _random = Random.secure();
   final AppClock _clock;
 
   @override
   Future<ComposerDraftState> loadDraft(FollowupScope scope) async {
-    final row =
-        await (database.select(database.composerDrafts)..where(
-              (row) =>
-                  row.workspaceId.equals(scope.workspaceId) &
-                  row.peonId.equals(scope.peonId) &
-                  row.sessionId.equals(scope.sessionId),
-            ))
-            .getSingleOrNull();
+    final row = await (database.select(
+      database.composerDrafts,
+    )..where((row) => _matches(row, scope))).getSingleOrNull();
     if (row == null) return const ComposerDraftState();
     return ComposerDraftState(
       text: row.draftText,
@@ -47,13 +41,9 @@ class DefaultFollowupRepository implements FollowupRepository {
   @override
   Future<void> saveDraft(FollowupScope scope, ComposerDraftState draft) async {
     if (draft.isEmpty) {
-      await (database.delete(database.composerDrafts)..where(
-            (row) =>
-                row.workspaceId.equals(scope.workspaceId) &
-                row.peonId.equals(scope.peonId) &
-                row.sessionId.equals(scope.sessionId),
-          ))
-          .go();
+      await (database.delete(
+        database.composerDrafts,
+      )..where((row) => _matches(row, scope))).go();
       return;
     }
     await database
@@ -75,12 +65,7 @@ class DefaultFollowupRepository implements FollowupRepository {
   SimpleSelectStatement<$PendingFollowupCommandsTable, PendingFollowupCommand>
   _pendingQuery(FollowupScope scope) {
     return database.select(database.pendingFollowupCommands)
-      ..where(
-        (row) =>
-            row.workspaceId.equals(scope.workspaceId) &
-            row.peonId.equals(scope.peonId) &
-            row.sessionId.equals(scope.sessionId),
-      )
+      ..where((row) => _matches(row, scope))
       ..orderBy([(row) => OrderingTerm.asc(row.createdAt)]);
   }
 
@@ -94,12 +79,7 @@ class DefaultFollowupRepository implements FollowupRepository {
   @override
   Stream<List<QueuedFollowup>> watchQueue(FollowupScope scope) {
     final query = database.select(database.cachedQueuedFollowups)
-      ..where(
-        (row) =>
-            row.workspaceId.equals(scope.workspaceId) &
-            row.peonId.equals(scope.peonId) &
-            row.sessionId.equals(scope.sessionId),
-      )
+      ..where((row) => _matches(row, scope))
       ..orderBy([(row) => OrderingTerm.asc(row.orderKey)]);
     return query.watch().map(
       (rows) => rows
@@ -138,11 +118,9 @@ class DefaultFollowupRepository implements FollowupRepository {
       if (error.response?.statusCode == 404) {
         await _replaceQueue(scope, const []);
       }
-      final data = error.response?.data;
       throw FollowupException(
-        _queueError(error, 'Queued messages could not be loaded.'),
+        error.serverMessage ?? 'Queued messages could not be loaded.',
         statusCode: error.response?.statusCode,
-        code: data is Map ? data['code'] as String? : null,
       );
     } on FormatException {
       throw const FollowupException('The queued message list was invalid.');
@@ -157,13 +135,9 @@ class DefaultFollowupRepository implements FollowupRepository {
   ) async {
     final syncedAt = _clock.now().millisecondsSinceEpoch.toDouble();
     await database.transaction(() async {
-      await (database.delete(database.cachedQueuedFollowups)..where(
-            (row) =>
-                row.workspaceId.equals(scope.workspaceId) &
-                row.peonId.equals(scope.peonId) &
-                row.sessionId.equals(scope.sessionId),
-          ))
-          .go();
+      await (database.delete(
+        database.cachedQueuedFollowups,
+      )..where((row) => _matches(row, scope))).go();
       for (var index = 0; index < items.length; index++) {
         final item = items[index];
         await database
@@ -240,7 +214,7 @@ class DefaultFollowupRepository implements FollowupRepository {
       );
     } on DioException catch (error) {
       if (!_isUnknownQueueItem(error)) {
-        failure = FollowupException(_queueError(error, fallback));
+        failure = FollowupException(error.serverMessage ?? fallback);
       }
     } finally {
       try {
@@ -267,11 +241,8 @@ class DefaultFollowupRepository implements FollowupRepository {
       // A missing endpoint is a stable capability absence. Transport and
       // server failures are recoverable and must reach the composer's retry.
       if (error.response?.statusCode == 404) return null;
-      final data = error.response?.data;
       throw FollowupException(
-        data is Map && data['error'] is String
-            ? data['error'] as String
-            : 'Model choices could not be loaded.',
+        error.serverMessage ?? 'Model choices could not be loaded.',
         statusCode: error.response?.statusCode,
       );
     } on TypeError {
@@ -285,7 +256,6 @@ class DefaultFollowupRepository implements FollowupRepository {
     required String prompt,
     required bool serverQueue,
     bool startNow = false,
-    String? agent,
     String? model,
     String? reasoningEffort,
     String? commandId,
@@ -298,11 +268,24 @@ class DefaultFollowupRepository implements FollowupRepository {
       throw const FollowupException('Message cannot be empty.');
     }
     final stableCommandId = commandId ?? _commandId();
-    final uploaded = await _uploadAttachments(
-      scope: scope,
-      commandId: stableCommandId,
+    final uploaded = await uploadAttachments(
+      dio: _dio,
+      workspaceId: scope.workspaceId,
+      peonId: scope.peonId,
+      uploadId: stableCommandId,
       attachments: attachments,
-      onProgress: onProgress,
+      reportLocalSize: true,
+      error: (message, statusCode) =>
+          FollowupException(message, statusCode: statusCode),
+      onUploading: onProgress == null
+          ? null
+          : (current, total, fileName) => onProgress(
+              FollowupSubmissionProgress.uploading(
+                current: current,
+                total: total,
+                fileName: fileName,
+              ),
+            ),
     );
     onProgress?.call(const FollowupSubmissionProgress.submitting());
     final command = PendingFollowup(
@@ -312,7 +295,6 @@ class DefaultFollowupRepository implements FollowupRepository {
       serverQueue: serverQueue,
       startNow: startNow,
       createdAt: _clock.now().microsecondsSinceEpoch / 1000,
-      agent: agent,
       model: model,
       reasoningEffort: reasoningEffort,
       attachments: uploaded,
@@ -330,7 +312,6 @@ class DefaultFollowupRepository implements FollowupRepository {
             prompt: command.prompt,
             serverQueue: command.serverQueue,
             startNow: Value(command.startNow),
-            agent: Value(command.agent),
             model: Value(command.model),
             reasoningEffort: Value(command.reasoningEffort),
             attachmentsJson: Value(
@@ -339,8 +320,10 @@ class DefaultFollowupRepository implements FollowupRepository {
                   {
                     'type': attachment.type,
                     'path': attachment.path,
-                    if (attachment.name != null) 'name': attachment.name,
-                    if (attachment.size != null) 'size': attachment.size,
+                    'name': ?attachment.name,
+                    'size': ?attachment.size,
+                    'transferId': ?attachment.transferId,
+                    'sha256': ?attachment.sha256,
                   },
               ]),
             ),
@@ -379,7 +362,7 @@ class DefaultFollowupRepository implements FollowupRepository {
             if (command.reasoningEffort != null)
               'reasoningEffort': command.reasoningEffort,
             if (command.attachments.isNotEmpty)
-              'attachments': _attachmentPayload(command.attachments),
+              'attachments': attachmentPayload(command.attachments),
             if (command.replyTo != null) 'replyTo': command.replyTo!.toJson(),
           },
         );
@@ -392,34 +375,28 @@ class DefaultFollowupRepository implements FollowupRepository {
             if (command.reasoningEffort != null)
               'reasoningEffort': command.reasoningEffort,
             if (command.attachments.isNotEmpty)
-              'attachments': _attachmentPayload(command.attachments),
+              'attachments': attachmentPayload(command.attachments),
             if (command.replyTo != null) 'replyTo': command.replyTo!.toJson(),
           },
           options: Options(headers: {'Peon-Request-Id': command.commandId}),
         );
       }
-      await (database.update(database.cachedSessions)..where(
-            (row) =>
-                row.workspaceId.equals(scope.workspaceId) &
-                row.peonId.equals(scope.peonId) &
-                row.sessionId.equals(scope.sessionId),
-          ))
-          .write(
-            CachedSessionsCompanion(
-              operatorRequested: const Value(true),
-              hasOutstandingRequest: const Value(true),
-              lastRequestedAt: Value(command.createdAt),
-            ),
-          );
+      await (database.update(
+        database.cachedSessions,
+      )..where((row) => _matches(row, scope))).write(
+        CachedSessionsCompanion(
+          operatorRequested: const Value(true),
+          hasOutstandingRequest: const Value(true),
+          lastRequestedAt: Value(command.createdAt),
+        ),
+      );
       await _complete(command.commandId);
       return FollowupDelivery.delivered;
     } on DioException catch (error) {
       if (_isRetryable(error)) return FollowupDelivery.queued;
       await _complete(command.commandId);
-      final data = error.response?.data;
-      final message = data is Map ? data['error'] as String? : null;
       throw FollowupException(
-        message ?? 'Message could not be sent.',
+        error.serverMessage ?? 'Message could not be sent.',
         statusCode: error.response?.statusCode,
       );
     }
@@ -454,12 +431,10 @@ class DefaultFollowupRepository implements FollowupRepository {
     return data is Map && data['code'] == 'UNKNOWN_QUEUE_ITEM';
   }
 
-  String _queueError(DioException error, String fallback) {
-    final data = error.response?.data;
-    return data is Map && data['error'] is String
-        ? data['error'] as String
-        : fallback;
-  }
+  Expression<bool> _matches(
+    TableInfo<Table, Object?> row,
+    FollowupScope scope,
+  ) => row.matchesSession(scope.workspaceId, scope.peonId, scope.sessionId);
 
   QueuedFollowup _queuedFromJson(Map<String, dynamic> json) {
     final id = json['id'];
@@ -493,7 +468,6 @@ class DefaultFollowupRepository implements FollowupRepository {
                 )
                 .toList(growable: false)
           : const [],
-      permissionMode: json['permissionMode'] as String?,
       author: json['author'] as String?,
       model: json['model'] as String?,
       reasoningEffort: json['reasoningEffort'] as String?,
@@ -516,7 +490,6 @@ class DefaultFollowupRepository implements FollowupRepository {
           if (attachment.size != null) 'size': attachment.size,
         },
     ],
-    'permissionMode': item.permissionMode,
     'author': item.author,
     'model': item.model,
     'reasoningEffort': item.reasoningEffort,
@@ -537,7 +510,6 @@ class DefaultFollowupRepository implements FollowupRepository {
       serverQueue: row.serverQueue,
       startNow: row.startNow,
       createdAt: row.createdAt,
-      agent: row.agent,
       model: row.model,
       reasoningEffort: row.reasoningEffort,
       attachments: _pendingAttachments(row.attachmentsJson),
@@ -546,89 +518,6 @@ class DefaultFollowupRepository implements FollowupRepository {
           : SelectedTextReply.fromJson(jsonDecode(row.replyToJson!)),
     );
   }
-
-  Future<List<FollowupAttachment>> _uploadAttachments({
-    required FollowupScope scope,
-    required String commandId,
-    required List<NewSessionAttachment> attachments,
-    required FollowupProgressCallback? onProgress,
-  }) async {
-    final uploaded = <FollowupAttachment>[];
-    final usedNames = <String>{};
-    for (var index = 0; index < attachments.length; index++) {
-      final attachment = attachments[index];
-      final name = _uniqueUploadName(attachment.name, usedNames);
-      onProgress?.call(
-        FollowupSubmissionProgress.uploading(
-          current: index + 1,
-          total: attachments.length,
-          fileName: attachment.name,
-        ),
-      );
-      try {
-        final response = await _dio.put<Map<String, dynamic>>(
-          'workspaces/${Uri.encodeComponent(scope.workspaceId)}'
-          '/peons/${Uri.encodeComponent(scope.peonId)}'
-          '/files/uploads/${Uri.encodeComponent(commandId)}'
-          '/${Uri.encodeComponent(name)}',
-          data: attachment.bytes,
-          options: Options(
-            headers: {
-              'Content-Type': 'application/octet-stream',
-              'Peon-Content-Sha256': sha256
-                  .convert(attachment.bytes)
-                  .toString(),
-            },
-          ),
-        );
-        final path = response.data?['path'] as String?;
-        final transferId = response.data?['transferId'] as String?;
-        final size = (response.data?['size'] as num?)?.toInt();
-        final committedSha256 = response.data?['sha256'] as String?;
-        if (path == null ||
-            path.isEmpty ||
-            (transferId != null &&
-                (size != attachment.bytes.length || committedSha256 == null))) {
-          throw FollowupException(
-            'Overseer returned an invalid upload response for '
-            '${attachment.name}.',
-          );
-        }
-        uploaded.add(
-          FollowupAttachment(
-            type: attachment.type,
-            path: path,
-            name: attachment.name,
-            size: attachment.bytes.length,
-            transferId: transferId,
-            sha256: committedSha256,
-          ),
-        );
-      } on DioException catch (error) {
-        final data = error.response?.data;
-        final message = data is Map ? data['error'] as String? : null;
-        throw FollowupException(
-          message ??
-              'Could not upload ${attachment.name}. Press Send to retry.',
-          statusCode: error.response?.statusCode,
-        );
-      }
-    }
-    return uploaded;
-  }
-
-  List<Map<String, Object>> _attachmentPayload(
-    List<FollowupAttachment> attachments,
-  ) => [
-    for (final attachment in attachments)
-      {
-        'type': attachment.type,
-        'path': attachment.path,
-        if (attachment.transferId != null) 'transferId': attachment.transferId!,
-        if (attachment.size != null) 'size': attachment.size!,
-        if (attachment.sha256 != null) 'sha256': attachment.sha256!,
-      },
-  ];
 
   List<FollowupAttachment> _pendingAttachments(String raw) {
     try {
@@ -667,18 +556,4 @@ class DefaultFollowupRepository implements FollowupRepository {
     return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-'
         '${hex(8, 10)}-${hex(10, 16)}';
   }
-}
-
-String _uniqueUploadName(String original, Set<String> used) {
-  final sanitized = original.replaceAll(RegExp(r'[^\w.-]+'), '_');
-  final base = sanitized.isEmpty ? 'file' : sanitized;
-  if (used.add(base)) return base;
-  final dot = base.lastIndexOf('.');
-  final stem = dot > 0 ? base.substring(0, dot) : base;
-  final extension = dot > 0 ? base.substring(dot) : '';
-  var suffix = 2;
-  while (!used.add('$stem-$suffix$extension')) {
-    suffix++;
-  }
-  return '$stem-$suffix$extension';
 }

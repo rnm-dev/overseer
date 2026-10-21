@@ -5,7 +5,7 @@ import 'package:overseer_mobile/features/peon/domain/peon_settings_models.dart';
 import 'package:overseer_mobile/features/peon/domain/peon_settings_repository.dart';
 
 void main() {
-  const scope = PeonSettingsScope(
+  const PeonSettingsScope scope = (
     workspaceId: 'workspace/a',
     peonId: 'peon/b',
     online: true,

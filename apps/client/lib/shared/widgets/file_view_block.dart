@@ -36,13 +36,14 @@ class FileViewBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (_isPdf(path, contentType)) {
+      final palette = AppThemePalette.of(context);
       return ColoredBox(
         key: const Key('file-view-pdf-preview'),
-        color: AppColors.iron900,
+        color: palette.surfaceRaised,
         child: PdfViewer.data(
           bytes,
           sourceName: path,
-          params: const PdfViewerParams(backgroundColor: AppColors.iron900),
+          params: PdfViewerParams(backgroundColor: palette.surfaceRaised),
         ),
       );
     }
@@ -205,12 +206,13 @@ class _MarkdownCodeBlockBuilder extends MarkdownElementBuilder {
       r'(?:^|\s)language-([^\s]+)',
     ).firstMatch(className)?.group(1)?.toLowerCase();
     if (language == 'mermaid') {
+      final palette = AppThemePalette.of(context);
       return Container(
         key: const Key('file-view-mermaid-diagram'),
         margin: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
-          color: AppColors.iron950,
-          border: Border.all(color: AppColors.iron700),
+          color: palette.surface,
+          border: Border.all(color: palette.edgeStrong),
           borderRadius: BorderRadius.circular(8),
         ),
         child: SizedBox(
@@ -251,6 +253,7 @@ class _CodePreview extends StatelessWidget {
     const textCap = 400000;
     final truncated = source.length > textCap;
     final visible = truncated ? source.substring(0, textCap) : source;
+    final palette = AppThemePalette.of(context);
     return Column(
       key: const Key('file-view-code-preview'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -258,10 +261,13 @@ class _CodePreview extends StatelessWidget {
         if (truncated)
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            color: AppColors.forgeDeep.withValues(alpha: 0.25),
+            color: palette.warningDeep.withValues(alpha: 0.25),
             child: Text(
               'Showing the first 400,000 characters.',
-              style: AppTypography.mono(fontSize: 10, color: AppColors.ember),
+              style: AppTypography.mono(
+                fontSize: 10,
+                color: palette.warningStrong,
+              ),
             ),
           ),
         Expanded(
@@ -277,7 +283,7 @@ class _CodePreview extends StatelessWidget {
                   padding: const EdgeInsets.all(16),
                   textStyle: AppTypography.mono(
                     fontSize: 11,
-                    color: AppColors.boneDim,
+                    color: palette.inkMuted,
                     height: 1.5,
                   ),
                 ),
@@ -307,7 +313,7 @@ class _CodeBlock extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         textStyle: AppTypography.mono(
           fontSize: 11,
-          color: AppColors.boneDim,
+          color: AppThemePalette.of(context).inkMuted,
           height: 1.45,
         ),
       ),

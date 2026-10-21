@@ -161,11 +161,4 @@ class PresenceController extends Notifier<PresenceState> {
       },
     );
   }
-
-  void clearWorkspace(String workspaceId) {
-    if (!state.entriesByWorkspace.containsKey(workspaceId)) return;
-    final next = Map<String, List<PresenceEntry>>.from(state.entriesByWorkspace)
-      ..remove(workspaceId);
-    state = PresenceState(entriesByWorkspace: next);
-  }
 }

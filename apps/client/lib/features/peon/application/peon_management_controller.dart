@@ -25,10 +25,6 @@ final cliUpdatesControllerProvider = AsyncNotifierProvider.autoDispose
       retry: (_, _) => null,
     );
 
-final peonManagementPollingIntervalProvider = Provider(
-  (ref) => const Duration(seconds: 1),
-);
-
 class ArmoryState {
   const ArmoryState({
     this.inventory,
@@ -69,13 +65,11 @@ class ArmoryController extends AsyncNotifier<ArmoryState> {
   ArmoryController(this.scope);
 
   final PeonSettingsScope scope;
-  bool _disposed = false;
   PeonManagementRepository get _repository =>
       ref.read(peonManagementRepositoryProvider);
 
   @override
   Future<ArmoryState> build() async {
-    ref.onDispose(() => _disposed = true);
     final cached = await _repository.loadCachedArmory(scope);
     if (!scope.online) {
       return ArmoryState(
@@ -92,11 +86,9 @@ class ArmoryController extends AsyncNotifier<ArmoryState> {
     return _load();
   }
 
-  Future<ArmoryState> _load({bool refresh = false}) async {
+  Future<ArmoryState> _load() async {
     try {
-      return ArmoryState(
-        inventory: await _repository.fetchArmory(scope, refresh: refresh),
-      );
+      return ArmoryState(inventory: await _repository.fetchArmory(scope));
     } on PeonManagementException catch (error) {
       return ArmoryState(
         unsupported: error.unsupported,
@@ -110,25 +102,23 @@ class ArmoryController extends AsyncNotifier<ArmoryState> {
     state = AsyncData(current.copyWith(refreshing: true, clearMessage: true));
     try {
       final inventory = await _repository.fetchArmory(scope, refresh: catalog);
-      if (!_disposed) {
-        state = AsyncData(
-          state.requireValue.copyWith(
-            inventory: inventory,
-            refreshing: false,
-            unsupported: false,
-          ),
-        );
-      }
+      if (!ref.mounted) return;
+      state = AsyncData(
+        state.requireValue.copyWith(
+          inventory: inventory,
+          refreshing: false,
+          unsupported: false,
+        ),
+      );
     } on PeonManagementException catch (error) {
-      if (!_disposed) {
-        state = AsyncData(
-          state.requireValue.copyWith(
-            refreshing: false,
-            unsupported: error.unsupported,
-            message: error.message,
-          ),
-        );
-      }
+      if (!ref.mounted) return;
+      state = AsyncData(
+        state.requireValue.copyWith(
+          refreshing: false,
+          unsupported: error.unsupported,
+          message: error.message,
+        ),
+      );
     }
   }
 
@@ -143,36 +133,31 @@ class ArmoryController extends AsyncNotifier<ArmoryState> {
     try {
       var operation = await _repository.mutateArmory(scope, packageId, action);
       final scheduler = ref.read(appSchedulerProvider);
-      if (_disposed) return;
+      if (!ref.mounted) return;
       state = AsyncData(state.requireValue.copyWith(operation: operation));
-      while (operation.active && !_disposed) {
-        await scheduler.delay(ref.read(peonManagementPollingIntervalProvider));
-        if (_disposed) return;
+      while (operation.active) {
+        await scheduler.delay(const Duration(seconds: 1));
+        if (!ref.mounted) return;
         operation = await _repository.fetchArmoryOperation(scope, operation.id);
-        if (!_disposed) {
-          state = AsyncData(state.requireValue.copyWith(operation: operation));
-        }
+        if (!ref.mounted) return;
+        state = AsyncData(state.requireValue.copyWith(operation: operation));
       }
-      if (!_disposed) {
-        final inventory = await _repository.fetchArmory(scope);
-        if (!_disposed) {
-          state = AsyncData(
-            state.requireValue.copyWith(
-              inventory: inventory,
-              clearBusy: true,
-              message: operation.status == 'failure'
-                  ? operation.message ?? 'The package operation failed.'
-                  : null,
-            ),
-          );
-        }
-      }
+      final inventory = await _repository.fetchArmory(scope);
+      if (!ref.mounted) return;
+      state = AsyncData(
+        state.requireValue.copyWith(
+          inventory: inventory,
+          clearBusy: true,
+          message: operation.status == 'failure'
+              ? operation.message ?? 'The package operation failed.'
+              : null,
+        ),
+      );
     } on PeonManagementException catch (error) {
-      if (!_disposed) {
-        state = AsyncData(
-          state.requireValue.copyWith(clearBusy: true, message: error.message),
-        );
-      }
+      if (!ref.mounted) return;
+      state = AsyncData(
+        state.requireValue.copyWith(clearBusy: true, message: error.message),
+      );
     }
   }
 }
@@ -180,7 +165,6 @@ class ArmoryController extends AsyncNotifier<ArmoryState> {
 class CliUpdatesState {
   const CliUpdatesState({
     this.items = const [],
-    this.hasCache = false,
     this.refreshing = false,
     this.unsupported = false,
     this.starting,
@@ -188,7 +172,6 @@ class CliUpdatesState {
   });
 
   final List<CliUpdateItem> items;
-  final bool hasCache;
   final bool refreshing;
   final bool unsupported;
   final CliProvider? starting;
@@ -198,7 +181,6 @@ class CliUpdatesState {
 
   CliUpdatesState copyWith({
     List<CliUpdateItem>? items,
-    bool? hasCache,
     bool? refreshing,
     bool? unsupported,
     CliProvider? starting,
@@ -207,7 +189,6 @@ class CliUpdatesState {
     bool clearMessage = false,
   }) => CliUpdatesState(
     items: items ?? this.items,
-    hasCache: hasCache ?? this.hasCache,
     refreshing: refreshing ?? this.refreshing,
     unsupported: unsupported ?? this.unsupported,
     starting: clearStarting ? null : starting ?? this.starting,
@@ -232,7 +213,6 @@ class CliUpdatesController extends AsyncNotifier<CliUpdatesState> {
     if (!scope.online) {
       return CliUpdatesState(
         items: cached ?? const [],
-        hasCache: cached != null,
         message: cached == null
             ? 'This Peon is offline and has no cached provider update data.'
             : null,
@@ -240,16 +220,16 @@ class CliUpdatesController extends AsyncNotifier<CliUpdatesState> {
     }
     if (cached != null) {
       Future<void>.microtask(refresh);
-      return CliUpdatesState(items: cached, hasCache: true, refreshing: true);
+      return CliUpdatesState(items: cached, refreshing: true);
     }
     return _load();
   }
 
-  Future<CliUpdatesState> _load({bool refresh = false}) async {
+  Future<CliUpdatesState> _load() async {
     try {
-      final items = await _repository.fetchCliUpdates(scope, refresh: refresh);
+      final items = await _repository.fetchCliUpdates(scope);
       _schedule(items);
-      return CliUpdatesState(items: items, hasCache: true);
+      return CliUpdatesState(items: items);
     } on PeonManagementException catch (error) {
       return CliUpdatesState(
         unsupported: error.unsupported,
@@ -268,7 +248,6 @@ class CliUpdatesController extends AsyncNotifier<CliUpdatesState> {
       state = AsyncData(
         state.requireValue.copyWith(
           items: items,
-          hasCache: true,
           refreshing: false,
           unsupported: false,
         ),

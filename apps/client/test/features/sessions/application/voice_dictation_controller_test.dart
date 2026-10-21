@@ -249,8 +249,6 @@ class _FakeRepository implements VoiceInputRepository {
     enabled: enabled,
     maxDuration: const Duration(seconds: 120),
     maxBytes: 1024,
-    mediaTypes: const ['audio/mp4'],
-    polish: true,
   );
 
   @override

@@ -7,6 +7,7 @@ import '../../../core/live/durable_projection_transaction.dart';
 import '../domain/project_detail_models.dart';
 import '../domain/project_models.dart';
 import '../domain/project_repository.dart';
+import 'project_http.dart';
 
 class DefaultProjectRepository implements ProjectRepository {
   DefaultProjectRepository({required this.database, required this._dio});
@@ -125,13 +126,9 @@ class DefaultProjectRepository implements ProjectRepository {
           : const ProjectCatalog(state: 'legacy', stale: false);
       return ProjectSnapshot(projects: projects, catalog: catalog);
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final message = data is Map<String, dynamic>
-          ? data['error'] as String?
-          : null;
-      throw ProjectsException(
-        message ??
-            'Could not refresh projects. Cached projects are still available.',
+      throw projectsExceptionFrom(
+        error,
+        'Could not refresh projects. Cached projects are still available.',
       );
     } on FormatException {
       throw const ProjectsException(
@@ -162,7 +159,10 @@ class DefaultProjectRepository implements ProjectRepository {
         dir: payload?['dir'] as String?,
       );
     } on DioException catch (error) {
-      throw _projectsException(error, 'Could not suggest a project directory.');
+      throw projectsExceptionFrom(
+        error,
+        'Could not suggest a project directory.',
+      );
     } on TypeError {
       throw const ProjectsException(
         'Overseer returned an invalid project suggestion.',
@@ -187,7 +187,7 @@ class DefaultProjectRepository implements ProjectRepository {
         data: data,
       );
     } on DioException catch (error) {
-      throw _projectsException(error, 'Could not create the project.');
+      throw projectsExceptionFrom(error, 'Could not create the project.');
     }
   }
 
@@ -198,16 +198,9 @@ class DefaultProjectRepository implements ProjectRepository {
     required String projectKey,
     required String path,
   }) async {
-    final encodedPath = path
-        .split('/')
-        .where((segment) => segment.isNotEmpty)
-        .map(Uri.encodeComponent)
-        .join('/');
     try {
       final response = await _dio.get<Map<String, dynamic>>(
-        'workspaces/${Uri.encodeComponent(workspaceId)}/peons/'
-        '${Uri.encodeComponent(peonId)}/projects/'
-        '${Uri.encodeComponent(projectKey)}/files/$encodedPath',
+        _filesUrl(workspaceId, peonId, projectKey, path),
         queryParameters: const {'stat': 1, 'directory': 1},
       );
       final payload = response.data;
@@ -242,11 +235,7 @@ class DefaultProjectRepository implements ProjectRepository {
             });
       return ProjectDirectory(path: path, entries: entries);
     } on DioException catch (error) {
-      final data = error.response?.data;
-      final message = data is Map<String, dynamic>
-          ? data['error'] as String?
-          : null;
-      throw ProjectsException(message ?? 'Could not load project files.');
+      throw projectsExceptionFrom(error, 'Could not load project files.');
     } on FormatException {
       throw const ProjectsException(
         'Overseer returned an invalid project directory.',
@@ -264,38 +253,24 @@ class DefaultProjectRepository implements ProjectRepository {
     required String peonId,
     required String projectKey,
     required String path,
-  }) async {
-    final encodedPath = path
-        .split('/')
-        .where((segment) => segment.isNotEmpty)
-        .map(Uri.encodeComponent)
-        .join('/');
-    try {
-      final response = await _dio.get<List<int>>(
-        'workspaces/${Uri.encodeComponent(workspaceId)}/peons/'
-        '${Uri.encodeComponent(peonId)}/projects/'
-        '${Uri.encodeComponent(projectKey)}/files/$encodedPath',
-        options: Options(responseType: ResponseType.bytes),
-      );
-      return ProjectFilePreview(
-        path: path,
-        bytes: Uint8List.fromList(response.data ?? const []),
-        contentType: response.headers.value(Headers.contentTypeHeader),
-      );
-    } on DioException catch (error) {
-      throw _projectsException(error, 'Could not open this project file.');
-    }
+  }) {
+    return fetchProjectFile(
+      _dio,
+      url: _filesUrl(workspaceId, peonId, projectKey, path),
+      path: path,
+      fallbackMessage: 'Could not open this project file.',
+    );
   }
 
-  ProjectsException _projectsException(
-    DioException error,
-    String fallbackMessage,
-  ) {
-    final data = error.response?.data;
-    final message = data is Map ? data['error'] as String? : null;
-    final code = data is Map ? data['code'] as String? : null;
-    return ProjectsException(message ?? fallbackMessage, code: code);
-  }
+  String _filesUrl(
+    String workspaceId,
+    String peonId,
+    String projectKey,
+    String path,
+  ) =>
+      'workspaces/${Uri.encodeComponent(workspaceId)}/peons/'
+      '${Uri.encodeComponent(peonId)}/projects/'
+      '${Uri.encodeComponent(projectKey)}/files/${encodeProjectPath(path)}';
 
   @override
   Future<void> applyLiveProjection({

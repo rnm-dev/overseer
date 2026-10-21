@@ -11,7 +11,6 @@ import 'package:overseer_mobile/shared/widgets/app_section_header.dart';
 import 'package:overseer_mobile/shared/widgets/app_text_field.dart';
 import 'package:overseer_mobile/shared/widgets/status_badge.dart';
 import 'package:overseer_mobile/shared/widgets/status_dot.dart';
-import 'package:overseer_mobile/shared/widgets/surface.dart';
 
 void main() {
   testWidgets('shared headers keep page and section hierarchy distinct', (
@@ -58,15 +57,16 @@ void main() {
       ),
     );
 
-    final card = tester.widget<AppCard>(find.byKey(const ValueKey('card')));
-    final surface = tester.widget<Surface>(
+    final container = tester.widget<Container>(
       find.descendant(
         of: find.byKey(const ValueKey('card')),
-        matching: find.byType(Surface),
+        matching: find.byType(Container),
       ),
     );
-    expect(surface.padding, card.padding);
-    expect(surface.borderRadius, card.borderRadius);
+    final decoration = container.decoration as BoxDecoration;
+    expect(container.padding, const EdgeInsets.all(16));
+    expect(decoration.color, AppColors.iron900);
+    expect(decoration.border!.top.color, AppColors.iron800);
   });
 
   testWidgets(
@@ -115,35 +115,6 @@ void main() {
       expect(taps, 1);
     },
   );
-
-  testWidgets("Surface uses variants and calls onTap when interactive", (
-    WidgetTester tester,
-  ) async {
-    var clicked = false;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.dark,
-        home: Scaffold(
-          body: Surface(
-            key: const ValueKey("surface"),
-            variant: SurfaceVariant.lit,
-            onTap: () => clicked = true,
-            child: const Text("panel"),
-          ),
-        ),
-      ),
-    );
-
-    final surface = tester.widget<AnimatedContainer>(
-      find.byType(AnimatedContainer),
-    );
-    final decoration = surface.decoration as BoxDecoration;
-    expect(decoration.color, AppColors.iron900);
-    expect(decoration.border!.top.color, AppColors.felDeep);
-
-    await tester.tap(find.text("panel"));
-    expect(clicked, isTrue);
-  });
 
   testWidgets("AppButton reflects loading state and blocks callback", (
     WidgetTester tester,

@@ -183,7 +183,10 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
       children: [
         widget.transcript.when(
           loading: () => const SizedBox.expand(),
-          error: (_, _) => _TranscriptFailure(onRetry: widget.onRefresh),
+          error: (_, _) => _TranscriptEmpty(
+            message: 'Could not open the transcript cache.',
+            onRetry: widget.onRefresh,
+          ),
           data: (state) {
             if (state.events.isEmpty && state.isRefreshing) {
               return const SizedBox.expand();
@@ -206,21 +209,59 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                 ? null
                 : lastUnexecutedUserPrompt(state.events);
             final hasTopControl = state.hasOlder || state.message != null;
-            final hasWorking = widget.showWorking;
             final ghost = widget.ghost;
-            final inquiryRows = widget.inquiries.inquiries.length;
-            final workingGap = transcriptWorkingGap(
-              items.lastOrNull,
-              afterGhost: ghost != null,
-            );
             // The list is reversed, so leading indices are the newest rows: the
             // working indicator sits below the ghost, which sits below the last
             // committed message.
-            final leading =
-                (recoveryFailure != null ? 1 : 0) +
-                (hasWorking ? 1 : 0) +
-                inquiryRows +
-                (ghost != null ? 1 : 0);
+            final leadingRows = <Widget>[
+              if (recoveryFailure != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: _SessionRecoveryCard(
+                    failure: recoveryFailure,
+                    recovering: widget.recovering,
+                    error: widget.recoveryError,
+                    onPressed: () =>
+                        widget.onRecover(recoveryFailure, recoveryPrompt),
+                  ),
+                ),
+              if (widget.showWorking)
+                Padding(
+                  key: ValueKey(
+                    'transcript-working-flow-${state.events.lastOrNull?.eventId ?? 'empty'}',
+                  ),
+                  padding: EdgeInsets.only(
+                    top: transcriptWorkingGap(
+                      items.lastOrNull,
+                      afterGhost: ghost != null,
+                    ),
+                  ),
+                  child: _workingContent(state.events.lastOrNull),
+                ),
+              for (final inquiry in widget.inquiries.inquiries)
+                Padding(
+                  key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Center(
+                    child: PluginInquiryCard(
+                      inquiry: inquiry,
+                      online: widget.inquiryOnline,
+                      acting: widget.inquiries.acting.contains(
+                        inquiry.inquiryId,
+                      ),
+                      onInstall: () => widget.onInquiryInstall(inquiry),
+                      onCancel: () => widget.onInquiryCancel(inquiry),
+                    ),
+                  ),
+                ),
+              if (ghost != null)
+                _TranscriptGhost(
+                  ghost: ghost,
+                  operator: widget.operator,
+                  topGap: items.isEmpty ? 0 : 16,
+                ),
+            ];
+            final leading = leadingRows.length;
             return ValueListenableBuilder<double>(
               valueListenable: widget.composerHeight,
               builder: (context, composerHeight, child) => ListView.builder(
@@ -235,57 +276,7 @@ class _TranscriptBodyState extends State<_TranscriptBody> {
                 ),
                 itemCount: items.length + (hasTopControl ? 1 : 0) + leading,
                 itemBuilder: (context, index) {
-                  if (recoveryFailure != null && index == 0) {
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 16),
-                      child: _SessionRecoveryCard(
-                        failure: recoveryFailure,
-                        recovering: widget.recovering,
-                        error: widget.recoveryError,
-                        onPressed: () =>
-                            widget.onRecover(recoveryFailure, recoveryPrompt),
-                      ),
-                    );
-                  }
-                  final recoveryOffset = recoveryFailure != null ? 1 : 0;
-                  if (hasWorking && index == recoveryOffset) {
-                    return Padding(
-                      key: ValueKey(
-                        'transcript-working-flow-${state.events.lastOrNull?.eventId ?? 'empty'}',
-                      ),
-                      padding: EdgeInsets.only(top: workingGap),
-                      child: _workingContent(state.events.lastOrNull),
-                    );
-                  }
-                  final inquiryIndex =
-                      index - recoveryOffset - (hasWorking ? 1 : 0);
-                  if (inquiryIndex >= 0 && inquiryIndex < inquiryRows) {
-                    final inquiry = widget.inquiries.inquiries[inquiryIndex];
-                    return Padding(
-                      key: ValueKey('plugin-inquiry-${inquiry.inquiryId}'),
-                      padding: const EdgeInsets.only(top: 16),
-                      child: Center(
-                        child: PluginInquiryCard(
-                          inquiry: inquiry,
-                          online: widget.inquiryOnline,
-                          acting: widget.inquiries.acting.contains(
-                            inquiry.inquiryId,
-                          ),
-                          onInstall: () => widget.onInquiryInstall(inquiry),
-                          onCancel: () => widget.onInquiryCancel(inquiry),
-                        ),
-                      ),
-                    );
-                  }
-                  if (ghost != null &&
-                      index ==
-                          recoveryOffset + (hasWorking ? 1 : 0) + inquiryRows) {
-                    return _TranscriptGhost(
-                      ghost: ghost,
-                      operator: widget.operator,
-                      topGap: items.isEmpty ? 0 : 16,
-                    );
-                  }
+                  if (index < leading) return leadingRows[index];
                   final dataIndex = index - leading;
                   if (dataIndex == items.length) {
                     return _TranscriptHistoryControl(
@@ -883,20 +874,6 @@ class _TranscriptEmpty extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TranscriptFailure extends StatelessWidget {
-  const _TranscriptFailure({required this.onRetry});
-
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return _TranscriptEmpty(
-      message: 'Could not open the transcript cache.',
-      onRetry: onRetry,
     );
   }
 }

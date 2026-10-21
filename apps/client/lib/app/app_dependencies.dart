@@ -28,7 +28,6 @@ import 'package:overseer_mobile/core/platform/html_preview_launcher.dart';
 import 'package:overseer_mobile/core/time/app_time.dart';
 import 'package:overseer_mobile/core/notifications/desktop_notifications.dart';
 import 'package:overseer_mobile/features/auth/application/auth_controller.dart';
-import 'package:overseer_mobile/features/auth/application/auth_state.dart';
 import 'package:overseer_mobile/features/ai_stats/application/ai_stats_controller.dart';
 import 'package:overseer_mobile/features/ai_stats/data/dio_ai_stats_repository.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
@@ -83,7 +82,6 @@ class AppDependencies extends StatelessWidget {
     required this.notificationRouteStore,
     required this.child,
     this.desktopNotifications,
-    this.onAuthenticated,
     this.overseerSwitcher,
   });
 
@@ -92,29 +90,27 @@ class AppDependencies extends StatelessWidget {
   final NotificationRouteStore notificationRouteStore;
   final Widget child;
   final DesktopNotifications? desktopNotifications;
-  final VoidCallback? onAuthenticated;
   final OverseerSwitcherData? overseerSwitcher;
 
   @override
   Widget build(BuildContext context) {
     final nativeFirebaseAvailable =
-        !kIsWeb &&
         Firebase.apps.isNotEmpty &&
         (defaultTargetPlatform == TargetPlatform.android ||
             defaultTargetPlatform == TargetPlatform.iOS);
     return ProviderScope(
       overrides: [
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+        if (defaultTargetPlatform == TargetPlatform.windows)
           overseerSwitcherProvider.overrideWithValue(overseerSwitcher),
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+        if (defaultTargetPlatform == TargetPlatform.windows)
           fleetSidebarBuilderProvider.overrideWithValue(
             buildDesktopFleetSidebar,
           ),
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+        if (defaultTargetPlatform == TargetPlatform.windows)
           fleetOverviewMaxWidthProvider.overrideWithValue(double.infinity),
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+        if (defaultTargetPlatform == TargetPlatform.windows)
           fleetWorkspaceSpacingProvider.overrideWithValue(true),
-        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)
+        if (defaultTargetPlatform == TargetPlatform.windows)
           peonHomeMaxWidthProvider.overrideWithValue(double.infinity),
         themeConnectionIdProvider.overrideWithValue(
           overseerConnectionStorageId(connection.serverUrl),
@@ -132,11 +128,11 @@ class AppDependencies extends StatelessWidget {
           const DebugPrintAppDiagnostics(),
         ),
         htmlPreviewLauncherProvider.overrideWithValue(
-          !kIsWeb &&
-                  (defaultTargetPlatform == TargetPlatform.windows ||
-                      defaultTargetPlatform == TargetPlatform.linux)
-              ? DesktopWebViewHtmlPreviewLauncher()
-              : const UnsupportedHtmlPreviewLauncher(),
+          HtmlPreviewLauncher(
+            supported:
+                defaultTargetPlatform == TargetPlatform.windows ||
+                defaultTargetPlatform == TargetPlatform.linux,
+          ),
         ),
         appDatabaseProvider.overrideWith((ref) {
           final database = AppDatabase(
@@ -167,9 +163,9 @@ class AppDependencies extends StatelessWidget {
           const DefaultAttachmentClipboard(),
         ),
         workspaceConnectionRecorderProvider.overrideWithValue(
-          DefaultWorkspaceConnectionRecorder(
-            store: notificationRouteStore,
+          (workspaceIds) => notificationRouteStore.recordConnection(
             connection: connection,
+            workspaceIds: workspaceIds,
           ),
         ),
         notificationPermissionGatewayProvider.overrideWithValue(
@@ -256,9 +252,8 @@ class AppDependencies extends StatelessWidget {
         voiceRecorderFactoryProvider.overrideWith(
           (ref) => RecordVoiceRecorderFactory(
             supported:
-                !kIsWeb &&
                 (defaultTargetPlatform == TargetPlatform.android ||
-                    defaultTargetPlatform == TargetPlatform.iOS),
+                defaultTargetPlatform == TargetPlatform.iOS),
             // AVAudioRecorder metering on iOS can report normal speech below
             // the Android-calibrated cutoff even while producing valid audio.
             // Let the transcription service decide whether a non-empty iOS
@@ -350,35 +345,7 @@ class AppDependencies extends StatelessWidget {
               : null;
         }),
       ],
-      child: LiveSyncLifecycle(
-        child: PushNotificationLifecycle(
-          child: _AuthenticationSuccessListener(
-            onAuthenticated: onAuthenticated,
-            child: child,
-          ),
-        ),
-      ),
+      child: LiveSyncLifecycle(child: PushNotificationLifecycle(child: child)),
     );
-  }
-}
-
-class _AuthenticationSuccessListener extends ConsumerWidget {
-  const _AuthenticationSuccessListener({
-    required this.onAuthenticated,
-    required this.child,
-  });
-
-  final VoidCallback? onAuthenticated;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    ref.listen<AuthState>(authControllerProvider, (previous, next) {
-      if (previous?.phase != AuthPhase.authenticated &&
-          next.phase == AuthPhase.authenticated) {
-        onAuthenticated?.call();
-      }
-    });
-    return child;
   }
 }

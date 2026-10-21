@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/followup_repository.dart';
 import '../domain/session_models.dart';
 import '../domain/session_repository.dart';
 import 'sessions_controller.dart';
@@ -76,24 +77,6 @@ void publishSessionDetails(
   ref.read(sessionDetailsSnapshotProvider(scope).notifier).publish(details);
 }
 
-class SessionDetailsScope {
-  const SessionDetailsScope({
-    required this.workspaceId,
-    required this.peonId,
-    required this.sessionId,
-  });
-
-  final String workspaceId;
-  final String peonId;
-  final String sessionId;
-
-  @override
-  bool operator ==(Object other) =>
-      other is SessionDetailsScope &&
-      other.workspaceId == workspaceId &&
-      other.peonId == peonId &&
-      other.sessionId == sessionId;
-
-  @override
-  int get hashCode => Object.hash(workspaceId, peonId, sessionId);
-}
+/// Session details are keyed by the same (workspace, peon, session) triple as
+/// follow-ups.
+typedef SessionDetailsScope = FollowupScope;

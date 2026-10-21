@@ -4,7 +4,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../../../shared/design/typography.dart';
 import '../../../shared/formatters/activity_timestamp.dart';
 import '../../../shared/widgets/app_markdown.dart';
-import '../../../l10n/app_localizations.dart';
+import '../../../l10n/l10n.dart';
 import '../../auth/domain/auth_models.dart';
 import '../../settings/domain/tool_display_mode.dart';
 import '../domain/session_models.dart';
@@ -152,11 +152,14 @@ class _UserBubble extends StatelessWidget {
                     if (item.replyTo case final reply?)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 8),
-                        child: _SelectedTextReplyCard(
-                          replyTo: reply,
-                          onOpenSource: onOpenReplySource == null
-                              ? null
-                              : () => onOpenReplySource!(reply),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: SelectedTextReplyCard(
+                            replyTo: reply,
+                            onOpenSource: onOpenReplySource == null
+                                ? null
+                                : () => onOpenReplySource!(reply),
+                          ),
                         ),
                       ),
                     if (compact)
@@ -252,67 +255,6 @@ class _UserText extends StatelessWidget {
           height: 1.35,
         ),
       ),
-    );
-  }
-}
-
-class _SelectedTextReplyCard extends StatelessWidget {
-  const _SelectedTextReplyCard({required this.replyTo, this.onOpenSource});
-
-  final SelectedTextReply replyTo;
-  final VoidCallback? onOpenSource;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = Theme.of(context).colorScheme;
-    final preview = replyTo.selectedText.length > 240
-        ? '${replyTo.selectedText.substring(0, 240)}…'
-        : replyTo.selectedText;
-    final card = Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      decoration: BoxDecoration(
-        color: colors.primary.withValues(alpha: 0.06),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.25)),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.subdirectory_arrow_left, size: 14, color: colors.primary),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Selected text',
-                  style: AppTypography.mono(
-                    fontSize: 9,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  preview,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.body(
-                    fontSize: 11,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (onOpenSource == null) return card;
-    return InkWell(
-      onTap: onOpenSource,
-      borderRadius: BorderRadius.circular(8),
-      child: card,
     );
   }
 }
@@ -618,11 +560,11 @@ class _ToolRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final failed = item.result?.isError == true;
-    final kind = _toolActivityKind(item.name);
+    final kind = transcriptToolKind(item.name);
     final filename = switch (kind) {
-      _ToolActivityKind.read ||
-      _ToolActivityKind.search ||
-      _ToolActivityKind.edit => transcriptEditFileName(item.input),
+      TranscriptToolKind.read ||
+      TranscriptToolKind.search ||
+      TranscriptToolKind.edit => transcriptEditFileName(item.input),
       _ => null,
     };
     final label = _toolActivityLabel(context, kind);
@@ -676,7 +618,7 @@ class _ToolRow extends StatelessWidget {
                 if (failed) ...[
                   const SizedBox(width: 4),
                   Text(
-                    '· ${_toolActivityFailedLabel(context)}',
+                    '· ${context.l10n.toolActivityFailedShort}',
                     style: AppTypography.mono(
                       fontSize: AppTypography.systemMessageFontSize,
                       color: colors.error,
@@ -692,55 +634,27 @@ class _ToolRow extends StatelessWidget {
   }
 }
 
-enum _ToolActivityKind { read, search, web, edit, analysis, command, generic }
+String _toolActivityLabel(BuildContext context, TranscriptToolKind kind) {
+  final l10n = context.l10n;
+  return switch (kind) {
+    TranscriptToolKind.read => l10n.toolActivityRead,
+    TranscriptToolKind.search => l10n.toolActivitySearch,
+    TranscriptToolKind.web => l10n.toolActivityWeb,
+    TranscriptToolKind.edit => l10n.toolActivityEdit,
+    TranscriptToolKind.analysis => l10n.toolActivityAnalysis,
+    TranscriptToolKind.command => l10n.toolActivityCommand,
+    TranscriptToolKind.generic => l10n.toolActivityGeneric,
+  };
+}
 
-_ToolActivityKind _toolActivityKind(String? name) =>
-    switch (name?.trim().toLowerCase()) {
-      'read' => _ToolActivityKind.read,
-      'grep' || 'glob' => _ToolActivityKind.search,
-      'webfetch' || 'websearch' => _ToolActivityKind.web,
-      'edit' || 'write' || 'notebookedit' => _ToolActivityKind.edit,
-      'task' || 'agent' => _ToolActivityKind.analysis,
-      'bash' => _ToolActivityKind.command,
-      _ => _ToolActivityKind.generic,
-    };
-
-String _toolActivityLabel(BuildContext context, _ToolActivityKind kind) =>
-    switch ((
-      Localizations.of<AppLocalizations>(context, AppLocalizations),
-      kind,
-    )) {
-      (final l10n?, _ToolActivityKind.read) => l10n.toolActivityRead,
-      (final l10n?, _ToolActivityKind.search) => l10n.toolActivitySearch,
-      (final l10n?, _ToolActivityKind.web) => l10n.toolActivityWeb,
-      (final l10n?, _ToolActivityKind.edit) => l10n.toolActivityEdit,
-      (final l10n?, _ToolActivityKind.analysis) => l10n.toolActivityAnalysis,
-      (final l10n?, _ToolActivityKind.command) => l10n.toolActivityCommand,
-      (final l10n?, _ToolActivityKind.generic) => l10n.toolActivityGeneric,
-      (_, _ToolActivityKind.read) => 'Opened a file',
-      (_, _ToolActivityKind.search) => 'Searched the materials',
-      (_, _ToolActivityKind.web) => 'Checked external sources',
-      (_, _ToolActivityKind.edit) => 'Updated a file',
-      (_, _ToolActivityKind.analysis) => 'Performed additional analysis',
-      (_, _ToolActivityKind.command) => 'Performed a technical operation',
-      (_, _ToolActivityKind.generic) => 'Performed an action',
-    };
-
-String _toolActivityFailedLabel(BuildContext context) =>
-    Localizations.of<AppLocalizations>(
-      context,
-      AppLocalizations,
-    )?.toolActivityFailedShort ??
-    'failed';
-
-IconData _toolActivityIcon(_ToolActivityKind kind) => switch (kind) {
-  _ToolActivityKind.read => LucideIcons.fileText,
-  _ToolActivityKind.search => LucideIcons.search,
-  _ToolActivityKind.web => LucideIcons.globe2,
-  _ToolActivityKind.edit => LucideIcons.filePenLine,
-  _ToolActivityKind.analysis => LucideIcons.bot,
-  _ToolActivityKind.command => LucideIcons.terminal,
-  _ToolActivityKind.generic => LucideIcons.wrench,
+IconData _toolActivityIcon(TranscriptToolKind kind) => switch (kind) {
+  TranscriptToolKind.read => LucideIcons.fileText,
+  TranscriptToolKind.search => LucideIcons.search,
+  TranscriptToolKind.web => LucideIcons.globe2,
+  TranscriptToolKind.edit => LucideIcons.filePenLine,
+  TranscriptToolKind.analysis => LucideIcons.bot,
+  TranscriptToolKind.command => LucideIcons.terminal,
+  TranscriptToolKind.generic => LucideIcons.wrench,
 };
 
 class _ActionResult extends StatefulWidget {

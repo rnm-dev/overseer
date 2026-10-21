@@ -85,7 +85,6 @@ void main() {
           scope: scope,
           prompt: 'first',
           serverQueue: false,
-          agent: 'codex',
           model: 'gpt-5',
           reasoningEffort: 'high',
         ),
@@ -219,6 +218,79 @@ void main() {
       ]);
     },
   );
+
+  test('a retried follow-up resends the committed transfer identity', () async {
+    final posts = <RequestOptions>[];
+    var rejectFollowup = true;
+    final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.method == 'PUT') {
+            handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'path': 'uploads/cmd/a.txt',
+                  'transferId': 'transfer-1',
+                  'size': 3,
+                  'sha256': 'abc123',
+                },
+              ),
+            );
+            return;
+          }
+          posts.add(options);
+          if (rejectFollowup) {
+            rejectFollowup = false;
+            handler.reject(
+              DioException(
+                requestOptions: options,
+                type: DioExceptionType.connectionTimeout,
+              ),
+            );
+            return;
+          }
+          handler.resolve(
+            Response<void>(requestOptions: options, statusCode: 200),
+          );
+        },
+      ),
+    );
+    final repository = DefaultFollowupRepository(database: database, dio: dio);
+
+    expect(
+      await repository.submit(
+        scope: scope,
+        prompt: 'see file',
+        serverQueue: false,
+        commandId: 'cmd',
+        attachments: [
+          NewSessionAttachment(
+            name: 'a.txt',
+            type: 'file',
+            bytes: Uint8List.fromList([1, 2, 3]),
+          ),
+        ],
+      ),
+      FollowupDelivery.queued,
+    );
+    expect(await repository.retryPending(scope), isFalse);
+
+    expect(posts, hasLength(2));
+    const expected = [
+      {
+        'type': 'file',
+        'path': 'uploads/cmd/a.txt',
+        'transferId': 'transfer-1',
+        'size': 3,
+        'sha256': 'abc123',
+      },
+    ];
+    expect(posts.first.data['attachments'], expected);
+    expect(posts.last.data['attachments'], expected);
+  });
 
   test('loads the model capability catalog', () async {
     final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));

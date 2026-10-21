@@ -29,8 +29,6 @@ class AiModelUsage {
     required this.totalTokens,
     required this.inputTokens,
     required this.outputTokens,
-    required this.cacheCreationTokens,
-    required this.cacheReadTokens,
     required this.totalDurationMs,
     required this.totalCostUsd,
   });
@@ -43,12 +41,6 @@ class AiModelUsage {
       totalTokens: _integer(json['totalTokens']),
       inputTokens: _integer(json['inputTokens'] ?? json['totalInputTokens']),
       outputTokens: _integer(json['outputTokens'] ?? json['totalOutputTokens']),
-      cacheCreationTokens: _integer(
-        json['cacheCreationTokens'] ?? json['totalCacheCreationTokens'],
-      ),
-      cacheReadTokens: _integer(
-        json['cacheReadTokens'] ?? json['totalCacheReadTokens'],
-      ),
       totalDurationMs: _integer(json['totalDurationMs']),
       totalCostUsd: _decimal(json['totalCostUsd']),
     );
@@ -60,8 +52,6 @@ class AiModelUsage {
   final int totalTokens;
   final int inputTokens;
   final int outputTokens;
-  final int cacheCreationTokens;
-  final int cacheReadTokens;
   final int totalDurationMs;
   final double totalCostUsd;
 
@@ -72,8 +62,6 @@ class AiModelUsage {
     'totalTokens': totalTokens,
     'inputTokens': inputTokens,
     'outputTokens': outputTokens,
-    'cacheCreationTokens': cacheCreationTokens,
-    'cacheReadTokens': cacheReadTokens,
     'totalDurationMs': totalDurationMs,
     'totalCostUsd': totalCostUsd,
   };
@@ -82,10 +70,7 @@ class AiModelUsage {
 class AiStats {
   const AiStats({
     required this.period,
-    required this.rangeStart,
-    required this.rangeEnd,
     required this.sessionCount,
-    required this.outcomeCounts,
     required this.totalInputTokens,
     required this.totalOutputTokens,
     required this.totalCacheCreationTokens,
@@ -93,24 +78,15 @@ class AiStats {
     required this.totalTokens,
     required this.totalDurationMs,
     required this.totalCostUsd,
-    required this.sessionsWithUsage,
     required this.sessionsMissingUsage,
     required this.byModel,
   });
 
   factory AiStats.fromJson(Map<String, dynamic> json) {
-    final rawOutcomes = json['outcomeCounts'];
     final rawModels = json['byModel'];
     return AiStats(
       period: json['period'] as String? ?? '',
-      rangeStart: _integer(json['rangeStart']),
-      rangeEnd: _integer(json['rangeEnd']),
       sessionCount: _integer(json['sessionCount']),
-      outcomeCounts: rawOutcomes is Map
-          ? rawOutcomes.map(
-              (key, value) => MapEntry(key.toString(), _integer(value)),
-            )
-          : const {},
       totalInputTokens: _integer(json['totalInputTokens']),
       totalOutputTokens: _integer(json['totalOutputTokens']),
       totalCacheCreationTokens: _integer(json['totalCacheCreationTokens']),
@@ -118,7 +94,6 @@ class AiStats {
       totalTokens: _integer(json['totalTokens']),
       totalDurationMs: _integer(json['totalDurationMs']),
       totalCostUsd: _decimal(json['totalCostUsd']),
-      sessionsWithUsage: _integer(json['sessionsWithUsage']),
       sessionsMissingUsage: _integer(json['sessionsMissingUsage']),
       byModel: rawModels is List
           ? rawModels
@@ -133,10 +108,7 @@ class AiStats {
   }
 
   final String period;
-  final int rangeStart;
-  final int rangeEnd;
   final int sessionCount;
-  final Map<String, int> outcomeCounts;
   final int totalInputTokens;
   final int totalOutputTokens;
   final int totalCacheCreationTokens;
@@ -144,16 +116,12 @@ class AiStats {
   final int totalTokens;
   final int totalDurationMs;
   final double totalCostUsd;
-  final int sessionsWithUsage;
   final int sessionsMissingUsage;
   final List<AiModelUsage> byModel;
 
   Map<String, dynamic> toJson() => {
     'period': period,
-    'rangeStart': rangeStart,
-    'rangeEnd': rangeEnd,
     'sessionCount': sessionCount,
-    'outcomeCounts': outcomeCounts,
     'totalInputTokens': totalInputTokens,
     'totalOutputTokens': totalOutputTokens,
     'totalCacheCreationTokens': totalCacheCreationTokens,
@@ -161,7 +129,6 @@ class AiStats {
     'totalTokens': totalTokens,
     'totalDurationMs': totalDurationMs,
     'totalCostUsd': totalCostUsd,
-    'sessionsWithUsage': sessionsWithUsage,
     'sessionsMissingUsage': sessionsMissingUsage,
     'byModel': byModel.map((model) => model.toJson()).toList(),
   };
@@ -196,26 +163,6 @@ class AiQuotaWindow {
   final List<String> modelIds;
 }
 
-class AiQuotaCredits {
-  const AiQuotaCredits({this.balance, this.used, this.limit, this.currency});
-
-  factory AiQuotaCredits.fromJson(Map<String, dynamic> json) {
-    return AiQuotaCredits(
-      balance: json['balance'] is num
-          ? (json['balance'] as num).toDouble()
-          : null,
-      used: json['used'] is num ? (json['used'] as num).toDouble() : null,
-      limit: json['limit'] is num ? (json['limit'] as num).toDouble() : null,
-      currency: json['currency'] as String?,
-    );
-  }
-
-  final double? balance;
-  final double? used;
-  final double? limit;
-  final String? currency;
-}
-
 class AiProviderQuota {
   const AiProviderQuota({
     required this.provider,
@@ -224,13 +171,11 @@ class AiProviderQuota {
     required this.windows,
     this.source,
     this.accountEmail,
-    this.credits,
     this.error,
   });
 
   factory AiProviderQuota.fromJson(Map<String, dynamic> json) {
     final rawWindows = json['windows'];
-    final rawCredits = json['credits'];
     return AiProviderQuota(
       provider: json['provider'] as String? ?? '',
       status: json['status'] as String? ?? 'unavailable',
@@ -246,9 +191,6 @@ class AiProviderQuota {
                 )
                 .toList(growable: false)
           : const [],
-      credits: rawCredits is Map
-          ? AiQuotaCredits.fromJson(Map<String, dynamic>.from(rawCredits))
-          : null,
       error: json['error'] as String?,
     );
   }
@@ -259,7 +201,6 @@ class AiProviderQuota {
   final int updatedAt;
   final String? accountEmail;
   final List<AiQuotaWindow> windows;
-  final AiQuotaCredits? credits;
   final String? error;
 }
 

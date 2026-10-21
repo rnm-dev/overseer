@@ -11,34 +11,13 @@ final projectFileViewerControllerProvider = AsyncNotifierProvider.autoDispose
       ProjectFileViewerScope
     >(ProjectFileViewerController.new, retry: (_, _) => null);
 
-class ProjectFileViewerScope {
-  const ProjectFileViewerScope({
-    required this.workspaceId,
-    required this.peonId,
-    required this.projectKey,
-    required this.path,
-    this.projectId,
-  });
-
-  final String workspaceId;
-  final String peonId;
-  final String projectKey;
-  final String path;
-  final String? projectId;
-
-  @override
-  bool operator ==(Object other) =>
-      other is ProjectFileViewerScope &&
-      other.workspaceId == workspaceId &&
-      other.peonId == peonId &&
-      other.projectKey == projectKey &&
-      other.projectId == projectId &&
-      other.path == path;
-
-  @override
-  int get hashCode =>
-      Object.hash(workspaceId, peonId, projectKey, projectId, path);
-}
+typedef ProjectFileViewerScope = ({
+  String workspaceId,
+  String peonId,
+  String projectKey,
+  String path,
+  String? projectId,
+});
 
 class ProjectFileViewerController extends AsyncNotifier<ProjectFilePreview> {
   ProjectFileViewerController(this.scope);

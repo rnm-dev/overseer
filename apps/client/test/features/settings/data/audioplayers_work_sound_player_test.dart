@@ -1,7 +1,7 @@
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:overseer_mobile/features/settings/data/non_interrupting_sound_audio_context.dart';
+import 'package:overseer_mobile/features/settings/data/audioplayers_work_sound_player.dart';
 
 void main() {
   tearDown(() {

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 import 'motion.dart';
-import 'spacing.dart';
 import 'typography.dart';
 import '../../features/themes/app_theme_package.dart';
 
@@ -65,7 +64,7 @@ class AppTheme {
         bodyColor: p.ink,
         displayColor: p.ink,
       ),
-      extensions: [const AppSpacing(screenHorizontal: 12), AppThemePalette(p)],
+      extensions: [AppThemePalette(p)],
       iconTheme: IconThemeData(color: p.ink),
       appBarTheme: AppBarTheme(
         backgroundColor: p.canvas,

@@ -6,7 +6,7 @@ import 'package:overseer_mobile/features/peon/domain/peon_settings_repository.da
 import 'package:overseer_mobile/shared/models/ai_capabilities.dart';
 
 void main() {
-  const scope = PeonSettingsScope(
+  const PeonSettingsScope scope = (
     workspaceId: 'workspace',
     peonId: 'peon',
     online: true,

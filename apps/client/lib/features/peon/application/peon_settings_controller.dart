@@ -36,7 +36,6 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
   PeonSettingsController(this.scope);
 
   final PeonSettingsScope scope;
-  final Completer<void> _disposed = Completer<void>();
   late PeonSettingsPollingPolicy _pollingPolicy;
   late AppScheduler _scheduler;
 
@@ -47,9 +46,6 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
   Future<PeonSettingsState> build() async {
     _pollingPolicy = ref.read(peonSettingsPollingPolicyProvider);
     _scheduler = ref.read(appSchedulerProvider);
-    ref.onDispose(() {
-      if (!_disposed.isCompleted) _disposed.complete();
-    });
     if (!scope.online) return const PeonSettingsState();
 
     final statusFuture = _repository.fetchStatus(scope);
@@ -72,139 +68,98 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
     );
   }
 
-  Future<bool> saveSettings(Map<String, dynamic> patch) async {
+  /// Applies [start], runs [work] and folds its result into state; on a
+  /// [PeonSettingsException] applies [fail] with the error message instead.
+  Future<bool> _run({
+    required PeonSettingsState Function(PeonSettingsState) start,
+    required Future<PeonSettingsState Function(PeonSettingsState)> Function()
+    work,
+    required PeonSettingsState Function(PeonSettingsState, String) fail,
+  }) async {
     final current = state.value;
     if (current == null) return false;
-    state = AsyncData(
-      current.copyWith(saving: true, saved: false, clearMessage: true),
-    );
+    state = AsyncData(start(current));
     try {
+      final apply = await work();
+      // The work succeeded even if the settings page closed meanwhile.
+      if (!ref.mounted) return true;
+      state = AsyncData(apply(state.requireValue));
+      return true;
+    } on PeonSettingsException catch (error) {
+      if (!ref.mounted) return false;
+      state = AsyncData(fail(state.requireValue, error.message));
+      return false;
+    }
+  }
+
+  Future<bool> saveSettings(Map<String, dynamic> patch) => _run(
+    start: (s) => s.copyWith(saving: true, saved: false, clearMessage: true),
+    work: () async {
       final settings = await _repository.updateSettings(scope, patch);
-      state = AsyncData(
-        state.requireValue.copyWith(
-          settings: settings,
-          saving: false,
-          saved: true,
-        ),
-      );
-      return true;
-    } on PeonSettingsException catch (error) {
-      state = AsyncData(
-        state.requireValue.copyWith(saving: false, message: error.message),
-      );
-      return false;
-    }
-  }
+      return (PeonSettingsState s) =>
+          s.copyWith(settings: settings, saving: false, saved: true);
+    },
+    fail: (s, message) => s.copyWith(saving: false, message: message),
+  );
 
-  Future<bool> saveConnection(String publicUrl) async {
-    final current = state.value;
-    if (current == null) return false;
-    state = AsyncData(
-      current.copyWith(
-        connectionSaving: true,
-        connectionSaved: false,
-        clearMessage: true,
-      ),
-    );
-    try {
+  Future<bool> saveConnection(String publicUrl) => _run(
+    start: (s) => s.copyWith(
+      connectionSaving: true,
+      connectionSaved: false,
+      clearMessage: true,
+    ),
+    work: () async {
       await _repository.updateConnection(scope, publicUrl);
-      state = AsyncData(
-        state.requireValue.copyWith(
-          connectionSaving: false,
-          connectionSaved: true,
-        ),
-      );
-      return true;
-    } on PeonSettingsException catch (error) {
-      state = AsyncData(
-        state.requireValue.copyWith(
-          connectionSaving: false,
-          message: error.message,
-        ),
-      );
-      return false;
-    }
-  }
+      return (PeonSettingsState s) =>
+          s.copyWith(connectionSaving: false, connectionSaved: true);
+    },
+    fail: (s, message) => s.copyWith(connectionSaving: false, message: message),
+  );
 
-  Future<bool> saveSoul(String soul) async {
-    final current = state.value;
-    if (current == null) return false;
-    state = AsyncData(
-      current.copyWith(soulSaving: true, soulSaved: false, clearMessage: true),
-    );
-    try {
+  Future<bool> saveSoul(String soul) => _run(
+    start: (s) =>
+        s.copyWith(soulSaving: true, soulSaved: false, clearMessage: true),
+    work: () async {
       final settings = await _repository.updateSettings(scope, {'soul': soul});
-      state = AsyncData(
-        state.requireValue.copyWith(
-          settings: settings,
-          soulSaving: false,
-          soulSaved: true,
-        ),
-      );
-      return true;
-    } on PeonSettingsException catch (error) {
-      state = AsyncData(
-        state.requireValue.copyWith(soulSaving: false, message: error.message),
-      );
-      return false;
-    }
-  }
+      return (PeonSettingsState s) =>
+          s.copyWith(settings: settings, soulSaving: false, soulSaved: true);
+    },
+    fail: (s, message) => s.copyWith(soulSaving: false, message: message),
+  );
 
-  Future<void> checkForUpdate() async {
-    final current = state.value;
-    if (current == null) return;
-    state = AsyncData(
-      current.copyWith(checkingUpdate: true, clearMessage: true),
-    );
-    try {
+  Future<void> checkForUpdate() => _run(
+    start: (s) => s.copyWith(checkingUpdate: true, clearMessage: true),
+    work: () async {
       final status = await _repository.checkForUpdate(scope);
-      state = AsyncData(
-        state.requireValue.copyWith(status: status, checkingUpdate: false),
-      );
-    } on PeonSettingsException catch (error) {
-      state = AsyncData(
-        state.requireValue.copyWith(
-          checkingUpdate: false,
-          message: error.message,
-        ),
-      );
-    }
-  }
+      return (PeonSettingsState s) =>
+          s.copyWith(status: status, checkingUpdate: false);
+    },
+    fail: (s, message) => s.copyWith(checkingUpdate: false, message: message),
+  );
 
   Future<void> installUpdate() async {
-    final current = state.value;
-    if (current == null) return;
-    state = AsyncData(
-      current.copyWith(
+    final installed = await _run(
+      start: (s) => s.copyWith(
         updatePhase: PeonUpdatePhase.installing,
         clearMessage: true,
       ),
+      work: () async {
+        await _repository.installUpdate(scope);
+        return (PeonSettingsState s) =>
+            s.copyWith(updatePhase: PeonUpdatePhase.restarting);
+      },
+      fail: (s, message) =>
+          s.copyWith(updatePhase: PeonUpdatePhase.idle, message: message),
     );
-    try {
-      await _repository.installUpdate(scope);
-      state = AsyncData(
-        state.requireValue.copyWith(updatePhase: PeonUpdatePhase.restarting),
-      );
-      unawaited(_waitForRestart());
-    } on PeonSettingsException catch (error) {
-      state = AsyncData(
-        state.requireValue.copyWith(
-          updatePhase: PeonUpdatePhase.idle,
-          message: error.message,
-        ),
-      );
-    }
+    if (installed) unawaited(_waitForRestart());
   }
 
   Future<void> _waitForRestart() async {
     for (var attempt = 0; attempt < _pollingPolicy.maxAttempts; attempt++) {
-      await Future.any<void>([
-        _scheduler.delay(_pollingPolicy.interval),
-        _disposed.future,
-      ]);
-      if (_disposed.isCompleted || !ref.mounted) return;
+      await _scheduler.delay(_pollingPolicy.interval);
+      if (!ref.mounted) return;
       final status = await _repository.fetchStatus(scope);
-      if (_disposed.isCompleted || !ref.mounted) return;
+      if (!ref.mounted) return;
       if (status != null && !status.updateAvailable) {
         state = AsyncData(
           state.requireValue.copyWith(
@@ -215,7 +170,7 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
         return;
       }
     }
-    if (_disposed.isCompleted || !ref.mounted) return;
+    if (!ref.mounted) return;
     state = AsyncData(
       state.requireValue.copyWith(
         updatePhase: PeonUpdatePhase.idle,
@@ -226,18 +181,12 @@ class PeonSettingsController extends AsyncNotifier<PeonSettingsState> {
     );
   }
 
-  Future<bool> deletePeon() async {
-    final current = state.value;
-    if (current == null) return false;
-    state = AsyncData(current.copyWith(deleting: true, clearMessage: true));
-    try {
+  Future<bool> deletePeon() => _run(
+    start: (s) => s.copyWith(deleting: true, clearMessage: true),
+    work: () async {
       await _repository.deletePeon(scope);
-      return true;
-    } on PeonSettingsException catch (error) {
-      state = AsyncData(
-        state.requireValue.copyWith(deleting: false, message: error.message),
-      );
-      return false;
-    }
-  }
+      return (PeonSettingsState s) => s;
+    },
+    fail: (s, message) => s.copyWith(deleting: false, message: message),
+  );
 }

@@ -151,7 +151,7 @@ class ProjectDetailController extends AsyncNotifier<ProjectDetailState> {
     }
   }
 
-  Future<void> loadSkills() async {
+  Future<void> _loadSkills() async {
     final current = state.value;
     if (current == null || current.skills != null || current.loading) return;
     await _load(
@@ -165,7 +165,7 @@ class ProjectDetailController extends AsyncNotifier<ProjectDetailState> {
     );
   }
 
-  Future<void> loadMembers() async {
+  Future<void> _loadMembers() async {
     final current = state.value;
     if (current == null ||
         current.members != null ||
@@ -182,7 +182,7 @@ class ProjectDetailController extends AsyncNotifier<ProjectDetailState> {
     );
   }
 
-  Future<void> loadSettings() async {
+  Future<void> _loadSettings() async {
     final current = state.value;
     if (current == null ||
         current.settings != null ||
@@ -202,40 +202,9 @@ class ProjectDetailController extends AsyncNotifier<ProjectDetailState> {
   }
 
   Future<void> loadSettingsHub() async {
-    await loadSettings();
-    await loadSkills();
-    await loadMembers();
-  }
-
-  Future<void> openFile(String path) async {
-    final current = state.value;
-    if (current == null || current.loading || !scope.online) return;
-    state = AsyncData(
-      current.copyWith(loading: true, clearMessage: true, saved: false),
-    );
-    try {
-      final preview = await _repository.fetchFile(
-        workspaceId: current.project.workspaceId,
-        peonId: current.project.peonId,
-        projectId: current.project.projectId,
-        path: path,
-      );
-      state = AsyncData(
-        (state.value ?? current).copyWith(
-          filePreview: preview,
-          loading: false,
-          clearMessage: true,
-        ),
-      );
-    } on ProjectsException catch (error) {
-      state = AsyncData(
-        (state.value ?? current).copyWith(
-          loading: false,
-          message: error.message,
-          code: error.code,
-        ),
-      );
-    }
+    await _loadSettings();
+    await _loadSkills();
+    await _loadMembers();
   }
 
   Future<void> saveSettings(ProjectSettings settings) async {
