@@ -7,7 +7,6 @@ import {
   listDevices,
   requestHasTrustedOrigin,
   revokeDevice,
-  setWebSessionCookie,
   verifyDeviceToken,
   webSessionToken,
 } from "../modules/auth/index.js";

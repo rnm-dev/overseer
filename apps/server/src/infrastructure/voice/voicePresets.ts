@@ -25,6 +25,15 @@ export const VOICE_PRESETS: Record<string, VoicePreset> = {
     sttModel: "whisper-1",
     polishModel: "gpt-4o-mini",
   },
+  // A gateway rather than a vendor: one key, and the same Whisper turbo and
+  // GPT-OSS 120B as the groq row, routed to whichever upstream serves them.
+  // Its /audio/transcriptions accepts the OpenAI multipart shape, verbose_json
+  // included; other STT models are listed under output_modalities=transcription.
+  openrouter: {
+    baseUrl: "https://openrouter.ai/api/v1",
+    sttModel: "openai/whisper-large-v3-turbo",
+    polishModel: "openai/gpt-oss-120b",
+  },
   // A self-hosted faster-whisper / speaches / whisper.cpp server. STT only:
   // point OVERSEER_VOICE_POLISH_BASE_URL/MODEL at a local LLM to add polish.
   local: {

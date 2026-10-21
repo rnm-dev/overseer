@@ -125,14 +125,14 @@ export function ProjectArmoryPackages() {
       setAssignments(assignmentList.assignments);
     } catch (reason) { if (gate.current(token)) setError(reason); }
     finally { if (gate.current(token)) setLoading(false); }
-  }, [base, key]);
+  }, [base, gate, key]);
 
   useEffect(() => {
     const requestGate = gate;
     setProjectId(null); setPackages([]); setProfiles([]); setAssignments([]); setError(null); setBusy(new Set());
     if (capable && peon.online) void load(); else setLoading(false);
     return () => requestGate.clear();
-  }, [capable, load, peon.online]);
+  }, [capable, gate, load, peon.online]);
 
   const byPackage = useMemo(() => new Map(assignments.map((assignment) => [assignment.packageId, assignment])), [assignments]);
   const mutate = async (packageId: string, profileId: string | null, remove: boolean) => {

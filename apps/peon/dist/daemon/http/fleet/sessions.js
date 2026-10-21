@@ -476,6 +476,8 @@ export function attachSessionRoutes(router, options) {
             return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
         if (result === "not_found")
             return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+        if (result === "steer_pending")
+            return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
         res.json(result);
     });
     router.post("/sessions/:id/queue/:itemId/steer", (req, res) => {
@@ -484,6 +486,8 @@ export function attachSessionRoutes(router, options) {
             return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
         if (result === "not_found")
             return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+        if (result === "steer_pending")
+            return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
         res.json({ ok: true });
     });
     router.post("/sessions/:id/queue/:itemId/send", (req, res) => {
@@ -494,6 +498,8 @@ export function attachSessionRoutes(router, options) {
             return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
         if (result === "not_found")
             return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+        if (result === "steer_pending")
+            return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
         res.json({ ok: true });
     });
     router.delete("/sessions/:id/queue/:itemId", (req, res) => {
@@ -502,6 +508,8 @@ export function attachSessionRoutes(router, options) {
             return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
         if (result === "not_found")
             return fail(res, 404, "UNKNOWN_QUEUE_ITEM", "unknown queue item");
+        if (result === "steer_pending")
+            return fail(res, 409, "STEER_PENDING", "a steer is still being delivered; retry shortly");
         res.json({ ok: true });
     });
     router.post("/sessions/:id/cancel", (req, res) => {

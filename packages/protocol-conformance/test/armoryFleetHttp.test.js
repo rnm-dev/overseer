@@ -16,7 +16,7 @@ test("Armory uses Fleet HTTP and is absent from canonical reverse-command-v1", a
 
   assert.match(route, /import \{ callPeon, connOfRecord \}/);
   assert.doesNotMatch(route, /reverseCommand|runReverseCommandTransport|armoryCall/);
-  assert.equal((route.match(/\bcallPeon\(/g) ?? []).length, 23);
+  assert.equal((route.match(/\bcallPeon\(/g) ?? []).length, 29);
   assert.match(route, /armory-project-packages-v1/);
   for (const path of [
     '"/armory/profiles"',

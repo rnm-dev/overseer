@@ -335,7 +335,7 @@ export function useSessionTranscript({
       olderLoadControllerRef.current?.abort();
       olderLoadControllerRef.current = null;
     };
-  }, [applyAuthoritativeSnapshot, base, fetchLatestTranscript, onSnapshotRunning, readMetadataStatus, openFreshPreview, paginationSupported, pushFreshEvent, sessionKey, sid]);
+  }, [applyAuthoritativeSnapshot, base, dropPendingLive, fetchLatestTranscript, onSnapshotRunning, readMetadataStatus, openFreshPreview, paginationSupported, pushFreshEvent, sessionKey, sid]);
 
   const recoverControlPlaneGap = useCallback(() => {
     if (document.visibilityState !== "visible") return;

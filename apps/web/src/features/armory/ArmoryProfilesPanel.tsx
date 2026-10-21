@@ -50,7 +50,7 @@ function ProfileCard({ base, profile, requirement, schema, onRefresh }: {
     setPollingError(null);
     setName(profile.name);
     return () => actionGate.reset();
-  }, [base, profile.profileId, profile.name]);
+  }, [base, gate, profile.profileId, profile.name]);
 
   useEffect(() => {
     if (!operationActive(operation) || pollingError) return;
@@ -161,7 +161,7 @@ export function ArmoryProfilesPanel({ base, requirement, schema, profiles, loadi
     setCreateError(null);
     setName("");
     return () => gate.reset();
-  }, [base, requirement.type]);
+  }, [base, createGate, requirement.type]);
   const create = async () => {
     if (creating || !name.trim()) return;
     const token = createGate.begin();

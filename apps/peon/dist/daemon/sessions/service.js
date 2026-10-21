@@ -11,14 +11,13 @@ import { statsForPeriod as calculateStatsForPeriod } from "./sessionStats.js";
 import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, previewText, readTranscript, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
 import { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, } from "./constants.js";
 import { sessionPreviewDir } from "./preview.js";
-import { appendPreviewEvent, appendUserTurn, finalizeSession as finalize, runProcess, scheduleQueuedDispatch, } from "./runtime.js";
+import { appendPreviewEvent, appendUserTurn, finalizeSession as finalize, runProcess, scheduleQueuedDispatch, rememberReceipt, rememberSteeredItem, } from "./runtime.js";
 import { inferProjectKey, isRestartInterrupted, restoreFromDisk, } from "./recovery.js";
 import { sessionState } from "./state.js";
 import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
 import { appendContextMessage as appendParticipantContext, initializeBranchedContext, replayContextMessage } from "./contextMessages.js";
 export { attachmentsDir } from "./sessionArtifacts.js";
 const pendingSessionBranches = new Map();
-const MAX_STEER_RECEIPTS = 128;
 export { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, };
 function reconcileOrphanedRun(record) {
     if (record.status !== "running"
@@ -33,13 +32,13 @@ function reconcileOrphanedRun(record) {
     }, undefined, undefined, undefined, undefined, false);
     return record;
 }
-function rememberSteeredItem(record, itemId) {
-    const receipts = record.steeredQueueItemIds ??= [];
-    if (receipts.includes(itemId))
-        return;
-    receipts.push(itemId);
-    if (receipts.length > MAX_STEER_RECEIPTS)
-        receipts.splice(0, receipts.length - MAX_STEER_RECEIPTS);
+// sessionId -> the queue item a native steer is in flight for. Only meaningful
+// while sessionState.steerPending also holds the session.
+const nativeSteerItems = new Map();
+function nativeSteerItem(id) {
+    if (!sessionState.steerPending.has(id))
+        nativeSteerItems.delete(id);
+    return nativeSteerItems.get(id);
 }
 // Reconciliation is deliberately bidirectional. OVSR-213 healed a durable
 // `running` record with no registry entry; a terminal record can also retain a
@@ -406,6 +405,9 @@ export const sessions = {
         if (!record)
             throw new Error("unknown session");
         replyTo = sessions.validateReplyTo(id, replyTo);
+        // A retried enqueue (lost response) is the same command: never a second item.
+        if (commandId && record.queuedCommandIds?.includes(commandId))
+            return record;
         const item = {
             id: randomUUID(), type: "queue", sessionId: id, prompt, attachments,
             permissionMode: permissionMode ?? null,
@@ -419,6 +421,8 @@ export const sessions = {
             queuedAt: Date.now(),
         };
         record.queuedFollowUps.push(item);
+        if (commandId)
+            rememberReceipt(record.queuedCommandIds ??= [], commandId);
         persistSummary(record);
         sessionState.emitter.emit("change", record);
         if (record.status === "completed") {
@@ -489,6 +493,8 @@ export const sessions = {
         const record = sessionState.records.get(id);
         if (!record)
             return "unknown_session";
+        if (nativeSteerItem(id) === itemId)
+            return "steer_pending";
         const index = record.queuedFollowUps.findIndex((item) => item.id === itemId);
         if (index < 0)
             return "not_found";
@@ -503,6 +509,8 @@ export const sessions = {
         const record = sessionState.records.get(id);
         if (!record)
             return "unknown_session";
+        if (nativeSteerItem(id) === itemId)
+            return "steer_pending";
         const item = record.queuedFollowUps.find((queued) => queued.id === itemId);
         if (!item)
             return "not_found";
@@ -521,6 +529,14 @@ export const sessions = {
         const record = sessionState.records.get(id);
         if (!record)
             return "unknown_session";
+        // A native steer is in flight: a retry of it is the same command; a
+        // different item must wait until it settles, or it would interrupt the run
+        // and orphan an acknowledgement the provider may already have given.
+        const pendingItem = nativeSteerItem(id);
+        if (pendingItem === itemId)
+            return "steered";
+        if (pendingItem)
+            return "steer_pending";
         const index = record.queuedFollowUps.findIndex((item) => item.id === itemId);
         if (index < 0)
             return record.steeredQueueItemIds?.includes(itemId) ? "steered" : "not_found";
@@ -544,6 +560,7 @@ export const sessions = {
                     return;
                 settled = true;
                 sessionState.steerPending.delete(id);
+                nativeSteerItems.delete(id);
                 const acceptedIndex = record.queuedFollowUps.findIndex((item) => item.id === selected.id);
                 if (acceptedIndex < 0)
                     return;
@@ -561,11 +578,13 @@ export const sessions = {
                     return;
                 settled = true;
                 sessionState.steerPending.delete(id);
+                nativeSteerItems.delete(id);
                 // The selected item is still the durable queue head. Fall back to the
                 // same interrupt-and-resume redirect used by Claude Code.
                 startQueuedDispatchNow(record);
             };
             sessionState.steerPending.add(id);
+            nativeSteerItems.set(id, selected.id);
             if (driver.steer(run, {
                 prompt: buildAugmentedPrompt(buildReplyPrompt(selected.prompt, selected.replyTo ?? undefined), selected.attachments),
                 attachments: selected.attachments,
@@ -578,6 +597,7 @@ export const sessions = {
                 return "steered";
             }
             sessionState.steerPending.delete(id);
+            nativeSteerItems.delete(id);
         }
         startQueuedDispatchNow(record);
         return "steered";

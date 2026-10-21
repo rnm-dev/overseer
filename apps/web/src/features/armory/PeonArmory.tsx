@@ -192,7 +192,7 @@ function MarketplaceList() {
     } finally {
       if (gate.current(token)) { setLoading(false); setLoadingMore(false); }
     }
-  }, [base, debouncedQuery, view]);
+  }, [base, gate, debouncedQuery, view]);
 
   useEffect(() => {
     const requestGate = gate;
@@ -201,7 +201,7 @@ function MarketplaceList() {
     if (!peon.online) { setLoading(false); return () => requestGate.clear(); }
     void load();
     return () => { controller.current?.abort(); requestGate.clear(); };
-  }, [load, peon.online]);
+  }, [gate, load, peon.online]);
 
   useEffect(() => {
     let active = true;
@@ -244,7 +244,7 @@ function MarketplaceList() {
     } catch {
       if (!abort.signal.aborted) setRefreshState("error");
     }
-  }, [base, debouncedQuery, refreshState, view]);
+  }, [base, gate, debouncedQuery, refreshState, view]);
 
   const unavailableEmpty = inventory?.registry.source === "unavailable" && inventory.packages.length === 0;
   const officialEmpty = inventory?.total === 0 && view === "available" && !debouncedQuery && inventory.registry.source !== "unavailable" && inventory.registry.official;
@@ -341,13 +341,13 @@ function PackageDetail({ packageId }: { packageId: string }) {
         catch (err) { if (!abort.signal.aborted && gate.current(token)) setConfigurationError(err); }
       } else setConfiguration(null);
     } catch (err) { if (!abort.signal.aborted && gate.current(token)) setError(err); }
-  }, [base, packageId, projectPackages]);
+  }, [base, gate, packageId, projectPackages]);
   const refresh = useCallback(() => load(true), [load]);
   useEffect(() => {
     const requestGate = gate;
     if (peon.online) void load();
     return () => { controller.current?.abort(); requestGate.clear(); };
-  }, [load, peon.online]);
+  }, [gate, load, peon.online]);
 
   if (!peon.online) return <div className="space-y-4"><Link to=".." relative="path" className="font-mono text-xs text-ink-muted hover:text-accent-strong">← Armory</Link><p className="border-l-2 border-danger bg-danger/5 px-4 py-3 font-mono text-sm text-danger">This Peon is offline — Armory data is unavailable.</p></div>;
   if (error) return <div className="space-y-4"><Link to=".." relative="path" className="font-mono text-xs text-ink-muted hover:text-accent-strong">← Armory</Link><ErrorNotice error={error} retry={() => void load()} /></div>;

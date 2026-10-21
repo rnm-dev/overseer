@@ -222,6 +222,8 @@ export function createHumanSessionsRouter(options) {
             return res.status(404).json({ error: "unknown session" });
         if (result === "not_found")
             return res.status(404).json({ error: "unknown queue item" });
+        if (result === "steer_pending")
+            return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
         res.json(result);
     });
     router.post("/sessions/:id/queue/:itemId/steer", (req, res) => {
@@ -230,6 +232,8 @@ export function createHumanSessionsRouter(options) {
             return res.status(404).json({ error: "unknown session" });
         if (result === "not_found")
             return res.status(404).json({ error: "unknown queue item" });
+        if (result === "steer_pending")
+            return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
         res.json({ ok: true });
     });
     router.post("/sessions/:id/queue/:itemId/send", (req, res) => {
@@ -240,6 +244,8 @@ export function createHumanSessionsRouter(options) {
             return res.status(404).json({ error: "unknown session" });
         if (result === "not_found")
             return res.status(404).json({ error: "unknown queue item" });
+        if (result === "steer_pending")
+            return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
         res.json({ ok: true });
     });
     router.delete("/sessions/:id/queue/:itemId", (req, res) => {
@@ -248,6 +254,8 @@ export function createHumanSessionsRouter(options) {
             return res.status(404).json({ error: "unknown session" });
         if (result === "not_found")
             return res.status(404).json({ error: "unknown queue item" });
+        if (result === "steer_pending")
+            return res.status(409).json({ error: "a steer is still being delivered; retry shortly", code: "STEER_PENDING" });
         res.json({ ok: true });
     });
     router.post("/sessions/:id/cancel", (req, res) => {

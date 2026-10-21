@@ -101,6 +101,7 @@ The shipped table — `src/infrastructure/voice/voicePresets.ts`:
 | --- | --- | --- | --- |
 | `groq` | `https://api.groq.com/openai/v1` | `whisper-large-v3-turbo` | `openai/gpt-oss-120b` |
 | `openai` | `https://api.openai.com/v1` | `whisper-1` | `gpt-4o-mini` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `openai/whisper-large-v3-turbo` | `openai/gpt-oss-120b` |
 | `local` | `http://127.0.0.1:8000/v1` | `Systran/faster-whisper-large-v3` | — |
 
 A preset is three strings. Every field is individually overridable, so a row
@@ -180,7 +181,7 @@ the shared key.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `OVERSEER_VOICE` | unset | Preset name: `groq`, `openai`, `local`. Unset means no preset, and the per-stage base URLs carry the whole configuration. An unrecognised name warns at boot and leaves dictation off. |
+| `OVERSEER_VOICE` | unset | Preset name: `groq`, `openai`, `openrouter`, `local`. Unset means no preset, and the per-stage base URLs carry the whole configuration. An unrecognised name warns at boot and leaves dictation off. |
 | `OVERSEER_VOICE_API_KEY` | unset | The key both stages use. On Groq one key genuinely covers both. |
 | `OVERSEER_VOICE_STT_BASE_URL` | preset | OpenAI-compatible root; the adapter posts to `{base}/audio/transcriptions`. |
 | `OVERSEER_VOICE_STT_MODEL` | preset | Transcription model id. |

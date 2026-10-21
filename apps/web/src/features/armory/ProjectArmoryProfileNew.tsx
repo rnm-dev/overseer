@@ -73,7 +73,7 @@ export function ProjectArmoryProfileNew() {
       setSchema(configuration);
     } catch (reason) { if (gate.current(token)) setLoadError(reason); }
     finally { if (gate.current(token)) setLoading(false); }
-  }, [base, key, packageId]);
+  }, [base, gate, key, packageId]);
 
   useEffect(() => {
     const requestGate = gate;
@@ -82,7 +82,7 @@ export function ProjectArmoryProfileNew() {
     setLoadError(null); setSubmitError(null); setProgress(null); setSubmitting(false);
     if (capable && peon.online && packageId) void load(); else setLoading(false);
     return () => { requestGate.clear(); actionGate.reset(); };
-  }, [capable, load, packageId, peon.online]);
+  }, [action, capable, gate, load, packageId, peon.online]);
 
   const submit = async () => {
     if (!requirement || !schema || !projectId || !name.trim()) return;

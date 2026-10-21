@@ -59,7 +59,7 @@ export function ArmoryLifecyclePanel({ base, packageId, installed, versions = []
     setSubmitting(false);
     setUninstallOpen(false);
     return () => gate.reset();
-  }, [base, packageId]);
+  }, [actionGate, base, packageId]);
 
   useEffect(() => {
     if (latestVersion) setSelectedVersion((current) => current || latestVersion);

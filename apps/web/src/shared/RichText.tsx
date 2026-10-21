@@ -206,6 +206,9 @@ export function HighlightedCode({ source, language, className = "", lineNumbers 
   const loaded = useGrammar(language ?? null);
   const highlighted = useMemo(() => {
     return highlightedMarkup(source, language ?? null);
+    // `loaded` is read only as a trigger: the grammar registers globally, so
+    // the markup must be recomputed once it arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source, language, loaded]);
   const code = highlighted === null
     ? <code>{source}</code>

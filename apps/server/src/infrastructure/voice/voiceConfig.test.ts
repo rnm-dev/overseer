@@ -16,6 +16,14 @@ test("a preset name plus one key is the entire default configuration", () => {
   assert.deepEqual(voice.warnings, []);
 });
 
+test("the openrouter preset routes both stages through one gateway key", () => {
+  const voice = resolveVoiceConfig({ ...CONFIGURED, OVERSEER_VOICE: "openrouter", OVERSEER_VOICE_API_KEY: "sk-or-test" });
+  assert.equal(voice.preset, "openrouter");
+  assert.deepEqual(voice.stt, { baseUrl: "https://openrouter.ai/api/v1", model: "openai/whisper-large-v3-turbo", apiKey: "sk-or-test" });
+  assert.deepEqual(voice.polish, { baseUrl: "https://openrouter.ai/api/v1", model: "openai/gpt-oss-120b", apiKey: "sk-or-test" });
+  assert.deepEqual(voice.warnings, []);
+});
+
 test("each stage overrides the preset independently and falls back to the shared key", () => {
   const voice = resolveVoiceConfig({
     OVERSEER_VOICE: "groq",
