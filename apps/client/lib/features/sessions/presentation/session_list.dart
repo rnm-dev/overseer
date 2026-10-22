@@ -25,141 +25,11 @@ import '../application/sessions_controller.dart';
 import '../domain/session_models.dart';
 part 'session_list_row_actions.dart';
 
-class SessionList extends ConsumerWidget {
-  const SessionList({
-    super.key,
-    required this.workspaceId,
-    required this.peonId,
-    this.projectId,
-    this.projectKey,
-    this.selectedSessionId,
-    this.onSessionSelected,
-  });
-
-  final String workspaceId;
-  final String peonId;
-  final String? projectId;
-  final String? projectKey;
-  final String? selectedSessionId;
-  final ValueChanged<SessionSummary>? onSessionSelected;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final scope = SessionsScope(workspaceId: workspaceId, peonId: peonId);
-    final sessions = ref.watch(sessionsControllerProvider(scope));
-    final activeSessions = ref.watch(
-      activeSessionsProvider.select((state) => state.forWorkspace(workspaceId)),
-    );
-    final presence = ref.watch(presenceProvider);
-    return sessions.when(
-      skipLoadingOnRefresh: true,
-      data: (value) {
-        final projectFiltered =
-            projectId?.trim().isNotEmpty == true ||
-            projectKey?.trim().isNotEmpty == true;
-        final filteredSessions = value.sessions
-            .where((session) {
-              if (!projectFiltered) return true;
-              final canonicalId = projectId?.trim();
-              if (canonicalId?.isNotEmpty == true &&
-                  session.projectId == canonicalId) {
-                return true;
-              }
-              final key = projectKey?.trim();
-              return key?.isNotEmpty == true && session.projectKey == key;
-            })
-            .take(value.visibleCount)
-            .toList(growable: false);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            if (value.catalogStale)
-              const _SessionsNotice(
-                icon: LucideIcons.cloudOff,
-                message: 'The peon session catalog may be stale.',
-              ),
-            if (value.message case final message?)
-              _SessionsNotice(
-                icon: LucideIcons.triangleAlert,
-                message: message,
-                actionLabel: 'Retry',
-                onAction: ref
-                    .read(sessionsControllerProvider(scope).notifier)
-                    .refresh,
-              ),
-            if (filteredSessions.isEmpty && value.isRefreshing)
-              const _SessionListLoading()
-            else if (filteredSessions.isEmpty)
-              _SessionListEmptyState(
-                icon: LucideIcons.messageSquare,
-                title: projectFiltered
-                    ? 'No project sessions yet'
-                    : 'No sessions yet',
-                message: projectFiltered
-                    ? 'Start a session to work in this project.'
-                    : 'Start a session to work with this peon.',
-              )
-            else ...[
-              _AnimatedSessionList(
-                sessions: filteredSessions,
-                selectedSessionId: selectedSessionId,
-                onSessionSelected: onSessionSelected,
-                activeSessions: activeSessions,
-                presence: presence,
-                onRename: (session, title) => ref
-                    .read(sessionRepositoryProvider)
-                    .renameSession(
-                      workspaceId: session.workspaceId,
-                      peonId: session.peonId,
-                      sessionId: session.sessionId,
-                      title: title,
-                    ),
-                onDelete: (session) => ref
-                    .read(sessionRepositoryProvider)
-                    .deleteSession(
-                      workspaceId: session.workspaceId,
-                      peonId: session.peonId,
-                      sessionId: session.sessionId,
-                    ),
-              ),
-            ],
-            if (value.hasMore)
-              TextButton.icon(
-                key: const Key('sessions-load-more'),
-                onPressed: value.isLoadingMore
-                    ? null
-                    : ref
-                          .read(sessionsControllerProvider(scope).notifier)
-                          .loadMore,
-                icon: value.isLoadingMore
-                    ? const SizedBox.square(
-                        dimension: 14,
-                        child: CircularProgressIndicator(strokeWidth: 1.5),
-                      )
-                    : Icon(LucideIcons.chevronsDown, size: 16),
-                label: Text(
-                  value.isLoadingMore ? 'Loading' : 'Load older sessions',
-                ),
-              ),
-          ],
-        );
-      },
-      loading: () => const _SessionListLoading(),
-      error: (_, _) => _SessionsNotice(
-        icon: LucideIcons.triangleAlert,
-        message: 'Could not open the session cache.',
-        actionLabel: 'Retry',
-        onAction: () => ref.invalidate(sessionsControllerProvider(scope)),
-      ),
-    );
-  }
-}
-
 /// Sliver-native session history for pages that share an outer scroll view.
 ///
-/// Unlike [SessionList], this surface lazily builds only rows near the
-/// viewport. Keep it inside a [CustomScrollView] so large cached histories do
-/// not turn into one eager widget tree.
+/// Lazily builds only rows near the viewport. Keep it inside a
+/// [CustomScrollView] so large cached histories do not turn into one eager
+/// widget tree.
 class SessionSliverList extends ConsumerWidget {
   const SessionSliverList({
     super.key,
@@ -261,7 +131,33 @@ class SessionSliverList extends ConsumerWidget {
                       sessionId: session.sessionId,
                     ),
               ),
-            if (value.hasMore)
+            // A project filter can keep the list short while pages hold other
+            // projects' sessions, so the prefetch trigger would stay visible
+            // and page through the whole Peon history. Load on request there.
+            if (value.hasMore && projectFiltered)
+              SliverToBoxAdapter(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    key: const Key('sessions-load-more'),
+                    onPressed: value.isLoadingMore
+                        ? null
+                        : ref
+                              .read(sessionsControllerProvider(scope).notifier)
+                              .loadMore,
+                    icon: value.isLoadingMore
+                        ? const SizedBox.square(
+                            dimension: 14,
+                            child: CircularProgressIndicator(strokeWidth: 1.5),
+                          )
+                        : const Icon(LucideIcons.chevronsDown, size: 16),
+                    label: Text(
+                      value.isLoadingMore ? 'Loading' : 'Load older sessions',
+                    ),
+                  ),
+                ),
+              )
+            else if (value.hasMore)
               SliverToBoxAdapter(
                 child: _InfiniteSessionLoader(
                   enabled: !value.isLoadingMore && value.message == null,
@@ -640,213 +536,6 @@ class _SessionSkeletonRow extends StatelessWidget {
             child: ShimmerBlock(width: 2, height: 40),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AnimatedSessionList extends StatefulWidget {
-  const _AnimatedSessionList({
-    required this.sessions,
-    required this.selectedSessionId,
-    required this.onSessionSelected,
-    required this.activeSessions,
-    required this.presence,
-    required this.onRename,
-    required this.onDelete,
-  });
-
-  final List<SessionSummary> sessions;
-  final String? selectedSessionId;
-  final ValueChanged<SessionSummary>? onSessionSelected;
-  final ActiveWorkspaceSessions? activeSessions;
-  final PresenceState presence;
-  final Future<void> Function(SessionSummary session, String? title) onRename;
-  final Future<void> Function(SessionSummary session) onDelete;
-
-  @override
-  State<_AnimatedSessionList> createState() => _AnimatedSessionListState();
-}
-
-class _AnimatedSessionListState extends State<_AnimatedSessionList> {
-  late Map<String, String> _fingerprints;
-  Map<String, int> _flashRevisions = const {};
-
-  @override
-  void initState() {
-    super.initState();
-    _fingerprints = _sessionFingerprints(
-      widget.sessions,
-      widget.activeSessions,
-    );
-  }
-
-  @override
-  void didUpdateWidget(covariant _AnimatedSessionList oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    final nextFingerprints = _sessionFingerprints(
-      widget.sessions,
-      widget.activeSessions,
-    );
-    final nextFlashes = Map<String, int>.from(_flashRevisions);
-    for (final entry in nextFingerprints.entries) {
-      if (_fingerprints[entry.key] == entry.value) continue;
-      nextFlashes[entry.key] = (nextFlashes[entry.key] ?? 0) + 1;
-    }
-    nextFlashes.removeWhere((key, _) => !nextFingerprints.containsKey(key));
-    _fingerprints = nextFingerprints;
-    _flashRevisions = nextFlashes;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final reduceMotion =
-        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
-    final rowExtent = _rowExtent(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: SizedBox(
-        height: widget.sessions.length * rowExtent,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: [
-            for (final (index, session) in widget.sessions.indexed)
-              _FlyingSessionPosition(
-                key: ValueKey(session.sessionId),
-                debugId: session.sessionId,
-                top: index * rowExtent,
-                rowExtent: rowExtent,
-                reduceMotion: reduceMotion,
-                child: Semantics(
-                  sortKey: OrdinalSortKey(index.toDouble()),
-                  selected: session.sessionId == widget.selectedSessionId,
-                  child: SessionWorkItem(
-                    key: Key('session-${session.sessionId}'),
-                    session: session,
-                    selected: session.sessionId == widget.selectedSessionId,
-                    onSelected: widget.onSessionSelected,
-                    authoritativeRunning:
-                        widget.activeSessions?.contains(
-                          peonId: session.peonId,
-                          sessionId: session.sessionId,
-                        ) ??
-                        false,
-                    viewers: widget.presence.viewersForSession(
-                      workspaceId: session.workspaceId,
-                      peonId: session.peonId,
-                      sessionId: session.sessionId,
-                    ),
-                    flashRevision: _flashRevisions[session.sessionId] ?? 0,
-                    onRename: widget.onRename,
-                    onDelete: widget.onDelete,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Map<String, String> _sessionFingerprints(
-    List<SessionSummary> sessions,
-    ActiveWorkspaceSessions? activeSessions,
-  ) => {
-    for (final session in sessions)
-      session.sessionId: [
-        activeSessions?.contains(
-                  peonId: session.peonId,
-                  sessionId: session.sessionId,
-                ) ==
-                true
-            ? 'active'
-            : '',
-        session.status ?? '',
-        session.lastActivityAt ?? 0,
-        session.preview ?? '',
-        session.title ?? '',
-        session.attentionUnread ? 'unread' : '',
-      ].join('|'),
-  };
-
-  double _rowExtent(BuildContext context) {
-    return SessionWorkItem.extentFor(context);
-  }
-}
-
-class _FlyingSessionPosition extends StatefulWidget {
-  const _FlyingSessionPosition({
-    super.key,
-    required this.debugId,
-    required this.top,
-    required this.rowExtent,
-    required this.reduceMotion,
-    required this.child,
-  });
-
-  final String debugId;
-  final double top;
-  final double rowExtent;
-  final bool reduceMotion;
-  final Widget child;
-
-  @override
-  State<_FlyingSessionPosition> createState() => _FlyingSessionPositionState();
-}
-
-class _FlyingSessionPositionState extends State<_FlyingSessionPosition>
-    with SingleTickerProviderStateMixin {
-  static const _flightDuration = Duration(milliseconds: 240);
-  static const _flightCurve = Cubic(0.22, 1, 0.36, 1);
-
-  late double _fromTop = widget.top;
-  late double _toTop = widget.top;
-  late final AnimationController _controller = AnimationController(
-    vsync: this,
-    duration: _flightDuration,
-    value: 1,
-  );
-
-  double get _currentTop {
-    final progress = _flightCurve.transform(_controller.value);
-    return _fromTop + ((_toTop - _fromTop) * progress);
-  }
-
-  @override
-  void didUpdateWidget(covariant _FlyingSessionPosition oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.top == oldWidget.top) return;
-    final currentTop = _currentTop;
-    _fromTop = widget.reduceMotion ? widget.top : currentTop;
-    _toTop = widget.top;
-    if (widget.reduceMotion) {
-      _controller.value = 1;
-    } else {
-      _controller.forward(from: 0);
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: 0,
-      left: 0,
-      right: 0,
-      height: widget.rowExtent,
-      child: AnimatedBuilder(
-        animation: _controller,
-        child: widget.child,
-        builder: (context, child) => Transform.translate(
-          key: Key('session-flight-position-${widget.debugId}'),
-          offset: Offset(0, _currentTop),
-          child: child,
-        ),
       ),
     );
   }

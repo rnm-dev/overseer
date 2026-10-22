@@ -1,13 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/sound_pack.dart';
-import '../domain/sound_preference_store.dart';
 import '../domain/sound_preview_player.dart';
 import '../domain/work_sound_player.dart';
-
-final soundPreferenceStoreProvider = Provider<SoundPreferenceStore>(
-  (ref) => MemorySoundPreferenceStore(),
-);
+import 'enum_preference_controller.dart';
 
 final soundPreviewPlayerProvider = Provider<SoundPreviewPlayer>(
   (ref) => const NoopSoundPreviewPlayer(),
@@ -22,22 +18,19 @@ final soundPackControllerProvider =
       SoundPackController.new,
     );
 
-class SoundPackController extends AsyncNotifier<SoundPack> {
-  @override
-  Future<SoundPack> build() {
-    return ref.read(soundPreferenceStoreProvider).read();
-  }
+class SoundPackController extends EnumPreferenceController<SoundPack> {
+  static const preferenceKey = 'overseer.sound-pack';
 
-  Future<void> select(SoundPack pack) async {
-    final previous = state;
-    state = AsyncData(pack);
-    final preview = ref.read(soundPreviewPlayerProvider).preview(pack);
-    try {
-      await ref.read(soundPreferenceStoreProvider).write(pack);
-      await preview;
-    } catch (error, stackTrace) {
-      state = previous;
-      Error.throwWithStackTrace(error, stackTrace);
-    }
-  }
+  @override
+  String get key => preferenceKey;
+
+  @override
+  String encode(SoundPack value) => value.id;
+
+  @override
+  SoundPack decode(String? id) => SoundPack.fromId(id);
+
+  @override
+  Future<void> onSelected(SoundPack value) =>
+      ref.read(soundPreviewPlayerProvider).preview(value);
 }

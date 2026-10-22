@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/diagnostics/app_diagnostics.dart';
 import '../features/fleet/application/fleet_controller.dart';
-import '../features/fleet/application/fleet_live_service.dart';
 
 class LiveSyncLifecycle extends ConsumerStatefulWidget {
   const LiveSyncLifecycle({super.key, required this.child});
@@ -25,12 +24,8 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     ref.listenManual(fleetLiveServiceProvider, (_, live) {
-      if (live case final FleetLiveForeground visibility) {
-        final state = WidgetsBinding.instance.lifecycleState;
-        visibility.setForeground(
-          state == null || state == AppLifecycleState.resumed,
-        );
-      }
+      final state = WidgetsBinding.instance.lifecycleState;
+      live?.setForeground(state == null || state == AppLifecycleState.resumed);
     }, fireImmediately: true);
   }
 
@@ -43,9 +38,7 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final live = ref.read(fleetLiveServiceProvider);
-    if (live case final FleetLiveForeground visibility) {
-      visibility.setForeground(state == AppLifecycleState.resumed);
-    }
+    live?.setForeground(state == AppLifecycleState.resumed);
     ref
         .read(appDiagnosticsProvider)
         .record(
@@ -58,8 +51,7 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
     if (state == AppLifecycleState.resumed) {
       if (!_backgrounded) return;
       _backgrounded = false;
-      final live = ref.read(fleetLiveServiceProvider);
-      if (live case final FleetLiveLifecycle lifecycle) {
+      if (live != null) {
         ref
             .read(appDiagnosticsProvider)
             .record(
@@ -69,7 +61,7 @@ class _LiveSyncLifecycleState extends ConsumerState<LiveSyncLifecycle>
                 outcome: 'reconnecting',
               ),
             );
-        unawaited(lifecycle.resumeFromBackground());
+        unawaited(live.resumeFromBackground());
       }
       return;
     }

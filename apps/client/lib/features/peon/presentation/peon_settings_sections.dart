@@ -127,19 +127,23 @@ class _GeneralSettingsState extends ConsumerState<_GeneralSettings> {
               children: [
                 if (widget.state.updatePhase == PeonUpdatePhase.installing ||
                     widget.state.updatePhase == PeonUpdatePhase.restarting)
-                  _InlineStatus(
-                    text: widget.state.updatePhase == PeonUpdatePhase.installing
+                  _InlineNotice(
+                    widget.state.updatePhase == PeonUpdatePhase.installing
                         ? 'Installing the update…'
                         : 'Waiting for the Peon to restart…',
+                    tone: _NoticeTone.status,
                   ),
                 if (widget.state.updatePhase == PeonUpdatePhase.complete)
-                  const _InlineStatus(text: '⚡ Update complete'),
+                  const _InlineNotice(
+                    '⚡ Update complete',
+                    tone: _NoticeTone.status,
+                  ),
                 if (status.updateLocalSha case final value?)
                   _Detail(label: 'LOCAL', value: value),
                 if (status.updateRemoteSha case final value?)
                   _Detail(label: 'REMOTE', value: value),
                 if (status.updateCheckError case final value?)
-                  _ErrorText(value),
+                  _InlineNotice(value, tone: _NoticeTone.error),
                 const SizedBox(height: 12),
                 Align(
                   alignment: Alignment.centerRight,
@@ -276,7 +280,7 @@ class _GeneralSettingsState extends ConsumerState<_GeneralSettings> {
           ),
         if (widget.state.message case final message?) ...[
           const SizedBox(height: 12),
-          _ErrorText(message),
+          _InlineNotice(message, tone: _NoticeTone.error),
         ],
         const SizedBox(height: 26),
         Text(
@@ -408,17 +412,12 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
 
   ModelProvider? get _provider {
     final providers = widget.state.catalog?.providers ?? const [];
-    for (final provider in providers) {
-      if (provider.agent == _agent) return provider;
-    }
-    return providers.firstOrNull;
+    return providerForAgent(providers, _agent) ?? providers.firstOrNull;
   }
 
   String? _resolveModel(ModelProvider? provider, String? value) {
     if (provider == null) return null;
-    for (final model in provider.models) {
-      if (model.id == value || model.alias == value) return value;
-    }
+    if (modelOptionFor(provider, value) != null) return value;
     return provider.models.where((model) => model.isDefault).firstOrNull?.id ??
         provider.models.firstOrNull?.id;
   }
@@ -489,13 +488,7 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
                   key: const Key('peon-default-model'),
                   label: 'MODEL',
                   value:
-                      _provider?.models
-                          .where(
-                            (model) =>
-                                model.id == _model || model.alias == _model,
-                          )
-                          .firstOrNull
-                          ?.label ??
+                      modelOptionFor(_provider, _model)?.label ??
                       _model ??
                       'Choose model',
                   onTap: _provider == null
@@ -506,13 +499,7 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
                             context,
                             title: 'Default model',
                             values: models,
-                            selected: models
-                                .where(
-                                  (model) =>
-                                      model.id == _model ||
-                                      model.alias == _model,
-                                )
-                                .firstOrNull,
+                            selected: modelOptionFor(_provider, _model),
                             label: (value) => value.label,
                           );
                           if (selected != null) {
@@ -634,7 +621,7 @@ class _AgentSettingsState extends ConsumerState<_AgentSettings> {
         ),
         if (widget.state.message case final message?) ...[
           const SizedBox(height: 12),
-          _ErrorText(message),
+          _InlineNotice(message, tone: _NoticeTone.error),
         ],
       ],
     );
@@ -660,7 +647,8 @@ class _CliUpdatesPanel extends ConsumerWidget {
             color: AppThemePalette.of(context).accentStrong,
           ),
         ),
-        error: (error, _) => _ErrorText(error.toString()),
+        error: (error, _) =>
+            _InlineNotice(error.toString(), tone: _NoticeTone.error),
         data: (state) {
           final controller = ref.read(
             cliUpdatesControllerProvider(scope).notifier,
@@ -696,7 +684,7 @@ class _CliUpdatesPanel extends ConsumerWidget {
             children: [
               if (!scope.online)
                 const _InlineNotice(
-                  text: 'Offline · showing the last cached provider status.',
+                  'Offline · showing the last cached provider status.',
                 ),
               for (final item in state.items) ...[
                 _CliUpdateCard(
@@ -729,7 +717,7 @@ class _CliUpdatesPanel extends ConsumerWidget {
                 ),
               if (state.message case final message?) ...[
                 const SizedBox(height: 10),
-                _ErrorText(message),
+                _InlineNotice(message, tone: _NoticeTone.error),
               ],
               if (scope.online && !state.unsupported) ...[
                 const SizedBox(height: 12),
@@ -895,24 +883,23 @@ class _ArmorySettings extends ConsumerWidget {
                 children: [
                   if (!scope.online)
                     const _InlineNotice(
-                      text: 'Offline · showing the last cached inventory.',
+                      'Offline · showing the last cached inventory.',
                     ),
                   if (inventory?.registry.source == 'cached')
                     const _InlineNotice(
-                      text: 'The Peon is using its cached Armory catalog.',
+                      'The Peon is using its cached Armory catalog.',
                     ),
                   if (inventory?.registry.source == 'unavailable')
                     _InlineNotice(
-                      text:
-                          'Registry unavailable. Installed package records '
-                          'remain visible.'
-                          '${inventory?.registry.errorMessage == null ? '' : ' ${inventory!.registry.errorMessage}'}',
-                      warning: true,
+                      'Registry unavailable. Installed package records '
+                      'remain visible.'
+                      '${inventory?.registry.errorMessage == null ? '' : ' ${inventory!.registry.errorMessage}'}',
+                      tone: _NoticeTone.warning,
                     ),
                   if (inventory != null && !inventory.registry.official)
                     const _InlineNotice(
-                      text: 'This Peon uses a non-default Armory registry.',
-                      warning: true,
+                      'This Peon uses a non-default Armory registry.',
+                      tone: _NoticeTone.warning,
                     ),
                   if (inventory == null)
                     Text(
@@ -948,7 +935,7 @@ class _ArmorySettings extends ConsumerWidget {
                     ),
                   if (state.message case final message?) ...[
                     const SizedBox(height: 10),
-                    _ErrorText(message),
+                    _InlineNotice(message, tone: _NoticeTone.error),
                   ],
                   if (scope.online) ...[
                     const SizedBox(height: 12),
@@ -1097,10 +1084,10 @@ class _ArmoryPackageCard extends StatelessWidget {
           ),
           if (active) ...[
             const SizedBox(height: 10),
-            _InlineStatus(
-              text:
-                  '${operation?.kind ?? 'Package operation'} · '
-                  '${operation?.progress == null ? operation?.status ?? 'starting' : '${operation!.progress}%'}',
+            _InlineNotice(
+              '${operation?.kind ?? 'Package operation'} · '
+              '${operation?.progress == null ? operation?.status ?? 'starting' : '${operation!.progress}%'}',
+              tone: _NoticeTone.status,
             ),
           ],
           if (installed?.lastError != null) ...[
@@ -1183,41 +1170,44 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
+enum _NoticeTone { info, warning, status, error }
+
+/// Left-ruled inline message used for notices, progress status and errors.
 class _InlineNotice extends StatelessWidget {
-  const _InlineNotice({required this.text, this.warning = false});
+  const _InlineNotice(this.text, {this.tone = _NoticeTone.info});
 
   final String text;
-  final bool warning;
+  final _NoticeTone tone;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 10),
-    padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(
-      color:
-          (warning
-                  ? AppThemePalette.of(context).warning
-                  : AppThemePalette.of(context).accent)
-              .withValues(alpha: 0.06),
-      border: Border(
-        left: BorderSide(
-          color: warning
-              ? AppThemePalette.of(context).warning
-              : AppThemePalette.of(context).accent,
-          width: 2,
-        ),
+  Widget build(BuildContext context) {
+    final palette = AppThemePalette.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final (rule, ink, fill, fontSize, bottom) = switch (tone) {
+      _NoticeTone.info => (palette.accent, palette.inkMuted, 0.06, 10.5, 10.0),
+      _NoticeTone.warning => (
+        palette.warning,
+        palette.warningStrong,
+        0.06,
+        10.5,
+        10.0,
       ),
-    ),
-    child: Text(
-      text,
-      style: AppTypography.mono(
-        fontSize: 10.5,
-        color: warning
-            ? AppThemePalette.of(context).warningStrong
-            : AppThemePalette.of(context).inkMuted,
+      _NoticeTone.status => (colors.primary, colors.primary, 0.07, 11.0, 12.0),
+      _NoticeTone.error => (colors.error, colors.error, 0.06, 11.0, 0.0),
+    };
+    return Container(
+      margin: EdgeInsets.only(bottom: bottom),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: rule.withValues(alpha: fill),
+        border: Border(left: BorderSide(color: rule, width: 2)),
       ),
-    ),
-  );
+      child: Text(
+        tone == _NoticeTone.error ? '⚠ $text' : text,
+        style: AppTypography.mono(fontSize: fontSize, color: ink),
+      ),
+    );
+  }
 }
 
 Future<T?> _pick<T>(
@@ -1401,58 +1391,6 @@ class _Detail extends StatelessWidget {
       style: AppTypography.mono(
         fontSize: 10.5,
         color: Theme.of(context).colorScheme.onSurfaceVariant,
-      ),
-    ),
-  );
-}
-
-class _InlineStatus extends StatelessWidget {
-  const _InlineStatus({required this.text});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.07),
-      border: Border(
-        left: BorderSide(
-          color: Theme.of(context).colorScheme.primary,
-          width: 2,
-        ),
-      ),
-    ),
-    child: Text(
-      text,
-      style: AppTypography.mono(
-        fontSize: 11,
-        color: Theme.of(context).colorScheme.primary,
-      ),
-    ),
-  );
-}
-
-class _ErrorText extends StatelessWidget {
-  const _ErrorText(this.message);
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(10),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.error.withValues(alpha: 0.06),
-      border: Border(
-        left: BorderSide(color: Theme.of(context).colorScheme.error, width: 2),
-      ),
-    ),
-    child: Text(
-      '⚠ $message',
-      style: AppTypography.mono(
-        fontSize: 11,
-        color: Theme.of(context).colorScheme.error,
       ),
     ),
   );

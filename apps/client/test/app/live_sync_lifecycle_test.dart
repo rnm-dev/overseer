@@ -2,10 +2,9 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/app/live_sync_lifecycle.dart';
-import 'package:overseer_mobile/core/live/active_sessions.dart';
-import 'package:overseer_mobile/core/live/presence.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
-import 'package:overseer_mobile/features/fleet/application/fleet_live_service.dart';
+
+import '../support/fake_fleet.dart';
 
 void main() {
   testWidgets(
@@ -41,8 +40,7 @@ void main() {
   );
 }
 
-class _RecordingLiveService
-    implements FleetLiveService, FleetLiveLifecycle, FleetLiveForeground {
+class _RecordingLiveService extends NoopFleetLiveService {
   int resumeCount = 0;
   bool foreground = true;
 
@@ -50,30 +48,7 @@ class _RecordingLiveService
   void setForeground(bool value) => foreground = value;
 
   @override
-  Future<void> connect({
-    required List<String> workspaceIds,
-    required Map<String, int> initialCursors,
-    required Future<bool> Function(String, int, Map<String, dynamic>) onPeon,
-    required Future<bool> Function(String, int, Map<String, dynamic>) onSession,
-    required Future<bool> Function(String, int, Map<String, dynamic>) onProject,
-    required Future<void> Function(String, int) onCursor,
-    required void Function(String, String, int) onActiveSessions,
-    required void Function(String, List<ActiveSession>?)
-    onActiveSessionSnapshot,
-    required void Function(String, List<PresenceEntry>) onPresence,
-  }) async {}
-
-  @override
   Future<void> resumeFromBackground() async {
     resumeCount += 1;
   }
-
-  @override
-  void setPresence({
-    required String workspaceId,
-    required PresenceLocation location,
-  }) {}
-
-  @override
-  Future<void> stop() async {}
 }

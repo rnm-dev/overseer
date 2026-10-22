@@ -35,11 +35,25 @@ void main() {
     const state = SessionComposerState(
       draft: 'Hello',
       sending: true,
-      followupProgress: FollowupSubmissionProgress.submitting(),
+      submissionProgress: SubmissionProgress.submitting(),
     );
 
-    expect(submissionLabel(state, running: false), isNull);
-    expect(submissionLabel(state, running: true), isNull);
+    expect(submissionLabel(state, newSession: false), isNull);
+    expect(submissionLabel(state, newSession: true), 'Starting session…');
+    expect(
+      submissionLabel(
+        const SessionComposerState(
+          draft: '',
+          submissionProgress: SubmissionProgress.uploading(
+            current: 1,
+            total: 2,
+            fileName: 'a.png',
+          ),
+        ),
+        newSession: false,
+      ),
+      'Uploading 1 of 2: a.png',
+    );
   });
 
   testWidgets('restores Peon presence as soon as Back starts', (tester) async {
@@ -858,7 +872,7 @@ void main() {
     expect(title.overflow, TextOverflow.fade);
     expect(
       (titleSpan.children!.first as TextSpan).style?.color,
-      AppColors.forge,
+      AppThemePackages.bundled.first.warning,
     );
     expect(find.text('3 turns·1.2K input·456 output'), findsOneWidget);
   });
@@ -1764,7 +1778,7 @@ class _TestFollowupRepository implements FollowupRepository {
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   }) async => FollowupDelivery.delivered;
 
   @override
@@ -1788,7 +1802,7 @@ class _PendingFollowupRepository extends _TestFollowupRepository {
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   }) => delivery;
 }
 
@@ -1871,12 +1885,12 @@ class _RecordingFollowupRepository extends _TestFollowupRepository {
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   }) async {
     this.prompt = prompt;
     this.commandId = commandId;
     this.attachments = attachments;
-    onProgress?.call(const FollowupSubmissionProgress.submitting());
+    onProgress?.call(const SubmissionProgress.submitting());
     return FollowupDelivery.delivered;
   }
 }

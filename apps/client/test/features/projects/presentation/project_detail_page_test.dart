@@ -116,9 +116,8 @@ void main() {
                   required peonId,
                   required projectId,
                   required projectKey,
-                }) => const SizedBox(
-                  key: Key('project-session-list'),
-                  height: 80,
+                }) => const SliverToBoxAdapter(
+                  child: SizedBox(key: Key('project-session-list'), height: 80),
                 ),
           ),
         ),

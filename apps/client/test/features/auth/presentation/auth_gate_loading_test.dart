@@ -142,71 +142,6 @@ void main() {
     expect(find.byType(AuthGate), findsOneWidget);
   });
 
-  testWidgets('auto sign-in launches without showing the sign-in screen', (
-    WidgetTester tester,
-  ) async {
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.binding.setSurfaceSize(const Size(390, 844));
-    final repository = _AutoSignInRepository();
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authRepositoryProvider.overrideWithValue(repository),
-          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const AuthGate(
-            autoSignIn: true,
-            buildLoading: _buildAuthGateLoading,
-            buildSignIn: _buildAuthGateSignIn,
-            buildShell: _buildAuthGateShell,
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-
-    expect(repository.signInCalls, 1);
-    expect(find.text('Sign In'), findsNothing);
-    expect(find.byKey(const Key('compact-shell')), findsOneWidget);
-    expect(find.byKey(const Key('fleet-loading')), findsOneWidget);
-    expect(find.byKey(const Key('auth-restoring-logo')), findsNothing);
-  });
-
-  testWidgets('auto sign-in shows retry UI after an authentication error', (
-    WidgetTester tester,
-  ) async {
-    final repository = _FailingAutoSignInRepository();
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          authRepositoryProvider.overrideWithValue(repository),
-          sessionPrivateDataClearerProvider.overrideWithValue(() async {}),
-        ],
-        child: MaterialApp(
-          theme: AppTheme.dark,
-          home: const AuthGate(
-            autoSignIn: true,
-            buildLoading: _buildAuthGateLoading,
-            buildSignIn: _buildAuthGateSignIn,
-            buildShell: _buildAuthGateShell,
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-    await tester.pump();
-    await tester.pump();
-
-    expect(repository.signInCalls, 1);
-    expect(find.text('Sign In'), findsOneWidget);
-    expect(find.text('The login was cancelled.'), findsOneWidget);
-  });
-
   testWidgets('backend unavailability never shows a sign-in action', (
     WidgetTester tester,
   ) async {
@@ -253,39 +188,6 @@ class _PendingAuthRepository implements AuthRepository {
   @override
   Future<AuthSession> signIn() =>
       throw UnimplementedError('Sign-in is not used by this widget test.');
-
-  @override
-  Future<void> signOut() async {}
-}
-
-class _AutoSignInRepository implements AuthRepository {
-  final Completer<AuthSession> _signIn = Completer<AuthSession>();
-  int signInCalls = 0;
-
-  @override
-  Future<AuthSession?> restore() async => null;
-
-  @override
-  Future<AuthSession> signIn() {
-    signInCalls += 1;
-    return _signIn.future;
-  }
-
-  @override
-  Future<void> signOut() async {}
-}
-
-class _FailingAutoSignInRepository implements AuthRepository {
-  int signInCalls = 0;
-
-  @override
-  Future<AuthSession?> restore() async => null;
-
-  @override
-  Future<AuthSession> signIn() async {
-    signInCalls += 1;
-    throw const AuthException('The login was cancelled.');
-  }
 
   @override
   Future<void> signOut() async {}

@@ -505,17 +505,82 @@ void main() {
         isNot(sessions.requests[2].requestId),
       );
 
-      controller.resetSubmissionIdentity();
+      // Re-picking the same file yields new bytes, i.e. a new selection.
+      final repicked = NewSessionAttachment(
+        name: 'plan.md',
+        type: 'file',
+        bytes: Uint8List.fromList([1, 2, 3]),
+      );
       expect(
         await controller.startSession(
           projectKey: 'beta',
-          attachments: [attachment],
+          attachments: [repicked],
         ),
         isNull,
       );
       expect(
         sessions.requests[4].requestId,
         isNot(sessions.requests[3].requestId),
+      );
+    },
+  );
+
+  test(
+    'new-session retry identity follows the payload, not intervening edits',
+    () async {
+      const newScope = FollowupScope(
+        workspaceId: 'workspace',
+        peonId: 'peon',
+        sessionId: 'new-session',
+      );
+      final sessions = _FakeNewSessionRepository(failures: 4);
+      final container = ProviderContainer(
+        overrides: [
+          followupRepositoryProvider.overrideWithValue(
+            _FakeFollowupRepository(draft: 'Build it', pending: const []),
+          ),
+          newSessionRepositoryProvider.overrideWithValue(sessions),
+        ],
+      );
+      addTearDown(container.dispose);
+      final controller = container.read(
+        sessionComposerControllerProvider(newScope).notifier,
+      );
+      await container.read(sessionComposerControllerProvider(newScope).future);
+
+      expect(await controller.startSession(projectKey: 'alpha'), isNull);
+      // Editing and reverting the draft and model leaves the payload unchanged,
+      // so the retry is still the same idempotent request.
+      controller.updateDraft('Build something else');
+      controller.selectModel('gpt-5');
+      controller.updateDraft('Build it');
+      controller.selectModel(null);
+      expect(await controller.startSession(projectKey: 'alpha'), isNull);
+      expect(sessions.requests[1].requestId, sessions.requests[0].requestId);
+
+      controller.selectModel('gpt-5');
+      expect(await controller.startSession(projectKey: 'alpha'), isNull);
+      expect(
+        sessions.requests[2].requestId,
+        isNot(sessions.requests[1].requestId),
+      );
+      expect(sessions.requests[2].model, 'gpt-5');
+
+      final attachment = NewSessionAttachment(
+        name: 'plan.md',
+        type: 'file',
+        bytes: Uint8List.fromList([1]),
+      );
+      expect(
+        await controller.startSession(
+          projectKey: 'alpha',
+          attachments: [attachment],
+        ),
+        isNull,
+      );
+      expect(
+        sessions.requests[3].requestId,
+        isNot(sessions.requests[2].requestId),
       );
     },
   );
@@ -676,6 +741,8 @@ void main() {
       submitErrors: const [
         FollowupException('upload response was lost'),
         FollowupException('upload response was lost'),
+        FollowupException('upload response was lost'),
+        FollowupException('upload response was lost'),
       ],
     );
     final container = ProviderContainer(
@@ -698,6 +765,34 @@ void main() {
     expect(
       repository.submissions[1].commandId,
       repository.submissions[0].commandId,
+    );
+
+    controller.updateDraft('retry me, edited');
+    expect(
+      await controller.submit(running: false, transcriptUserMessages: 0),
+      isFalse,
+    );
+    expect(
+      repository.submissions[2].commandId,
+      isNot(repository.submissions[1].commandId),
+    );
+
+    final attachment = NewSessionAttachment(
+      name: 'plan.md',
+      type: 'file',
+      bytes: Uint8List.fromList([1]),
+    );
+    expect(
+      await controller.submit(
+        running: false,
+        transcriptUserMessages: 0,
+        attachments: [attachment],
+      ),
+      isFalse,
+    );
+    expect(
+      repository.submissions[3].commandId,
+      isNot(repository.submissions[2].commandId),
     );
   });
 
@@ -1060,7 +1155,7 @@ class _FakeFollowupRepository implements FollowupRepository {
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   }) async {
     submissions.add(
       _SubmissionRecord(

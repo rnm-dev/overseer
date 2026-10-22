@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
-import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
-import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/fleet/presentation/fleet_overview.dart';
 import 'package:overseer_mobile/features/shell/shell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,6 +15,8 @@ import 'package:overseer_mobile/features/auth/domain/auth_repository.dart';
 import 'package:overseer_mobile/features/sessions/application/sessions_controller.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/domain/session_repository.dart';
+
+import '../support/fake_fleet.dart';
 
 void main() {
   testWidgets(
@@ -201,10 +201,7 @@ void main() {
   });
 }
 
-class _EmptyFleetRepository implements FleetRepository {
-  @override
-  Future<List<WorkspaceFleet>> loadFleet() async => const [];
-}
+class _EmptyFleetRepository extends FakeFleetRepository {}
 
 class _RestoringAuthRepository implements AuthRepository {
   final _restoration = Completer<AuthSession?>();

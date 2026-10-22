@@ -31,7 +31,6 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
       state.pendingSessions.clear();
       final rawPeons = decoded['peonPresence'];
       final peonSnapshot = ResourceSnapshot<Map<String, dynamic>>.validated(
-        authority: ResourceAuthority.peon,
         items: (rawPeons as List? ?? const []).whereType<Map>().map(
           Map<String, dynamic>.from,
         ),

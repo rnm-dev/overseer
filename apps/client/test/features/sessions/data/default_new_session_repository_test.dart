@@ -32,7 +32,7 @@ void main() {
             ),
           );
       final requests = <RequestOptions>[];
-      final progress = <NewSessionSubmissionProgress>[];
+      final progress = <SubmissionProgress>[];
       final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
       dio.interceptors.add(
         InterceptorsWrapper(
@@ -93,11 +93,11 @@ void main() {
         {'type': 'file', 'path': 'uploads/request/plan.md'},
       ]);
       expect(progress, hasLength(2));
-      expect(progress.first.stage, NewSessionSubmissionStage.uploading);
+      expect(progress.first.stage, SubmissionStage.uploading);
       expect(progress.first.current, 1);
       expect(progress.first.total, 1);
       expect(progress.first.fileName, 'plan.md');
-      expect(progress.last.stage, NewSessionSubmissionStage.starting);
+      expect(progress.last.stage, SubmissionStage.submitting);
       final cached = await (database.select(
         database.cachedSessions,
       )).getSingle();

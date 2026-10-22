@@ -1,10 +1,10 @@
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/ids/request_id.dart';
 import '../../../core/time/app_time.dart';
 import '../../../shared/models/ai_capabilities.dart';
 import '../domain/followup_repository.dart';
@@ -21,14 +21,19 @@ class DefaultFollowupRepository implements FollowupRepository {
 
   final AppDatabase database;
   final Dio _dio;
-  final Random _random = Random.secure();
   final AppClock _clock;
 
   @override
   Future<ComposerDraftState> loadDraft(FollowupScope scope) async {
-    final row = await (database.select(
-      database.composerDrafts,
-    )..where((row) => _matches(row, scope))).getSingleOrNull();
+    final row =
+        await (database.select(database.composerDrafts)..where(
+              (row) => row.matchesSession(
+                scope.workspaceId,
+                scope.peonId,
+                scope.sessionId,
+              ),
+            ))
+            .getSingleOrNull();
     if (row == null) return const ComposerDraftState();
     return ComposerDraftState(
       text: row.draftText,
@@ -41,9 +46,14 @@ class DefaultFollowupRepository implements FollowupRepository {
   @override
   Future<void> saveDraft(FollowupScope scope, ComposerDraftState draft) async {
     if (draft.isEmpty) {
-      await (database.delete(
-        database.composerDrafts,
-      )..where((row) => _matches(row, scope))).go();
+      await (database.delete(database.composerDrafts)..where(
+            (row) => row.matchesSession(
+              scope.workspaceId,
+              scope.peonId,
+              scope.sessionId,
+            ),
+          ))
+          .go();
       return;
     }
     await database
@@ -65,7 +75,13 @@ class DefaultFollowupRepository implements FollowupRepository {
   SimpleSelectStatement<$PendingFollowupCommandsTable, PendingFollowupCommand>
   _pendingQuery(FollowupScope scope) {
     return database.select(database.pendingFollowupCommands)
-      ..where((row) => _matches(row, scope))
+      ..where(
+        (row) => row.matchesSession(
+          scope.workspaceId,
+          scope.peonId,
+          scope.sessionId,
+        ),
+      )
       ..orderBy([(row) => OrderingTerm.asc(row.createdAt)]);
   }
 
@@ -79,7 +95,13 @@ class DefaultFollowupRepository implements FollowupRepository {
   @override
   Stream<List<QueuedFollowup>> watchQueue(FollowupScope scope) {
     final query = database.select(database.cachedQueuedFollowups)
-      ..where((row) => _matches(row, scope))
+      ..where(
+        (row) => row.matchesSession(
+          scope.workspaceId,
+          scope.peonId,
+          scope.sessionId,
+        ),
+      )
       ..orderBy([(row) => OrderingTerm.asc(row.orderKey)]);
     return query.watch().map(
       (rows) => rows
@@ -135,9 +157,14 @@ class DefaultFollowupRepository implements FollowupRepository {
   ) async {
     final syncedAt = _clock.now().millisecondsSinceEpoch.toDouble();
     await database.transaction(() async {
-      await (database.delete(
-        database.cachedQueuedFollowups,
-      )..where((row) => _matches(row, scope))).go();
+      await (database.delete(database.cachedQueuedFollowups)..where(
+            (row) => row.matchesSession(
+              scope.workspaceId,
+              scope.peonId,
+              scope.sessionId,
+            ),
+          ))
+          .go();
       for (var index = 0; index < items.length; index++) {
         final item = items[index];
         await database
@@ -261,13 +288,13 @@ class DefaultFollowupRepository implements FollowupRepository {
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   }) async {
     final trimmed = prompt.trim();
     if (trimmed.isEmpty && attachments.isEmpty) {
       throw const FollowupException('Message cannot be empty.');
     }
-    final stableCommandId = commandId ?? _commandId();
+    final stableCommandId = commandId ?? newRequestId();
     final uploaded = await uploadAttachments(
       dio: _dio,
       workspaceId: scope.workspaceId,
@@ -280,14 +307,14 @@ class DefaultFollowupRepository implements FollowupRepository {
       onUploading: onProgress == null
           ? null
           : (current, total, fileName) => onProgress(
-              FollowupSubmissionProgress.uploading(
+              SubmissionProgress.uploading(
                 current: current,
                 total: total,
                 fileName: fileName,
               ),
             ),
     );
-    onProgress?.call(const FollowupSubmissionProgress.submitting());
+    onProgress?.call(const SubmissionProgress.submitting());
     final command = PendingFollowup(
       commandId: stableCommandId,
       scope: scope,
@@ -381,15 +408,20 @@ class DefaultFollowupRepository implements FollowupRepository {
           options: Options(headers: {'Peon-Request-Id': command.commandId}),
         );
       }
-      await (database.update(
-        database.cachedSessions,
-      )..where((row) => _matches(row, scope))).write(
-        CachedSessionsCompanion(
-          operatorRequested: const Value(true),
-          hasOutstandingRequest: const Value(true),
-          lastRequestedAt: Value(command.createdAt),
-        ),
-      );
+      await (database.update(database.cachedSessions)..where(
+            (row) => row.matchesSession(
+              scope.workspaceId,
+              scope.peonId,
+              scope.sessionId,
+            ),
+          ))
+          .write(
+            CachedSessionsCompanion(
+              operatorRequested: const Value(true),
+              hasOutstandingRequest: const Value(true),
+              lastRequestedAt: Value(command.createdAt),
+            ),
+          );
       await _complete(command.commandId);
       return FollowupDelivery.delivered;
     } on DioException catch (error) {
@@ -430,11 +462,6 @@ class DefaultFollowupRepository implements FollowupRepository {
     final data = error.response?.data;
     return data is Map && data['code'] == 'UNKNOWN_QUEUE_ITEM';
   }
-
-  Expression<bool> _matches(
-    TableInfo<Table, Object?> row,
-    FollowupScope scope,
-  ) => row.matchesSession(scope.workspaceId, scope.peonId, scope.sessionId);
 
   QueuedFollowup _queuedFromJson(Map<String, dynamic> json) {
     final id = json['id'];
@@ -543,17 +570,5 @@ class DefaultFollowupRepository implements FollowupRepository {
     } on TypeError {
       return const [];
     }
-  }
-
-  String _commandId() {
-    final bytes = List<int>.generate(16, (_) => _random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    String hex(int start, int end) => bytes
-        .sublist(start, end)
-        .map((value) => value.toRadixString(16).padLeft(2, '0'))
-        .join();
-    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-'
-        '${hex(8, 10)}-${hex(10, 16)}';
   }
 }

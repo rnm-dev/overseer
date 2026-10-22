@@ -36,11 +36,13 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.dark,
           home: Scaffold(
-            body: SessionList(
-              workspaceId: 'workspace',
-              peonId: 'peon',
-              selectedSessionId: 'session',
-              onSessionSelected: (session) => selectedSession = session,
+            body: _SliverHost(
+              SessionSliverList(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                selectedSessionId: 'session',
+                onSessionSelected: (session) => selectedSession = session,
+              ),
             ),
           ),
         ),
@@ -50,7 +52,7 @@ void main() {
 
     expect(find.text('Reusable session'), findsOneWidget);
     expect(find.byKey(const Key('session-session')), findsOneWidget);
-    expect(find.byType(SessionList), findsOneWidget);
+    expect(find.byType(SessionSliverList), findsOneWidget);
     final selectedMaterial = tester.widget<Material>(
       find
           .descendant(
@@ -62,7 +64,7 @@ void main() {
     expect(selectedMaterial.color, AppTheme.dark.hoverColor);
 
     ProviderScope.containerOf(
-      tester.element(find.byType(SessionList)),
+      tester.element(find.byType(SessionSliverList)),
     ).read(presenceProvider.notifier).replaceWorkspace('workspace', const [
       PresenceEntry(
         userId: 'viewer',
@@ -104,7 +106,9 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const Scaffold(
-            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+            body: _SliverHost(
+              SessionSliverList(workspaceId: 'workspace', peonId: 'peon'),
+            ),
           ),
         ),
       ),
@@ -173,7 +177,9 @@ void main() {
             home: const Scaffold(
               body: SizedBox(
                 width: 240,
-                child: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+                child: _SliverHost(
+                  SessionSliverList(workspaceId: 'workspace', peonId: 'peon'),
+                ),
               ),
             ),
           ),
@@ -228,11 +234,13 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const Scaffold(
-            body: SessionList(
-              workspaceId: 'workspace',
-              peonId: 'peon',
-              projectId: 'project-id',
-              projectKey: 'mobile',
+            body: _SliverHost(
+              SessionSliverList(
+                workspaceId: 'workspace',
+                peonId: 'peon',
+                projectId: 'project-id',
+                projectKey: 'mobile',
+              ),
             ),
           ),
         ),
@@ -266,7 +274,9 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const Scaffold(
-            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+            body: _SliverHost(
+              SessionSliverList(workspaceId: 'workspace', peonId: 'peon'),
+            ),
           ),
         ),
       ),
@@ -302,7 +312,9 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const Scaffold(
-            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+            body: _SliverHost(
+              SessionSliverList(workspaceId: 'workspace', peonId: 'peon'),
+            ),
           ),
         ),
       ),
@@ -310,7 +322,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final container = ProviderScope.containerOf(
-      tester.element(find.byType(SessionList)),
+      tester.element(find.byType(SessionSliverList)),
     );
     container.read(activeSessionsProvider.notifier).replaceWorkspace(
       'workspace',
@@ -369,7 +381,9 @@ void main() {
         child: MaterialApp(
           theme: AppTheme.dark,
           home: const Scaffold(
-            body: SessionList(workspaceId: 'workspace', peonId: 'peon'),
+            body: _SliverHost(
+              SessionSliverList(workspaceId: 'workspace', peonId: 'peon'),
+            ),
           ),
         ),
       ),
@@ -377,16 +391,17 @@ void main() {
     await tester.pumpAndSettle();
 
     ProviderScope.containerOf(
-      tester.element(find.byType(SessionList)),
+      tester.element(find.byType(SessionSliverList)),
     ).read(activeSessionsProvider.notifier).replaceWorkspace(
       'workspace',
       const [ActiveSession(peonId: 'peon', sessionId: 'running')],
     );
     await tester.pumpAndSettle();
 
-    _expectEdge(tester, 'running', AppColors.felBright, glowing: true);
-    _expectEdge(tester, 'unread', AppColors.forge, glowing: true);
-    _expectEdge(tester, 'failed', AppColors.blood, glowing: true);
+    final palette = AppThemePackages.bundled.first;
+    _expectEdge(tester, 'running', palette.accentStrong, glowing: true);
+    _expectEdge(tester, 'unread', palette.warning, glowing: true);
+    _expectEdge(tester, 'failed', palette.danger, glowing: true);
     _expectEdge(
       tester,
       'idle',
@@ -402,6 +417,15 @@ void main() {
       tester.view.physicalSize.width / tester.view.devicePixelRatio,
     );
   });
+}
+
+class _SliverHost extends StatelessWidget {
+  const _SliverHost(this.sliver);
+
+  final Widget sliver;
+
+  @override
+  Widget build(BuildContext context) => CustomScrollView(slivers: [sliver]);
 }
 
 void _expectEdge(

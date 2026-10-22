@@ -9,20 +9,16 @@ mixin _SessionDetailAttachments on ConsumerState<SessionDetailPage> {
   String? _attachmentError;
   bool _readingAttachments = false;
 
-  void _resetSubmissionIdentity();
-
-  /// Appends [added], invalidating the pending submission identity when
-  /// anything was added, and records [error] (or clears it).
+  /// Appends [added] and records [error] (or clears it). The changed selection
+  /// alone gives the next Send a new submission identity.
   void _appendAttachments(
     Iterable<NewSessionAttachment> added, {
     String? error,
   }) {
     // Pickers await per-file reads after their own mounted check.
     if (!mounted) return;
-    final list = added.toList();
-    if (list.isNotEmpty) _resetSubmissionIdentity();
     setState(() {
-      _composerAttachments = [..._composerAttachments, ...list];
+      _composerAttachments = [..._composerAttachments, ...added];
       _attachmentError = error;
     });
   }
@@ -427,23 +423,18 @@ bool _isImageName(String name) {
   return const ['.png', '.jpg', '.jpeg', '.gif', '.webp'].any(lower.endsWith);
 }
 
-String? submissionLabel(SessionComposerState? state, {required bool running}) {
-  final followup = state?.followupProgress;
-  if (followup != null) {
-    return switch (followup.stage) {
-      FollowupSubmissionStage.uploading =>
-        'Uploading ${followup.current} of ${followup.total}: '
-            '${followup.fileName}',
-      FollowupSubmissionStage.submitting => null,
-    };
-  }
-  final initial = state?.submissionProgress;
-  if (initial != null) {
-    return switch (initial.stage) {
-      NewSessionSubmissionStage.uploading =>
-        'Uploading ${initial.current} of ${initial.total}: ${initial.fileName}',
-      NewSessionSubmissionStage.starting => 'Starting session…',
-    };
-  }
-  return null;
+/// Follow-ups rely on the send-button spinner once uploads finish; a new
+/// session names its slower start.
+String? submissionLabel(
+  SessionComposerState? state, {
+  required bool newSession,
+}) {
+  final progress = state?.submissionProgress;
+  if (progress == null) return null;
+  return switch (progress.stage) {
+    SubmissionStage.uploading =>
+      'Uploading ${progress.current} of ${progress.total}: '
+          '${progress.fileName}',
+    SubmissionStage.submitting => newSession ? 'Starting session…' : null,
+  };
 }

@@ -42,9 +42,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
   @override
   Future<List<WorkspaceFleet>> build() async {
     final repository = ref.read(fleetRepositoryProvider);
-    final fleet = repository is CachedFleetRepository
-        ? await _loadCachedFirst(repository)
-        : await repository.loadFleet();
+    final fleet = await _loadCachedFirst(repository);
     unawaited(
       ref
           .read(workspaceConnectionRecorderProvider)(
@@ -82,26 +80,17 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
                 workspaceId: await sink.cursorFor(workspaceId),
             };
       ref.onDispose(() => unawaited(live.stop()));
-      final attentionLive = live is AttentionFleetLiveService
-          ? live as AttentionFleetLiveService
-          : null;
-      if (attentionLive != null) {
-        attentionLive.setAttentionHandler((
-          workspaceId,
-          cursor,
-          attention,
-        ) async {
-          if (attentionSink == null) {
-            await sink?.advanceCursor(workspaceId: workspaceId, cursor: cursor);
-            return;
-          }
-          await attentionSink.applyAttentionProjection(
-            workspaceId: workspaceId,
-            cursor: cursor,
-            projection: attention,
-          );
-        });
-      }
+      live.setAttentionHandler((workspaceId, cursor, attention) async {
+        if (attentionSink == null) {
+          await sink?.advanceCursor(workspaceId: workspaceId, cursor: cursor);
+          return;
+        }
+        await attentionSink.applyAttentionProjection(
+          workspaceId: workspaceId,
+          cursor: cursor,
+          projection: attention,
+        );
+      });
       unawaited(
         live.connect(
           workspaceIds: workspaceIds,
@@ -146,7 +135,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
   }
 
   Future<List<WorkspaceFleet>> _loadCachedFirst(
-    CachedFleetRepository repository,
+    FleetRepository repository,
   ) async {
     final cached = await repository.loadCachedFleet();
     final subscription = repository.watchFleet().listen((fleet) {
@@ -176,11 +165,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
 
   void _scheduleWorkspaceReconciliation(List<WorkspaceFleet> fleet) {
     final live = _live;
-    final FleetWorkspaceReconciler? reconciler =
-        live is FleetWorkspaceReconciler
-        ? live as FleetWorkspaceReconciler
-        : null;
-    if (reconciler == null) return;
+    if (live == null) return;
     final workspaceIds = fleet.map((item) => item.workspace.id).toList();
     final diagnostics = ref.read(appDiagnosticsProvider);
     diagnostics.record(
@@ -195,7 +180,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
                   for (final workspaceId in workspaceIds)
                     workspaceId: await sink.cursorFor(workspaceId),
                 };
-          await reconciler.reconcileWorkspaces(
+          await live.reconcileWorkspaces(
             workspaceIds: workspaceIds,
             initialCursors: cursors,
           );
@@ -220,11 +205,7 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
 
   Future<void> refresh() async {
     final repository = ref.read(fleetRepositoryProvider);
-    state = await AsyncValue.guard(
-      repository is CachedFleetRepository
-          ? repository.refreshFleet
-          : repository.loadFleet,
-    );
+    state = await AsyncValue.guard(repository.refreshFleet);
   }
 
   Future<bool> _applyPeon(
@@ -233,53 +214,29 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
     Map<String, dynamic> projection,
   ) async {
     final repository = ref.read(fleetRepositoryProvider);
-    var durable = false;
-    if (repository is CachedFleetRepository) {
-      await repository.applyPeonProjection(
-        workspaceId: workspaceId,
-        cursor: cursor,
-        projection: projection,
-      );
-      durable = true;
-    }
-    final current = state.value;
+    await repository.applyPeonProjection(
+      workspaceId: workspaceId,
+      cursor: cursor,
+      projection: projection,
+    );
     final peonId = projection['peonId'];
-    if (current == null || peonId is! String) return durable;
-
-    state = AsyncData([
-      for (final fleet in current)
-        if (fleet.workspace.id != workspaceId)
-          fleet
-        else
-          WorkspaceFleet(
-            workspace: fleet.workspace,
-            peons: [
-              for (final peon in fleet.peons)
-                if (peon.id != peonId)
-                  peon
-                else
-                  Peon(
-                    id: peon.id,
-                    name: projection['name'] as String? ?? peon.name,
-                    hostname: peon.hostname,
-                    baseUrl: peon.baseUrl,
-                    addressSource: peon.addressSource,
-                    online: projection['online'] as bool? ?? peon.online,
-                    lastSeen: peon.lastSeen,
-                    capabilities: peon.capabilities,
-                    load: peon.load,
-                    recentSessions: peon.recentSessions,
-                  ),
-            ],
-          ),
-    ]);
-    return durable;
+    if (peonId is String) {
+      _updatePeon(
+        workspaceId,
+        peonId,
+        (peon) => peon.copyWith(
+          name: projection['name'] as String? ?? peon.name,
+          online: projection['online'] as bool? ?? peon.online,
+        ),
+      );
+    }
+    return true;
   }
 
-  void _applyActiveSessions(
+  void _updatePeon(
     String workspaceId,
     String peonId,
-    int activeSessions,
+    Peon Function(Peon peon) update,
   ) {
     final current = state.value;
     if (current == null) return;
@@ -292,26 +249,26 @@ class FleetController extends AsyncNotifier<List<WorkspaceFleet>> {
             workspace: fleet.workspace,
             peons: [
               for (final peon in fleet.peons)
-                if (peon.id != peonId)
-                  peon
-                else
-                  Peon(
-                    id: peon.id,
-                    name: peon.name,
-                    hostname: peon.hostname,
-                    baseUrl: peon.baseUrl,
-                    addressSource: peon.addressSource,
-                    online: peon.online,
-                    lastSeen: peon.lastSeen,
-                    capabilities: peon.capabilities,
-                    load: PeonLoad(
-                      activeSessions: activeSessions,
-                      paused: peon.load?.paused,
-                    ),
-                    recentSessions: peon.recentSessions,
-                  ),
+                peon.id == peonId ? update(peon) : peon,
             ],
           ),
     ]);
+  }
+
+  void _applyActiveSessions(
+    String workspaceId,
+    String peonId,
+    int activeSessions,
+  ) {
+    _updatePeon(
+      workspaceId,
+      peonId,
+      (peon) => peon.copyWith(
+        load: PeonLoad(
+          activeSessions: activeSessions,
+          paused: peon.load?.paused,
+        ),
+      ),
+    );
   }
 }

@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/diagnostics/app_diagnostics.dart';
+import '../../../core/ids/request_id.dart';
 import '../../../core/live/active_sessions.dart';
 import '../../../core/time/app_time.dart';
 import '../../../shared/models/ai_capabilities.dart';
@@ -100,7 +100,6 @@ class SessionComposerState {
     this.sending = false,
     this.ghost,
     this.submissionProgress,
-    this.followupProgress,
     this.error,
     this.queueError,
     this.replyTo,
@@ -116,8 +115,7 @@ class SessionComposerState {
   final String? reasoningEffort;
   final bool sending;
   final ComposerGhost? ghost;
-  final NewSessionSubmissionProgress? submissionProgress;
-  final FollowupSubmissionProgress? followupProgress;
+  final SubmissionProgress? submissionProgress;
   final String? error;
   final String? queueError;
   final SelectedTextReply? replyTo;
@@ -137,10 +135,8 @@ class SessionComposerState {
     bool? sending,
     ComposerGhost? ghost,
     bool clearGhost = false,
-    NewSessionSubmissionProgress? submissionProgress,
+    SubmissionProgress? submissionProgress,
     bool clearSubmissionProgress = false,
-    FollowupSubmissionProgress? followupProgress,
-    bool clearFollowupProgress = false,
     String? error,
     bool clearError = false,
     String? queueError,
@@ -164,9 +160,6 @@ class SessionComposerState {
       submissionProgress: clearSubmissionProgress
           ? null
           : submissionProgress ?? this.submissionProgress,
-      followupProgress: clearFollowupProgress
-          ? null
-          : followupProgress ?? this.followupProgress,
       error: clearError ? null : error ?? this.error,
       queueError: clearQueueError ? null : queueError ?? this.queueError,
       replyTo: clearReplyTo ? null : replyTo ?? this.replyTo,
@@ -183,10 +176,8 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   ScheduledTask? _retryTimer;
   ScheduledTask? _queuePollTimer;
   int _retryAttempt = 0;
-  String? _newSessionRequestId;
-  _NewSessionPayloadIdentity? _newSessionPayloadIdentity;
-  String? _followupRequestId;
-  _FollowupPayloadIdentity? _followupPayloadIdentity;
+  final _newSessionIdentity = _SubmissionIdentity<_NewSessionPayload>();
+  final _followupIdentity = _SubmissionIdentity<_FollowupPayload>();
   bool _queueRefreshing = false;
   bool _queueRefreshAgain = false;
   bool _queueAvailable = true;
@@ -270,22 +261,13 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     if (current == null || current.draft == draft) return;
     state = AsyncData(current.copyWith(draft: draft, clearError: true));
     _contentRevision++;
-    _resetSubmissionIdentity();
     _persistDraft(state.value!);
-  }
-
-  void resetSubmissionIdentity() {
-    if (state.value?.sending == true) return;
-    _resetSubmissionIdentity();
   }
 
   void selectModel(String? model) {
     final current = state.value;
     if (current == null) return;
-    if (current.model != model) {
-      _selectionRevision++;
-      _resetSubmissionIdentity();
-    }
+    if (current.model != model) _selectionRevision++;
     state = AsyncData(
       current.copyWith(model: model, clearModel: model == null),
     );
@@ -299,7 +281,6 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         current.model != null ||
         current.reasoningEffort != null) {
       _selectionRevision++;
-      _resetSubmissionIdentity();
     }
     state = AsyncData(
       current.copyWith(
@@ -315,10 +296,7 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
   void selectReasoningEffort(String? reasoningEffort) {
     final current = state.value;
     if (current == null) return;
-    if (current.reasoningEffort != reasoningEffort) {
-      _selectionRevision++;
-      _resetSubmissionIdentity();
-    }
+    if (current.reasoningEffort != reasoningEffort) _selectionRevision++;
     state = AsyncData(
       current.copyWith(
         reasoningEffort: reasoningEffort,
@@ -417,52 +395,146 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     bool startNow = false,
     List<NewSessionAttachment> attachments = const [],
   }) async {
-    final current = state.value;
-    if (current == null || current.sending) return false;
-    final prompt = current.draft.trim();
-    if (prompt.isEmpty && attachments.isEmpty) return false;
-    final submitted = _followupPayloadIdentity == null
-        ? _normalizedSelection(current)
-        : current;
-    if (submitted != current) {
-      _selectionRevision++;
-      state = AsyncData(submitted);
-      _persistDraft(submitted);
-    }
-    final payloadIdentity = _FollowupPayloadIdentity(
-      prompt: prompt,
-      serverQueue: running,
-      startNow: startNow,
-      model: submitted.model,
-      reasoningEffort: submitted.reasoningEffort,
+    final replyTo = state.value?.replyTo;
+    final activeSessions = ref.read(activeSessionsProvider.notifier);
+    final result = await _runSubmission<_FollowupPayload, FollowupDelivery>(
+      identity: _followupIdentity,
       attachments: attachments,
-      replyTo: current.replyTo,
+      payloadFor: (selection, prompt) => _FollowupPayload(
+        prompt: prompt,
+        serverQueue: running,
+        startNow: startNow,
+        model: selection.model,
+        reasoningEffort: selection.reasoningEffort,
+        attachments: attachments,
+        replyTo: replyTo,
+      ),
+      // A queued follow-up is Peon's to pop when it is ready, and the queue
+      // widget already shows it. Only a turn that starts now gets a ghost.
+      ghostFor: running && !startNow
+          ? null
+          : (prompt, commandId) => ComposerGhost(
+              commandId: commandId,
+              text: prompt.isEmpty ? '(see attachments)' : prompt,
+              attachments: [
+                for (final attachment in attachments)
+                  ComposerGhostAttachment(
+                    name: attachment.name,
+                    type: attachment.type,
+                    size: attachment.bytes.length,
+                  ),
+              ],
+              replyTo: replyTo,
+              createdAt: _clock.now().millisecondsSinceEpoch.toDouble(),
+              baselineUserMessages: transcriptUserMessages,
+            ),
+      request: (submitted, prompt, commandId, onProgress) {
+        activeSessions.markRunningLocally(
+          workspaceId: scope.workspaceId,
+          session: ActiveSession(
+            peonId: scope.peonId,
+            sessionId: scope.sessionId,
+          ),
+        );
+        return ref
+            .read(followupRepositoryProvider)
+            .submit(
+              scope: scope,
+              prompt: prompt,
+              serverQueue: running,
+              startNow: startNow,
+              model: submitted.model,
+              reasoningEffort: submitted.reasoningEffort,
+              commandId: commandId,
+              attachments: attachments,
+              replyTo: replyTo,
+              onProgress: onProgress,
+            );
+      },
+      onSuccess: (delivery) {
+        if (delivery == FollowupDelivery.queued) {
+          _clearRunningLocally(activeSessions);
+          _scheduleRetry();
+        }
+        if (running) unawaited(refreshQueue());
+      },
+      errorMessage: (error) {
+        _clearRunningLocally(activeSessions);
+        if (error is FollowupException) {
+          // Only an explicit HTTP 4xx refusal proves that this command
+          // identity cannot have been accepted. Upload/protocol failures
+          // without a status retain it so retrying the unchanged payload
+          // remains idempotent.
+          if (_isExplicitFollowupRefusal(error)) _followupIdentity.reset();
+          return error.message;
+        }
+        _diagnostics.record(
+          AppDiagnosticEvent(
+            name: 'followup.submit',
+            level: AppDiagnosticLevel.error,
+            workspaceId: scope.workspaceId,
+            sessionId: scope.sessionId,
+            state: 'failed',
+            errorType: error.runtimeType.toString(),
+          ),
+        );
+        return 'Message could not be sent.';
+      },
     );
-    if (_followupPayloadIdentity != null &&
-        _followupPayloadIdentity != payloadIdentity) {
-      _followupRequestId = null;
+    return result != null;
+  }
+
+  void _clearRunningLocally(ActiveSessionsController activeSessions) {
+    activeSessions.clearRunningLocally(
+      workspaceId: scope.workspaceId,
+      peonId: scope.peonId,
+      sessionId: scope.sessionId,
+    );
+  }
+
+  /// The submission skeleton shared by follow-ups and new sessions.
+  ///
+  /// The retry identity is purely payload-based: an unchanged payload reuses
+  /// the command id of the last unfinished attempt (so a retry after an
+  /// ambiguous failure stays idempotent), while any change — draft, selection,
+  /// attachments, target — mints a new one. Returns null when nothing was sent
+  /// or the request failed; [errorMessage] maps the failure for display and may
+  /// reset [identity] when the failure proves the command was not accepted.
+  Future<T?> _runSubmission<P extends Object, T extends Object>({
+    required _SubmissionIdentity<P> identity,
+    required List<NewSessionAttachment> attachments,
+    required P Function(SessionComposerState selection, String prompt)
+    payloadFor,
+    required Future<T> Function(
+      SessionComposerState submitted,
+      String prompt,
+      String commandId,
+      SubmissionProgressCallback onProgress,
+    )
+    request,
+    required String Function(Object error) errorMessage,
+    ComposerGhost Function(String prompt, String commandId)? ghostFor,
+    void Function(T result)? onSuccess,
+  }) async {
+    final current = state.value;
+    if (current == null || current.sending) return null;
+    final prompt = current.draft.trim();
+    if (prompt.isEmpty && attachments.isEmpty) return null;
+    var submitted = current;
+    var payload = payloadFor(current, prompt);
+    // A retry of the unchanged payload keeps its selection as sent; anything
+    // new is normalized against the catalog first.
+    if (!identity.matches(payload)) {
+      submitted = _normalizedSelection(current);
+      if (submitted != current) {
+        _selectionRevision++;
+        state = AsyncData(submitted);
+        _persistDraft(submitted);
+        payload = payloadFor(submitted, prompt);
+      }
     }
-    _followupRequestId ??= _commandId();
-    _followupPayloadIdentity = payloadIdentity;
-    // A queued follow-up is Peon's to pop when it is ready, and the queue widget
-    // already shows it. Only a turn that starts now gets a ghost.
-    final ghost = running && !startNow
-        ? null
-        : ComposerGhost(
-            commandId: _followupRequestId!,
-            text: prompt.isEmpty ? '(see attachments)' : prompt,
-            attachments: [
-              for (final attachment in attachments)
-                ComposerGhostAttachment(
-                  name: attachment.name,
-                  type: attachment.type,
-                  size: attachment.bytes.length,
-                ),
-            ],
-            replyTo: current.replyTo,
-            createdAt: _clock.now().millisecondsSinceEpoch.toDouble(),
-            baselineUserMessages: transcriptUserMessages,
-          );
+    final commandId = identity.claim(payload);
+    final ghost = ghostFor?.call(prompt, commandId);
     final contentRevision = _contentRevision;
     final selectionRevision = _selectionRevision;
     state = AsyncData(
@@ -473,119 +545,58 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         clearGhost: ghost == null,
         clearReplyTo: true,
         clearError: true,
-        clearFollowupProgress: true,
+        clearSubmissionProgress: true,
       ),
     );
     _persistDraft(submitted);
-    final activeSessions = ref.read(activeSessionsProvider.notifier);
-    activeSessions.markRunningLocally(
-      workspaceId: scope.workspaceId,
-      session: ActiveSession(peonId: scope.peonId, sessionId: scope.sessionId),
-    );
     if (ghost != null) _scheduleGhostExpiry();
     final submissionLifetime = ref.keepAlive();
     try {
-      final result = await ref
-          .read(followupRepositoryProvider)
-          .submit(
-            scope: scope,
-            prompt: prompt,
-            serverQueue: running,
-            startNow: startNow,
-            model: submitted.model,
-            reasoningEffort: submitted.reasoningEffort,
-            commandId: _followupRequestId,
-            attachments: attachments,
+      final T result;
+      try {
+        result = await request(submitted, prompt, commandId, (progress) {
+          final latest = state.value;
+          if (latest == null) return;
+          state = AsyncData(latest.copyWith(submissionProgress: progress));
+        });
+      } catch (error) {
+        final message = errorMessage(error);
+        final latest = state.value ?? current;
+        state = AsyncData(
+          latest.copyWith(
+            draft: _contentRevision == contentRevision ? prompt : latest.draft,
+            sending: false,
+            clearGhost: true,
+            clearSubmissionProgress: true,
             replyTo: current.replyTo,
-            onProgress: (progress) {
-              final latest = state.value;
-              if (latest == null) return;
-              state = AsyncData(latest.copyWith(followupProgress: progress));
-            },
-          );
-      final latest = state.value ?? current;
-      final completed = latest.copyWith(
-        draft: _contentRevision == contentRevision ? '' : latest.draft,
-        clearAgent: _selectionRevision == selectionRevision,
-        clearModel: _selectionRevision == selectionRevision,
-        clearReasoningEffort: _selectionRevision == selectionRevision,
-      );
-      state = AsyncData(
-        completed.copyWith(sending: false, clearFollowupProgress: true),
-      );
-      _persistDraft(state.value!);
-      _resetFollowupIdentity();
-      if (result == FollowupDelivery.queued) {
-        activeSessions.clearRunningLocally(
-          workspaceId: scope.workspaceId,
-          peonId: scope.peonId,
-          sessionId: scope.sessionId,
+            error: message,
+          ),
         );
-        _scheduleRetry();
+        _persistDraft(state.value!);
+        return null;
       }
-      if (running) unawaited(refreshQueue());
-      return true;
-    } on FollowupException catch (error) {
-      activeSessions.clearRunningLocally(
-        workspaceId: scope.workspaceId,
-        peonId: scope.peonId,
-        sessionId: scope.sessionId,
-      );
-      // Only an explicit HTTP 4xx refusal proves that this command
-      // identity cannot have been accepted. Upload/protocol failures without a
-      // status retain it so retrying the unchanged payload remains idempotent.
-      if (_isExplicitFollowupRefusal(error)) _resetFollowupIdentity();
+      // Delivered: never restore the prompt after this point, or a resend
+      // would post it twice under a fresh command id.
       final latest = state.value ?? current;
+      final selectionUnchanged = _selectionRevision == selectionRevision;
       state = AsyncData(
         latest.copyWith(
-          draft: _contentRevision == contentRevision ? prompt : latest.draft,
+          draft: _contentRevision == contentRevision ? '' : latest.draft,
+          clearAgent: selectionUnchanged,
+          clearModel: selectionUnchanged,
+          clearReasoningEffort: selectionUnchanged,
           sending: false,
-          clearGhost: true,
-          clearFollowupProgress: true,
-          replyTo: current.replyTo,
-          error: error.message,
+          clearSubmissionProgress: true,
         ),
       );
       _persistDraft(state.value!);
-      return false;
-    } catch (error) {
-      activeSessions.clearRunningLocally(
-        workspaceId: scope.workspaceId,
-        peonId: scope.peonId,
-        sessionId: scope.sessionId,
-      );
-      _diagnostics.record(
-        AppDiagnosticEvent(
-          name: 'followup.submit',
-          level: AppDiagnosticLevel.error,
-          workspaceId: scope.workspaceId,
-          sessionId: scope.sessionId,
-          state: 'failed',
-          errorType: error.runtimeType.toString(),
-        ),
-      );
-      final latest = state.value ?? current;
-      state = AsyncData(
-        latest.copyWith(
-          draft: _contentRevision == contentRevision ? prompt : latest.draft,
-          sending: false,
-          clearGhost: true,
-          clearFollowupProgress: true,
-          replyTo: current.replyTo,
-          error: 'Message could not be sent.',
-        ),
-      );
-      _persistDraft(state.value!);
-      return false;
+      identity.reset();
+      onSuccess?.call(result);
+      return result;
     } finally {
       await _draftWrite;
       submissionLifetime.close();
     }
-  }
-
-  void _resetFollowupIdentity() {
-    _followupRequestId = null;
-    _followupPayloadIdentity = null;
   }
 
   void setReplyTo(SelectedTextReply? replyTo) {
@@ -594,12 +605,6 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     state = AsyncData(
       current.copyWith(replyTo: replyTo, clearReplyTo: replyTo == null),
     );
-  }
-
-  void _resetSubmissionIdentity() {
-    _newSessionRequestId = null;
-    _newSessionPayloadIdentity = null;
-    _resetFollowupIdentity();
   }
 
   Future<void> refreshQueue() async {
@@ -734,92 +739,37 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
     String? projectKey,
     String? dir,
     List<NewSessionAttachment> attachments = const [],
-  }) async {
-    final current = state.value;
-    if (current == null || current.sending) return null;
-    final prompt = current.draft.trim();
-    if (prompt.isEmpty && attachments.isEmpty) return null;
-    final submitted = _newSessionPayloadIdentity == null
-        ? _normalizedSelection(current)
-        : current;
-    if (submitted != current) {
-      _selectionRevision++;
-      state = AsyncData(submitted);
-      _persistDraft(submitted);
-    }
-    final payloadIdentity = _NewSessionPayloadIdentity(
+  }) => _runSubmission<_NewSessionPayload, SessionSummary>(
+    identity: _newSessionIdentity,
+    attachments: attachments,
+    payloadFor: (selection, prompt) => _NewSessionPayload(
       prompt: prompt,
       projectKey: projectKey,
       dir: dir?.trim(),
-      agent: submitted.agent,
-      model: submitted.model,
-      reasoningEffort: submitted.reasoningEffort,
+      agent: selection.agent,
+      model: selection.model,
+      reasoningEffort: selection.reasoningEffort,
       attachments: attachments,
-    );
-    if (_newSessionPayloadIdentity != null &&
-        _newSessionPayloadIdentity != payloadIdentity) {
-      _newSessionRequestId = null;
-    }
-    _newSessionRequestId ??= _commandId();
-    _newSessionPayloadIdentity = payloadIdentity;
-    final contentRevision = _contentRevision;
-    final selectionRevision = _selectionRevision;
-    state = AsyncData(
-      submitted.copyWith(draft: '', sending: true, clearError: true),
-    );
-    _persistDraft(submitted);
-    final submissionLifetime = ref.keepAlive();
-    try {
-      final session = await ref
-          .read(newSessionRepositoryProvider)
-          .createSession(
-            NewSessionRequest(
-              workspaceId: scope.workspaceId,
-              peonId: scope.peonId,
-              requestId: _newSessionRequestId!,
-              prompt: prompt,
-              projectKey: projectKey,
-              dir: dir,
-              agent: submitted.agent,
-              model: submitted.model,
-              reasoningEffort: submitted.reasoningEffort,
-              attachments: attachments,
-              onProgress: (progress) {
-                final latest = state.value;
-                if (latest == null) return;
-                state = AsyncData(
-                  latest.copyWith(submissionProgress: progress),
-                );
-              },
-            ),
-          );
-      final latest = state.value ?? current;
-      final completed = latest.copyWith(
-        draft: _contentRevision == contentRevision ? '' : latest.draft,
-        clearAgent: _selectionRevision == selectionRevision,
-        clearModel: _selectionRevision == selectionRevision,
-        clearReasoningEffort: _selectionRevision == selectionRevision,
-      );
-      state = AsyncData(
-        completed.copyWith(sending: false, clearSubmissionProgress: true),
-      );
-      _persistDraft(state.value!);
-      _newSessionRequestId = null;
-      _newSessionPayloadIdentity = null;
-      return session;
-    } on NewSessionException catch (error) {
-      final latest = state.value ?? current;
-      state = AsyncData(
-        latest.copyWith(
-          draft: _contentRevision == contentRevision ? prompt : latest.draft,
-          sending: false,
-          clearSubmissionProgress: true,
-          error: error.message,
+    ),
+    request: (submitted, prompt, requestId, onProgress) => ref
+        .read(newSessionRepositoryProvider)
+        .createSession(
+          NewSessionRequest(
+            workspaceId: scope.workspaceId,
+            peonId: scope.peonId,
+            requestId: requestId,
+            prompt: prompt,
+            projectKey: projectKey,
+            dir: dir,
+            agent: submitted.agent,
+            model: submitted.model,
+            reasoningEffort: submitted.reasoningEffort,
+            attachments: attachments,
+            onProgress: onProgress,
+          ),
         ),
-      );
-      _persistDraft(state.value!);
-      return null;
-    } catch (error) {
+    errorMessage: (error) {
+      if (error is NewSessionException) return error.message;
       _diagnostics.record(
         AppDiagnosticEvent(
           name: 'session.create',
@@ -829,22 +779,9 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
           errorType: error.runtimeType.toString(),
         ),
       );
-      final latest = state.value ?? current;
-      state = AsyncData(
-        latest.copyWith(
-          draft: _contentRevision == contentRevision ? prompt : latest.draft,
-          sending: false,
-          clearSubmissionProgress: true,
-          error: 'Session could not be started. Press Send to retry.',
-        ),
-      );
-      _persistDraft(state.value!);
-      return null;
-    } finally {
-      await _draftWrite;
-      submissionLifetime.close();
-    }
-  }
+      return 'Session could not be started. Press Send to retry.';
+    },
+  );
 
   void _scheduleRetry() {
     if (_retryTimer != null) return;
@@ -909,23 +846,30 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
       }
     });
   }
+}
 
-  String _commandId() {
-    final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    String hex(int start, int end) => bytes
-        .sublist(start, end)
-        .map((value) => value.toRadixString(16).padLeft(2, '0'))
-        .join();
-    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-'
-        '${hex(8, 10)}-${hex(10, 16)}';
+/// The command id of the last unfinished submission and the payload it was
+/// minted for. [claim] reuses the id only for an equal payload.
+class _SubmissionIdentity<P extends Object> {
+  String? _id;
+  P? _payload;
+
+  bool matches(P payload) => _payload == payload;
+
+  String claim(P payload) {
+    if (_payload != payload) _id = null;
+    _payload = payload;
+    return _id ??= newRequestId();
+  }
+
+  void reset() {
+    _id = null;
+    _payload = null;
   }
 }
 
-class _NewSessionPayloadIdentity {
-  _NewSessionPayloadIdentity({
+class _NewSessionPayload {
+  _NewSessionPayload({
     required this.prompt,
     required this.projectKey,
     required this.dir,
@@ -946,28 +890,15 @@ class _NewSessionPayloadIdentity {
   final List<_SubmissionAttachmentIdentity> attachments;
 
   @override
-  bool operator ==(Object other) {
-    if (other is! _NewSessionPayloadIdentity ||
-        other.prompt != prompt ||
-        other.projectKey != projectKey ||
-        other.dir != dir ||
-        other.agent != agent ||
-        other.model != model ||
-        other.reasoningEffort != reasoningEffort ||
-        other.attachments.length != attachments.length) {
-      return false;
-    }
-    for (var index = 0; index < attachments.length; index++) {
-      final attachment = attachments[index];
-      final otherAttachment = other.attachments[index];
-      if (otherAttachment.name != attachment.name ||
-          otherAttachment.type != attachment.type ||
-          !identical(otherAttachment.bytes, attachment.bytes)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool operator ==(Object other) =>
+      other is _NewSessionPayload &&
+      other.prompt == prompt &&
+      other.projectKey == projectKey &&
+      other.dir == dir &&
+      other.agent == agent &&
+      other.model == model &&
+      other.reasoningEffort == reasoningEffort &&
+      _sameAttachments(other.attachments, attachments);
 
   @override
   int get hashCode => Object.hash(
@@ -977,20 +908,12 @@ class _NewSessionPayloadIdentity {
     agent,
     model,
     reasoningEffort,
-    Object.hashAll(
-      attachments.map(
-        (attachment) => Object.hash(
-          attachment.name,
-          attachment.type,
-          identityHashCode(attachment.bytes),
-        ),
-      ),
-    ),
+    Object.hashAll(attachments),
   );
 }
 
-class _FollowupPayloadIdentity {
-  _FollowupPayloadIdentity({
+class _FollowupPayload {
+  _FollowupPayload({
     required this.prompt,
     required this.serverQueue,
     required this.startNow,
@@ -1012,7 +935,7 @@ class _FollowupPayloadIdentity {
 
   @override
   bool operator ==(Object other) =>
-      other is _FollowupPayloadIdentity &&
+      other is _FollowupPayload &&
       other.prompt == prompt &&
       other.serverQueue == serverQueue &&
       other.startNow == startNow &&
@@ -1115,7 +1038,7 @@ class _UnavailableFollowupRepository implements FollowupRepository {
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   }) {
     throw const FollowupException('Message sending is unavailable.');
   }

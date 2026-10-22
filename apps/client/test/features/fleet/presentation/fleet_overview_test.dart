@@ -25,6 +25,8 @@ import 'package:overseer_mobile/shared/widgets/app_card.dart';
 import 'package:overseer_mobile/shared/widgets/app_list_tile.dart';
 import 'package:overseer_mobile/shared/widgets/sidebar_status_edge.dart';
 
+import '../../../support/fake_fleet.dart';
+
 void main() {
   testWidgets('shows compact Peon actions and inline presence', (tester) async {
     final live = _FakeFleetLiveService();
@@ -137,7 +139,10 @@ void main() {
           )
           .first,
     );
-    expect(kanatMaterial.color, AppColors.bone.withValues(alpha: 0.05));
+    expect(
+      kanatMaterial.color,
+      AppThemePackages.bundled.first.ink.withValues(alpha: 0.05),
+    );
     expect(kanatMaterial.borderRadius, BorderRadius.zero);
     final kanatContainer = tester.widget<AnimatedContainer>(
       find.descendant(
@@ -684,7 +689,7 @@ class _FakeNotificationPermissionGateway
   Future<NotificationPermissionStatus> status() async => current;
 }
 
-class _FakeFleetLiveService implements FleetLiveService {
+class _FakeFleetLiveService extends NoopFleetLiveService {
   void Function(String, String, int)? _onActiveSessions;
   void Function(String, List<ActiveSession>?)? _onActiveSessionSnapshot;
   Future<bool> Function(String, int, Map<String, dynamic>)? _onSession;
@@ -729,12 +734,6 @@ class _FakeFleetLiveService implements FleetLiveService {
     _onPresence?.call(workspaceId, presence);
   }
 
-  @override
-  void setPresence({
-    required String workspaceId,
-    required PresenceLocation location,
-  }) {}
-
   void emitActiveSessionSnapshot(
     String workspaceId,
     List<ActiveSession> sessions,
@@ -765,9 +764,6 @@ class _FakeFleetLiveService implements FleetLiveService {
   Future<void> emitCursor(String workspaceId, int cursor) async {
     await _onCursor?.call(workspaceId, cursor);
   }
-
-  @override
-  Future<void> stop() async {}
 }
 
 class _FakeLiveProjectionSink implements LiveProjectionSink {
@@ -816,7 +812,7 @@ class _AppliedProjection {
   final Map<String, dynamic> projection;
 }
 
-class _FakeFleetRepository implements FleetRepository {
+class _FakeFleetRepository extends FakeFleetRepository {
   _FakeFleetRepository({this.result = const [], this.error, this.pending});
 
   List<WorkspaceFleet> result;
@@ -825,7 +821,7 @@ class _FakeFleetRepository implements FleetRepository {
   int loadCount = 0;
 
   @override
-  Future<List<WorkspaceFleet>> loadFleet() async {
+  Future<List<WorkspaceFleet>> refreshFleet() async {
     loadCount++;
     if (pending != null) return pending!;
     if (error case final error?) throw error;

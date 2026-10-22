@@ -27,10 +27,9 @@ typedef AuthGateShellBuilder =
       VoidCallback? onBackToConnections,
     });
 
-class AuthGate extends ConsumerStatefulWidget {
+class AuthGate extends ConsumerWidget {
   const AuthGate({
     super.key,
-    this.autoSignIn = false,
     this.onBack,
     this.overseerName,
     required this.buildLoading,
@@ -38,7 +37,6 @@ class AuthGate extends ConsumerStatefulWidget {
     required this.buildShell,
   });
 
-  final bool autoSignIn;
   final VoidCallback? onBack;
   final String? overseerName;
   final AuthGateLoadingBuilder buildLoading;
@@ -46,67 +44,33 @@ class AuthGate extends ConsumerStatefulWidget {
   final AuthGateShellBuilder buildShell;
 
   @override
-  ConsumerState<AuthGate> createState() => _AuthGateState();
-}
-
-class _AuthGateState extends ConsumerState<AuthGate> {
-  bool _autoSignInStarted = false;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authControllerProvider);
     final controller = ref.read(authControllerProvider.notifier);
 
-    if (widget.autoSignIn &&
-        auth.phase == AuthPhase.unauthenticated &&
-        auth.errorMessage == null &&
-        !_autoSignInStarted) {
-      _autoSignInStarted = true;
-      Future<void>.microtask(controller.signIn);
-      return _BackToConnectionsScope(
-        onBack: widget.onBack,
-        child: widget.buildLoading(
-          overseerName: widget.overseerName,
-          onBackToConnections: widget.onBack,
-        ),
-      );
-    }
-
     final child = switch (auth.phase) {
-      AuthPhase.restoring => widget.buildLoading(
-        overseerName: widget.overseerName,
-        onBackToConnections: widget.onBack,
+      AuthPhase.restoring => buildLoading(
+        overseerName: overseerName,
+        onBackToConnections: onBack,
       ),
       AuthPhase.unavailable => BackendUnavailablePage(
         onRetry: controller.retryRestore,
-        onBack: widget.onBack,
+        onBack: onBack,
       ),
-      AuthPhase.unauthenticated => widget.buildSignIn(
+      AuthPhase.unauthenticated || AuthPhase.signingIn => buildSignIn(
         onSignIn: controller.signIn,
         errorMessage: auth.errorMessage,
-        isSigningIn: false,
-        onBack: widget.onBack,
+        isSigningIn: auth.phase == AuthPhase.signingIn,
+        onBack: onBack,
       ),
-      AuthPhase.signingIn =>
-        widget.autoSignIn
-            ? widget.buildLoading(
-                overseerName: widget.overseerName,
-                onBackToConnections: widget.onBack,
-              )
-            : widget.buildSignIn(
-                onSignIn: controller.signIn,
-                errorMessage: auth.errorMessage,
-                isSigningIn: true,
-                onBack: widget.onBack,
-              ),
-      AuthPhase.authenticated => widget.buildShell(
+      AuthPhase.authenticated => buildShell(
         user: auth.session!.user,
         onSignOut: controller.signOut,
-        overseerName: widget.overseerName,
-        onBackToConnections: widget.onBack,
+        overseerName: overseerName,
+        onBackToConnections: onBack,
       ),
     };
-    return _BackToConnectionsScope(onBack: widget.onBack, child: child);
+    return _BackToConnectionsScope(onBack: onBack, child: child);
   }
 }
 

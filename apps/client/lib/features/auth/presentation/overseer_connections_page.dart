@@ -28,7 +28,7 @@ class OverseerConnectionsLoadingPage extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
             child: Padding(
-              padding: context.appSpacing.screenInsets(top: 20, bottom: 20),
+              padding: AppSpacing.screenInsets(top: 20, bottom: 20),
               child: LoadingShimmer(
                 label: l10n.loadingOverseerConnections,
                 child: const Column(
@@ -70,7 +70,7 @@ class OverseerConnectionsRestoreErrorPage extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 520),
             child: Padding(
-              padding: context.appSpacing.screenInsets(top: 20, bottom: 20),
+              padding: AppSpacing.screenInsets(top: 20, bottom: 20),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -133,10 +133,7 @@ class OverseerConnectionsPage extends StatelessWidget {
                   const verticalPadding = 40.0;
                   return SingleChildScrollView(
                     key: const Key('overseer-connections-content'),
-                    padding: context.appSpacing.screenInsets(
-                      top: 20,
-                      bottom: 20,
-                    ),
+                    padding: AppSpacing.screenInsets(top: 20, bottom: 20),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
                         minHeight: (constraints.maxHeight - verticalPadding)
@@ -197,7 +194,7 @@ class OverseerConnectionsPage extends StatelessWidget {
             ),
             if (!_isEmpty && !desktop)
               Padding(
-                padding: context.appSpacing.screenInsets(bottom: 20),
+                padding: AppSpacing.screenInsets(bottom: 20),
                 child: _addButton(context),
               ),
           ],

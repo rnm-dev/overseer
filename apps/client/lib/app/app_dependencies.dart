@@ -16,7 +16,6 @@ import 'package:overseer_mobile/core/config/overseer_connection_store.dart';
 import 'package:overseer_mobile/core/database/app_database.dart';
 import 'package:overseer_mobile/core/diagnostics/app_diagnostics.dart';
 import 'package:overseer_mobile/core/live/live_projection_sink.dart';
-import 'package:overseer_mobile/core/live/transcript_live_service.dart';
 import 'package:overseer_mobile/core/network/overseer_http_client.dart';
 import 'package:overseer_mobile/core/notifications/default_push_notification_service.dart';
 import 'package:overseer_mobile/core/notifications/dio_push_subscription_remote.dart';
@@ -47,12 +46,11 @@ import 'package:overseer_mobile/features/peon/peon.dart';
 import 'package:overseer_mobile/features/peon/application/peon_management_controller.dart';
 import 'package:overseer_mobile/features/peon/data/dio_peon_management_repository.dart';
 import 'package:overseer_mobile/features/peon/data/dio_peon_settings_repository.dart';
+import 'package:overseer_mobile/features/settings/application/enum_preference_controller.dart';
 import 'package:overseer_mobile/features/settings/application/sound_pack_controller.dart';
-import 'package:overseer_mobile/features/settings/application/tool_display_controller.dart';
 import 'package:overseer_mobile/features/settings/data/audioplayers_sound_preview_player.dart';
 import 'package:overseer_mobile/features/settings/data/audioplayers_work_sound_player.dart';
-import 'package:overseer_mobile/features/settings/data/shared_preferences_sound_preference_store.dart';
-import 'package:overseer_mobile/features/settings/data/shared_preferences_tool_display_preference_store.dart';
+import 'package:overseer_mobile/features/settings/data/shared_preferences_preference_store.dart';
 import 'package:overseer_mobile/features/themes/application/connection_theme_controller.dart';
 import 'package:overseer_mobile/features/themes/data/shared_preferences_connection_theme_store.dart';
 import 'package:overseer_mobile/features/themes/data/dio_connection_theme_catalog_source.dart';
@@ -294,11 +292,8 @@ class AppDependencies extends StatelessWidget {
             connection: connection,
           ),
         ),
-        soundPreferenceStoreProvider.overrideWithValue(
-          SharedPreferencesSoundPreferenceStore(),
-        ),
-        toolDisplayPreferenceStoreProvider.overrideWithValue(
-          SharedPreferencesToolDisplayPreferenceStore(),
+        preferenceStoreProvider.overrideWithValue(
+          SharedPreferencesPreferenceStore(),
         ),
         soundPreviewPlayerProvider.overrideWith((ref) {
           final player = AudioplayersSoundPreviewPlayer();
@@ -338,12 +333,9 @@ class AppDependencies extends StatelessWidget {
             diagnostics: ref.watch(appDiagnosticsProvider),
           );
         }),
-        transcriptLiveServiceProvider.overrideWith((ref) {
-          final live = ref.watch(fleetLiveServiceProvider);
-          return live is TranscriptLiveService
-              ? live as TranscriptLiveService
-              : null;
-        }),
+        transcriptLiveServiceProvider.overrideWith(
+          (ref) => ref.watch(fleetLiveServiceProvider),
+        ),
       ],
       child: LiveSyncLifecycle(child: PushNotificationLifecycle(child: child)),
     );

@@ -190,7 +190,20 @@ class _HarnessFleetRepository implements FleetRepository {
   final List<WorkspaceFleet> fleets;
 
   @override
-  Future<List<WorkspaceFleet>> loadFleet() async => fleets;
+  Future<List<WorkspaceFleet>> loadCachedFleet() async => fleets;
+
+  @override
+  Stream<List<WorkspaceFleet>> watchFleet() => const Stream.empty();
+
+  @override
+  Future<List<WorkspaceFleet>> refreshFleet() async => fleets;
+
+  @override
+  Future<void> applyPeonProjection({
+    required String workspaceId,
+    required int cursor,
+    required Map<String, dynamic> projection,
+  }) async {}
 }
 
 class _HarnessProjectRepository implements ProjectRepository {
@@ -452,13 +465,12 @@ class _HarnessFollowupRepository implements FollowupRepository {
     required String prompt,
     required bool serverQueue,
     bool startNow = false,
-    String? agent,
     String? model,
     String? reasoningEffort,
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   }) async {
     submissions.add(
       _SubmissionRecord(

@@ -5,9 +5,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:overseer_mobile/core/live/active_sessions.dart';
 import 'package:overseer_mobile/core/live/presence.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
-import 'package:overseer_mobile/features/fleet/application/fleet_live_service.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
+
+import '../../../support/fake_fleet.dart';
 
 void main() {
   test(
@@ -63,7 +64,7 @@ const _cachedFleet = [
   ),
 ];
 
-class _CachedFleetRepository implements CachedFleetRepository {
+class _CachedFleetRepository implements FleetRepository {
   _CachedFleetRepository(this.refreshResult);
 
   final Future<List<WorkspaceFleet>> refreshResult;
@@ -84,17 +85,13 @@ class _CachedFleetRepository implements CachedFleetRepository {
   Future<List<WorkspaceFleet>> loadCachedFleet() async => _cachedFleet;
 
   @override
-  Future<List<WorkspaceFleet>> loadFleet() => refreshFleet();
-
-  @override
   Future<List<WorkspaceFleet>> refreshFleet() => refreshResult;
 
   @override
   Stream<List<WorkspaceFleet>> watchFleet() => _changes.stream;
 }
 
-class _RecordingLiveService
-    implements FleetLiveService, FleetWorkspaceReconciler {
+class _RecordingLiveService extends NoopFleetLiveService {
   List<String> connectedWorkspaceIds = const [];
   List<String> reconciledWorkspaceIds = const [];
 
@@ -145,15 +142,6 @@ class _RecordingLiveService
   }) async {
     reconciledWorkspaceIds = [...workspaceIds];
   }
-
-  @override
-  void setPresence({
-    required String workspaceId,
-    required PresenceLocation location,
-  }) {}
-
-  @override
-  Future<void> stop() async {}
 }
 
 Future<void> _waitFor(bool Function() condition) async {

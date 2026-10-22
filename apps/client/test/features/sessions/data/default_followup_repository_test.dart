@@ -127,7 +127,7 @@ void main() {
     () async {
       final requests = <RequestOptions>[];
       var rejectFollowup = true;
-      final progress = <FollowupSubmissionProgress>[];
+      final progress = <SubmissionProgress>[];
       final dio = Dio(BaseOptions(baseUrl: 'https://overseer.example/api/'));
       dio.interceptors.add(
         InterceptorsWrapper(
@@ -194,8 +194,8 @@ void main() {
         hasLength(1),
       );
       expect(requests.first.headers['Peon-Content-Sha256'], hasLength(64));
-      expect(progress.first.stage, FollowupSubmissionStage.uploading);
-      expect(progress.last.stage, FollowupSubmissionStage.submitting);
+      expect(progress.first.stage, SubmissionStage.uploading);
+      expect(progress.last.stage, SubmissionStage.submitting);
 
       expect(await repository.retryPending(scope), isFalse);
 

@@ -1,7 +1,10 @@
 import '../../../core/live/active_sessions.dart';
 import '../../../core/live/presence.dart';
+import '../../../core/live/transcript_live_service.dart';
 
-abstract interface class FleetLiveService {
+/// The single live socket also carries transcript tails, so it is usable
+/// wherever a [TranscriptLiveService] is expected.
+abstract interface class FleetLiveService implements TranscriptLiveService {
   Future<void> connect({
     required List<String> workspaceIds,
     required Map<String, int> initialCursors,
@@ -45,9 +48,7 @@ abstract interface class FleetLiveService {
   });
 
   Future<void> stop();
-}
 
-abstract interface class AttentionFleetLiveService {
   void setAttentionHandler(
     Future<void> Function(
       String workspaceId,
@@ -56,19 +57,13 @@ abstract interface class AttentionFleetLiveService {
     )
     handler,
   );
-}
 
-abstract interface class FleetWorkspaceReconciler {
   Future<void> reconcileWorkspaces({
     required List<String> workspaceIds,
     required Map<String, int> initialCursors,
   });
-}
 
-abstract interface class FleetLiveLifecycle {
   Future<void> resumeFromBackground();
-}
 
-abstract interface class FleetLiveForeground {
   void setForeground(bool foreground);
 }

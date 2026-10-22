@@ -1,10 +1,8 @@
 import 'fleet_models.dart';
 
+/// Cache-first fleet source: the cached snapshot is served immediately and
+/// [watchFleet] emits whenever a refresh or live projection updates it.
 abstract interface class FleetRepository {
-  Future<List<WorkspaceFleet>> loadFleet();
-}
-
-abstract interface class CachedFleetRepository implements FleetRepository {
   Future<List<WorkspaceFleet>> loadCachedFleet();
 
   Stream<List<WorkspaceFleet>> watchFleet();

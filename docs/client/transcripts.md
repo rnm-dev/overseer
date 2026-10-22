@@ -195,8 +195,10 @@ reports how many were rejected.
 
 The client allocates the follow-up command ID before upload and uses it as the
 upload directory and eventual idempotency key. A failed upload keeps the
-selected bytes and that ID for an unchanged retry. Changing the draft or
-attachment selection allocates a new ID on the next Send. Once every upload is
+selected bytes and that ID for an unchanged retry. The ID is tied to the
+payload, not to edits: the next Send reuses it only when prompt, model, effort,
+reply and attachment bytes equal the failed attempt's, and allocates a new one
+otherwise, so an edited-then-reverted draft is still the same retry. Once every upload is
 committed, its type/path metadata is stored with the pending command in Drift;
 raw attachment bytes are never stored there. A transient `/followup` or
 `/queue` failure therefore retries the same body and ID in FIFO order without

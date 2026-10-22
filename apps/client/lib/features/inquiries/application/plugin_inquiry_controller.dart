@@ -1,7 +1,6 @@
-import 'dart:math';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/ids/request_id.dart';
 import '../../../core/time/app_time.dart';
 import '../domain/plugin_inquiry.dart';
 import '../domain/plugin_inquiry_repository.dart';
@@ -124,7 +123,7 @@ class PluginInquiryController extends Notifier<PluginInquiryState> {
     }
     final key = '${inquiry.inquiryId}:${decision.name}';
     _refreshVersion += 1;
-    final requestId = _requestIds[key] ??= _newRequestId();
+    final requestId = _requestIds[key] ??= newRequestId();
     state = state.copyWith(
       acting: {...state.acting, inquiry.inquiryId},
       actionFailed: {...state.actionFailed}..remove(inquiry.inquiryId),
@@ -196,12 +195,4 @@ class PluginInquiryController extends Notifier<PluginInquiryState> {
     'INQUIRY_STALE_GENERATION' => PluginInquiryStatus.stale,
     _ => PluginInquiryStatus.failed,
   };
-
-  static String _newRequestId() {
-    final random = Random.secure();
-    return List.generate(
-      16,
-      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
-    ).join();
-  }
 }

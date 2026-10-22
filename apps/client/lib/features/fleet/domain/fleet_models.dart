@@ -46,6 +46,20 @@ class Peon {
   }
 
   int get activeSessions => load?.activeSessions ?? 0;
+
+  /// Narrow copy covering the fields live projections update.
+  Peon copyWith({String? name, bool? online, PeonLoad? load}) => Peon(
+    id: id,
+    name: name ?? this.name,
+    hostname: hostname,
+    baseUrl: baseUrl,
+    addressSource: addressSource,
+    online: online ?? this.online,
+    lastSeen: lastSeen,
+    capabilities: capabilities,
+    load: load ?? this.load,
+    recentSessions: recentSessions,
+  );
 }
 
 class FleetRecentSession {

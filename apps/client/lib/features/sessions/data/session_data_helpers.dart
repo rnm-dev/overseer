@@ -2,25 +2,90 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
 
+import '../../../core/database/app_database.dart';
 import '../../../core/network/server_error_message.dart';
 import '../domain/followup_repository.dart';
 import '../domain/new_session_repository.dart';
 
 export '../../../core/network/server_error_message.dart';
 
-extension SessionKeyFilter on TableInfo<Table, Object?> {
-  /// Matches rows keyed by the (workspace_id, peon_id, session_id) triple.
-  Expression<bool> matchesSession(
-    String workspaceId,
-    String peonId,
-    String sessionId,
-  ) =>
-      _stringColumn('workspace_id').equals(workspaceId) &
-      _stringColumn('peon_id').equals(peonId) &
-      _stringColumn('session_id').equals(sessionId);
+/// Matches rows keyed by the (workspace_id, peon_id, session_id) triple.
+Expression<bool> _matchesSessionKey(
+  ({
+    GeneratedColumn<String> workspaceId,
+    GeneratedColumn<String> peonId,
+    GeneratedColumn<String> sessionId,
+  })
+  columns,
+  String workspaceId,
+  String peonId,
+  String sessionId,
+) =>
+    columns.workspaceId.equals(workspaceId) &
+    columns.peonId.equals(peonId) &
+    columns.sessionId.equals(sessionId);
 
-  GeneratedColumn<String> _stringColumn(String name) =>
-      columnsByName[name]! as GeneratedColumn<String>;
+// Drift generates unrelated table classes, so each session-keyed table gets a
+// typed one-line `matchesSession` over the shared filter above.
+
+extension CachedSessionsKey on $CachedSessionsTable {
+  Expression<bool> matchesSession(String w, String p, String s) =>
+      _matchesSessionKey(
+        (workspaceId: workspaceId, peonId: peonId, sessionId: sessionId),
+        w,
+        p,
+        s,
+      );
+}
+
+extension CachedTranscriptsKey on $CachedTranscriptsTable {
+  Expression<bool> matchesSession(String w, String p, String s) =>
+      _matchesSessionKey(
+        (workspaceId: workspaceId, peonId: peonId, sessionId: sessionId),
+        w,
+        p,
+        s,
+      );
+}
+
+extension CachedTranscriptEventsKey on $CachedTranscriptEventsTable {
+  Expression<bool> matchesSession(String w, String p, String s) =>
+      _matchesSessionKey(
+        (workspaceId: workspaceId, peonId: peonId, sessionId: sessionId),
+        w,
+        p,
+        s,
+      );
+}
+
+extension ComposerDraftsKey on $ComposerDraftsTable {
+  Expression<bool> matchesSession(String w, String p, String s) =>
+      _matchesSessionKey(
+        (workspaceId: workspaceId, peonId: peonId, sessionId: sessionId),
+        w,
+        p,
+        s,
+      );
+}
+
+extension PendingFollowupCommandsKey on $PendingFollowupCommandsTable {
+  Expression<bool> matchesSession(String w, String p, String s) =>
+      _matchesSessionKey(
+        (workspaceId: workspaceId, peonId: peonId, sessionId: sessionId),
+        w,
+        p,
+        s,
+      );
+}
+
+extension CachedQueuedFollowupsKey on $CachedQueuedFollowupsTable {
+  Expression<bool> matchesSession(String w, String p, String s) =>
+      _matchesSessionKey(
+        (workspaceId: workspaceId, peonId: peonId, sessionId: sessionId),
+        w,
+        p,
+        s,
+      );
 }
 
 /// Uploads composer attachments to the Peon's staging area under [uploadId]

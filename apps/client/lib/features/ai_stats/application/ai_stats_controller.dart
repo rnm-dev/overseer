@@ -16,14 +16,38 @@ final aiStatsControllerProvider = AsyncNotifierProvider.autoDispose
     );
 
 final aiQuotaControllerProvider = AsyncNotifierProvider.autoDispose
-    .family<AiQuotaController, AiProviderQuota, AiProviderScope>(
-      AiQuotaController.new,
+    .family<
+      AiProviderController<AiProviderQuota>,
+      AiProviderQuota,
+      AiProviderScope
+    >(
+      (scope) => AiProviderController(
+        scope,
+        (repository, scope, {required refresh}) => repository.loadQuota(
+          workspaceId: scope.workspaceId,
+          peonId: scope.peonId,
+          provider: scope.provider,
+          refresh: refresh,
+        ),
+      ),
       retry: (_, _) => null,
     );
 
 final aiCapabilitiesControllerProvider = AsyncNotifierProvider.autoDispose
-    .family<AiCapabilitiesController, AiProviderCapabilities, AiProviderScope>(
-      AiCapabilitiesController.new,
+    .family<
+      AiProviderController<AiProviderCapabilities>,
+      AiProviderCapabilities,
+      AiProviderScope
+    >(
+      (scope) => AiProviderController(
+        scope,
+        (repository, scope, {required refresh}) => repository.loadCapabilities(
+          workspaceId: scope.workspaceId,
+          peonId: scope.peonId,
+          provider: scope.provider,
+          refresh: refresh,
+        ),
+      ),
       retry: (_, _) => null,
     );
 
@@ -82,52 +106,29 @@ typedef AiProviderScope = ({
   AiProvider provider,
 });
 
-class AiQuotaController extends AsyncNotifier<AiProviderQuota> {
-  AiQuotaController(this.scope);
+typedef AiProviderLoader<T> =
+    Future<T> Function(
+      AiStatsRepository repository,
+      AiProviderScope scope, {
+      required bool refresh,
+    });
+
+/// Loads one provider-scoped resource (quota or capabilities) and supports a
+/// forced refresh.
+class AiProviderController<T> extends AsyncNotifier<T> {
+  AiProviderController(this.scope, this._loader);
 
   final AiProviderScope scope;
+  final AiProviderLoader<T> _loader;
 
   @override
-  Future<AiProviderQuota> build() => _load();
+  Future<T> build() => _load();
 
-  Future<AiProviderQuota> _load({bool refresh = false}) {
-    return ref
-        .read(aiStatsRepositoryProvider)
-        .loadQuota(
-          workspaceId: scope.workspaceId,
-          peonId: scope.peonId,
-          provider: scope.provider,
-          refresh: refresh,
-        );
-  }
+  Future<T> _load({bool refresh = false}) =>
+      _loader(ref.read(aiStatsRepositoryProvider), scope, refresh: refresh);
 
   Future<void> refresh() async {
-    state = const AsyncLoading<AiProviderQuota>();
-    state = await AsyncValue.guard(() => _load(refresh: true));
-  }
-}
-
-class AiCapabilitiesController extends AsyncNotifier<AiProviderCapabilities> {
-  AiCapabilitiesController(this.scope);
-
-  final AiProviderScope scope;
-
-  @override
-  Future<AiProviderCapabilities> build() => _load();
-
-  Future<AiProviderCapabilities> _load({bool refresh = false}) {
-    return ref
-        .read(aiStatsRepositoryProvider)
-        .loadCapabilities(
-          workspaceId: scope.workspaceId,
-          peonId: scope.peonId,
-          provider: scope.provider,
-          refresh: refresh,
-        );
-  }
-
-  Future<void> refresh() async {
-    state = const AsyncLoading<AiProviderCapabilities>();
+    state = AsyncLoading<T>();
     state = await AsyncValue.guard(() => _load(refresh: true));
   }
 }

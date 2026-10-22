@@ -1,31 +1,22 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/tool_display_mode.dart';
-import '../domain/tool_display_preference_store.dart';
-
-final toolDisplayPreferenceStoreProvider = Provider<ToolDisplayPreferenceStore>(
-  (ref) => MemoryToolDisplayPreferenceStore(),
-);
+import 'enum_preference_controller.dart';
 
 final toolDisplayControllerProvider =
     AsyncNotifierProvider<ToolDisplayController, ToolDisplayMode>(
       ToolDisplayController.new,
     );
 
-class ToolDisplayController extends AsyncNotifier<ToolDisplayMode> {
-  @override
-  Future<ToolDisplayMode> build() {
-    return ref.read(toolDisplayPreferenceStoreProvider).read();
-  }
+class ToolDisplayController extends EnumPreferenceController<ToolDisplayMode> {
+  static const preferenceKey = 'overseer.session-tool-display';
 
-  Future<void> select(ToolDisplayMode mode) async {
-    final previous = state;
-    state = AsyncData(mode);
-    try {
-      await ref.read(toolDisplayPreferenceStoreProvider).write(mode);
-    } catch (error, stackTrace) {
-      state = previous;
-      Error.throwWithStackTrace(error, stackTrace);
-    }
-  }
+  @override
+  String get key => preferenceKey;
+
+  @override
+  String encode(ToolDisplayMode value) => value.id;
+
+  @override
+  ToolDisplayMode decode(String? id) => ToolDisplayMode.fromId(id);
 }

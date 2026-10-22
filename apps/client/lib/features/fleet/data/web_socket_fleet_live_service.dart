@@ -18,14 +18,7 @@ part 'web_socket_fleet_live_protocol.dart';
 part 'web_socket_fleet_live_state.dart';
 part 'web_socket_fleet_live_transcripts.dart';
 
-class WebSocketFleetLiveService
-    implements
-        FleetLiveService,
-        FleetWorkspaceReconciler,
-        FleetLiveLifecycle,
-        FleetLiveForeground,
-        AttentionFleetLiveService,
-        TranscriptLiveService {
+class WebSocketFleetLiveService implements FleetLiveService {
   WebSocketFleetLiveService({
     required this.serverUrl,
     required this._dio,

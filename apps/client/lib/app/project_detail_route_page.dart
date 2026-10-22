@@ -54,7 +54,7 @@ class ProjectDetailRoutePage extends ConsumerWidget {
                 required String projectId,
                 required String projectKey,
               }) {
-                return SessionList(
+                return SessionSliverList(
                   workspaceId: workspaceId,
                   peonId: peonId,
                   projectId: projectId,

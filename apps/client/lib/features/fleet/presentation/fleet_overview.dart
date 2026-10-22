@@ -156,7 +156,7 @@ class _FleetList extends ConsumerWidget {
         slivers: [
           SliverPadding(
             padding: EdgeInsets.only(
-              top: compact ? context.appSpacing.screenHorizontal : 28,
+              top: compact ? AppSpacing.screenHorizontal : 28,
             ),
             sliver: SliverMainAxisGroup(
               slivers: [
@@ -1133,8 +1133,8 @@ class _FleetLoadingLayout extends ConsumerWidget {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 760),
               child: Padding(
-                padding: context.appSpacing.screenInsets(
-                  top: compact ? context.appSpacing.screenHorizontal : 28,
+                padding: AppSpacing.screenInsets(
+                  top: compact ? AppSpacing.screenHorizontal : 28,
                   bottom: 48,
                 ),
                 child: Column(

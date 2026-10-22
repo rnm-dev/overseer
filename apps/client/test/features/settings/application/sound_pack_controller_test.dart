@@ -1,18 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:overseer_mobile/features/settings/application/enum_preference_controller.dart';
 import 'package:overseer_mobile/features/settings/application/sound_pack_controller.dart';
+import 'package:overseer_mobile/features/settings/domain/preference_store.dart';
 import 'package:overseer_mobile/features/settings/domain/sound_pack.dart';
-import 'package:overseer_mobile/features/settings/domain/sound_preference_store.dart';
 import 'package:overseer_mobile/features/settings/domain/sound_preview_player.dart';
 
 void main() {
   test('persists a selection and previews the selected pack', () async {
-    final store = MemorySoundPreferenceStore();
+    final store = MemoryPreferenceStore();
     final preview = _RecordingSoundPreviewPlayer();
     final container = ProviderContainer(
       overrides: [
-        soundPreferenceStoreProvider.overrideWithValue(store),
+        preferenceStoreProvider.overrideWithValue(store),
         soundPreviewPlayerProvider.overrideWithValue(preview),
       ],
     );
@@ -28,7 +29,10 @@ void main() {
         .select(SoundPack.scv);
 
     expect(container.read(soundPackControllerProvider).value, SoundPack.scv);
-    expect(await store.read(), SoundPack.scv);
+    expect(
+      await store.read(SoundPackController.preferenceKey),
+      SoundPack.scv.id,
+    );
     expect(preview.previews, [SoundPack.scv]);
   });
 

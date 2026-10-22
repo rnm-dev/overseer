@@ -1,8 +1,5 @@
-enum ResourceAuthority { peon, overseer }
-
 final class ResourceSnapshot<T> {
   ResourceSnapshot.validated({
-    required this.authority,
     required Iterable<T> items,
     required String Function(T item) identity,
     int maxItems = 10000,
@@ -21,7 +18,6 @@ final class ResourceSnapshot<T> {
     }
   }
 
-  final ResourceAuthority authority;
   final List<T> items;
 }
 
@@ -29,7 +25,6 @@ final class ResourceSnapshot<T> {
 /// remain responsible for parsing payload fields and committing their own rows.
 final class ResourceProjectionEnvelope {
   const ResourceProjectionEnvelope({
-    required this.authority,
     required this.workspaceId,
     required this.resourceId,
     required this.version,
@@ -38,7 +33,6 @@ final class ResourceProjectionEnvelope {
     this.peonId,
   });
 
-  final ResourceAuthority authority;
   final String workspaceId;
   final String? peonId;
   final String resourceId;
@@ -56,7 +50,6 @@ final class ResourceProjectionEnvelope {
     if (peonId is! String || resourceId is! String) return null;
     final rawVersion = projection['syncedAt'];
     return ResourceProjectionEnvelope(
-      authority: ResourceAuthority.peon,
       workspaceId: workspaceId,
       peonId: peonId,
       resourceId: resourceId,

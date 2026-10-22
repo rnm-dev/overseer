@@ -42,7 +42,7 @@ void main() {
       pageTitle.style?.fontSize,
       greaterThan(sectionTitle.style!.fontSize!),
     );
-    expect(sectionTitle.style?.color, AppColors.bone);
+    expect(sectionTitle.style?.color, AppThemePackages.bundled.first.ink);
   });
 
   testWidgets('AppCard composes the shared surface contract', (
@@ -65,8 +65,8 @@ void main() {
     );
     final decoration = container.decoration as BoxDecoration;
     expect(container.padding, const EdgeInsets.all(16));
-    expect(decoration.color, AppColors.iron900);
-    expect(decoration.border!.top.color, AppColors.iron800);
+    expect(decoration.color, AppThemePackages.bundled.first.surfaceRaised);
+    expect(decoration.border!.top.color, AppThemePackages.bundled.first.edge);
   });
 
   testWidgets(
@@ -103,7 +103,7 @@ void main() {
                   )
                   .decoration
               as BoxDecoration;
-      expect(decoration.border!.top.color, AppColors.iron800);
+      expect(decoration.border!.top.color, AppThemePackages.bundled.first.edge);
 
       final semantics = tester.getSemantics(
         find.byKey(const ValueKey('list-tile')),
@@ -283,6 +283,6 @@ void main() {
           .first,
     );
     final decoration = dot.decoration as BoxDecoration;
-    expect(decoration.color, AppColors.forge);
+    expect(decoration.color, AppThemePackages.bundled.first.warning);
   });
 }

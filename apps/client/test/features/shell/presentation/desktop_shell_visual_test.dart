@@ -10,9 +10,10 @@ import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/features/fleet/application/fleet_controller.dart';
 import 'package:overseer_mobile/features/fleet/fleet.dart';
 import 'package:overseer_mobile/features/fleet/domain/fleet_models.dart';
-import 'package:overseer_mobile/features/fleet/domain/fleet_repository.dart';
 import 'package:overseer_mobile/features/shell/presentation/shell_page.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
+
+import '../../../support/fake_fleet.dart';
 
 void main() {
   testWidgets('captures the populated desktop fleet shell', (tester) async {
@@ -130,11 +131,11 @@ void _noop() {}
 
 Future<void> _noopSignOut() async {}
 
-class _DesktopVisualFleetRepository implements FleetRepository {
+class _DesktopVisualFleetRepository extends FakeFleetRepository {
   const _DesktopVisualFleetRepository();
 
   @override
-  Future<List<WorkspaceFleet>> loadFleet() async => const [
+  Future<List<WorkspaceFleet>> refreshFleet() async => const [
     WorkspaceFleet(
       workspace: Workspace(id: 'atlas', name: 'Atlas'),
       peons: [

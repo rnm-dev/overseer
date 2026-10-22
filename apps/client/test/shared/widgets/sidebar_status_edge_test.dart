@@ -37,7 +37,10 @@ void main() {
 
     final shadows = _decoration(tester).boxShadow!;
     expect(shadows, hasLength(3));
-    expect(shadows.first.color.withValues(alpha: 1), AppColors.fel);
+    expect(
+      shadows.first.color.withValues(alpha: 1),
+      AppThemePackages.bundled.first.accent,
+    );
     expect(find.bySemanticsLabel('Idle'), findsOneWidget);
 
     await tester.pumpAndSettle();

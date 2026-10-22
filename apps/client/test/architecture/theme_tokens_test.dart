@@ -10,8 +10,7 @@ void main() {
       final path = entity.path.replaceAll('\\', '/');
       if (_allowlisted(path)) continue;
       final source = entity.readAsStringSync();
-      if (source.contains('AppColors.') ||
-          RegExp(r'Color\(0x', caseSensitive: false).hasMatch(source) ||
+      if (RegExp(r'Color\(0x', caseSensitive: false).hasMatch(source) ||
           RegExp(
             r'Colors\.(black|white|grey|red|green|blue|amber|orange)',
           ).hasMatch(source)) {

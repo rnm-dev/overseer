@@ -737,7 +737,10 @@ void main() {
       tester,
       const Key('session-status-newer'),
     ).boxShadow!.first;
-    expect(idleFlare.color.withValues(alpha: 1), AppColors.fel);
+    expect(
+      idleFlare.color.withValues(alpha: 1),
+      AppThemePackages.bundled.first.accent,
+    );
 
     await tester.pump(const Duration(milliseconds: 120));
 
@@ -865,7 +868,7 @@ void main() {
       tester,
       const Key('project-status-overseer-mobile'),
     );
-    expect(decoration.color, AppColors.felBright);
+    expect(decoration.color, AppThemePackages.bundled.first.accentStrong);
     expect(decoration.boxShadow, isNotEmpty);
     final projectInkWell = tester.widget<InkWell>(
       find.descendant(
@@ -1245,8 +1248,14 @@ void _expectSessionInteractionColors(
   );
   expect(inkWell.overlayColor, isNull);
   final theme = Theme.of(tester.element(find.byKey(Key('session-$sessionId'))));
-  expect(theme.hoverColor, AppColors.fel.withValues(alpha: 0.10));
-  expect(theme.highlightColor, AppColors.fel.withValues(alpha: 0.14));
+  expect(
+    theme.hoverColor,
+    AppThemePackages.bundled.first.accent.withValues(alpha: 0.10),
+  );
+  expect(
+    theme.highlightColor,
+    AppThemePackages.bundled.first.accent.withValues(alpha: 0.14),
+  );
 }
 
 void _expectStatusLight(

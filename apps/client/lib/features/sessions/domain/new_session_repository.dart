@@ -14,29 +14,30 @@ class NewSessionAttachment {
   final Uint8List bytes;
 }
 
-enum NewSessionSubmissionStage { uploading, starting }
+enum SubmissionStage { uploading, submitting }
 
-class NewSessionSubmissionProgress {
-  const NewSessionSubmissionProgress.uploading({
+/// Progress of a composer submission — a new session or a follow-up: first
+/// each attachment upload, then the request itself.
+class SubmissionProgress {
+  const SubmissionProgress.uploading({
     required this.current,
     required this.total,
     required this.fileName,
-  }) : stage = NewSessionSubmissionStage.uploading;
+  }) : stage = SubmissionStage.uploading;
 
-  const NewSessionSubmissionProgress.starting()
-    : stage = NewSessionSubmissionStage.starting,
+  const SubmissionProgress.submitting()
+    : stage = SubmissionStage.submitting,
       current = 0,
       total = 0,
       fileName = null;
 
-  final NewSessionSubmissionStage stage;
+  final SubmissionStage stage;
   final int current;
   final int total;
   final String? fileName;
 }
 
-typedef NewSessionProgressCallback =
-    void Function(NewSessionSubmissionProgress progress);
+typedef SubmissionProgressCallback = void Function(SubmissionProgress progress);
 
 class NewSessionRequest {
   const NewSessionRequest({
@@ -63,7 +64,7 @@ class NewSessionRequest {
   final String? model;
   final String? reasoningEffort;
   final List<NewSessionAttachment> attachments;
-  final NewSessionProgressCallback? onProgress;
+  final SubmissionProgressCallback? onProgress;
 }
 
 abstract interface class NewSessionRepository {

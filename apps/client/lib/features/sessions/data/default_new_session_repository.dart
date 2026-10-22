@@ -31,7 +31,7 @@ class DefaultNewSessionRepository implements NewSessionRepository {
           attachments: request.attachments,
           error: (message, _) => NewSessionException(message),
           onUploading: (current, total, fileName) => request.onProgress?.call(
-            NewSessionSubmissionProgress.uploading(
+            SubmissionProgress.uploading(
               current: current,
               total: total,
               fileName: fileName,
@@ -39,7 +39,7 @@ class DefaultNewSessionRepository implements NewSessionRepository {
           ),
         ),
       );
-      request.onProgress?.call(const NewSessionSubmissionProgress.starting());
+      request.onProgress?.call(const SubmissionProgress.submitting());
       late final Response<Map<String, dynamic>> response;
       try {
         response = await _dio.post<Map<String, dynamic>>(

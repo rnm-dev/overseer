@@ -52,29 +52,28 @@ void main() {
 
   group('AppTheme.dark', () {
     test('uses the global twelve-pixel screen gutter', () {
-      const spacing = AppSpacing();
-
-      expect(spacing.screenHorizontal, 12);
+      expect(AppSpacing.screenHorizontal, 12);
       expect(
-        spacing.screenInsets(top: 12, bottom: 32),
+        AppSpacing.screenInsets(top: 12, bottom: 32),
         const EdgeInsets.fromLTRB(12, 12, 12, 32),
       );
     });
 
     test('is Material 3 dark and maps core palette', () {
       final theme = AppTheme.dark;
+      final palette = AppThemePackages.bundled.first;
 
       expect(theme.useMaterial3, true);
       expect(theme.brightness, Brightness.dark);
-      expect(theme.scaffoldBackgroundColor, AppColors.voidColor);
-      expect(theme.colorScheme.primary, AppColors.fel);
-      expect(theme.colorScheme.secondary, AppColors.forge);
-      expect(theme.colorScheme.error, AppColors.blood);
-      expect(theme.colorScheme.surface, AppColors.iron950);
-      expect(theme.colorScheme.onSurface, AppColors.bone);
-      expect(theme.hoverColor, AppColors.fel.withValues(alpha: 0.10));
+      expect(theme.scaffoldBackgroundColor, palette.canvas);
+      expect(theme.colorScheme.primary, palette.accent);
+      expect(theme.colorScheme.secondary, palette.warning);
+      expect(theme.colorScheme.error, palette.danger);
+      expect(theme.colorScheme.surface, palette.surface);
+      expect(theme.colorScheme.onSurface, palette.ink);
+      expect(theme.hoverColor, palette.accent.withValues(alpha: 0.10));
       expect(theme.focusColor, theme.hoverColor);
-      expect(theme.highlightColor, AppColors.fel.withValues(alpha: 0.14));
+      expect(theme.highlightColor, palette.accent.withValues(alpha: 0.14));
       expect(theme.splashColor, theme.highlightColor);
     });
 
@@ -93,7 +92,8 @@ void main() {
       expect(AppTypography.display().fontFamily, AppTypography.fontFamily);
       expect(AppTypography.body().fontFamily, AppTypography.fontFamily);
       expect(AppTypography.display().fontSize, isNull);
-      expect(AppTypography.body(color: AppColors.fel).color, AppColors.fel);
+      final accent = AppThemePackages.bundled.first.accent;
+      expect(AppTypography.body(color: accent).color, accent);
       expect(AppTypography.mono(fontSize: 12).fontFamily, 'monospace');
     });
   });

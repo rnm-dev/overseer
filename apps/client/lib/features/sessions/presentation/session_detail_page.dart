@@ -14,6 +14,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/ids/request_id.dart';
 import '../../../core/live/active_sessions.dart';
 import '../../../core/live/presence.dart';
 import '../../../core/config/app_config.dart';
@@ -403,7 +404,6 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
                                       _selectedProjectKey == projectKey) {
                                     return;
                                   }
-                                  _resetSubmissionIdentity();
                                   setState(
                                     () => _selectedProjectKey = projectKey,
                                   );
@@ -528,7 +528,7 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
                                   ? 'Starting session…'
                                   : submissionLabel(
                                       composerState,
-                                      running: isRunning,
+                                      newSession: isNewSession,
                                     ),
                               running: isRunning,
                               queuedCount: composerState?.pending.length ?? 0,
@@ -611,13 +611,6 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
                                 ref.read(dictationProvider.notifier).cancel(),
                               ),
                               onRemoveAttachment: (index) {
-                                ref
-                                    .read(
-                                      sessionComposerControllerProvider(
-                                        composerScope,
-                                      ).notifier,
-                                    )
-                                    .resetSubmissionIdentity();
                                 setState(() {
                                   _composerAttachments = [
                                     ..._composerAttachments.take(index),
@@ -724,13 +717,6 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
     peonId: peonId,
     sessionId: session?.sessionId ?? _newSessionDraftId,
   );
-
-  @override
-  void _resetSubmissionIdentity() {
-    ref
-        .read(sessionComposerControllerProvider(_composerScope).notifier)
-        .resetSubmissionIdentity();
-  }
 
   Future<void> _submitComposer(
     FollowupScope scope, {
@@ -1004,7 +990,7 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
             NewSessionRequest(
               workspaceId: workspaceId,
               peonId: peonId,
-              requestId: _recoveryRequestId(),
+              requestId: newRequestId(),
               prompt: continuationRecoveryPrompt(
                 sourceSessionId: source.sessionId,
                 sourceUrl: sourceUrl,
@@ -1047,20 +1033,6 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
         });
       }
     }
-  }
-
-  String _recoveryRequestId() {
-    final bytes = List<int>.generate(
-      16,
-      (_) => math.Random.secure().nextInt(256),
-    );
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    String hex(int start, int end) => bytes
-        .sublist(start, end)
-        .map((value) => value.toRadixString(16).padLeft(2, '0'))
-        .join();
-    return '${hex(0, 4)}-${hex(4, 6)}-${hex(6, 8)}-${hex(8, 10)}-${hex(10, 16)}';
   }
 
   void _playWorkCue(WorkSoundCue cue) {

@@ -88,30 +88,6 @@ class FollowupAttachment {
   final String? sha256;
 }
 
-enum FollowupSubmissionStage { uploading, submitting }
-
-class FollowupSubmissionProgress {
-  const FollowupSubmissionProgress.uploading({
-    required this.current,
-    required this.total,
-    required this.fileName,
-  }) : stage = FollowupSubmissionStage.uploading;
-
-  const FollowupSubmissionProgress.submitting()
-    : stage = FollowupSubmissionStage.submitting,
-      current = 0,
-      total = 0,
-      fileName = null;
-
-  final FollowupSubmissionStage stage;
-  final int current;
-  final int total;
-  final String? fileName;
-}
-
-typedef FollowupProgressCallback =
-    void Function(FollowupSubmissionProgress progress);
-
 class QueuedFollowupAttachment {
   const QueuedFollowupAttachment({
     required this.type,
@@ -193,7 +169,7 @@ abstract interface class FollowupRepository {
     String? commandId,
     List<NewSessionAttachment> attachments = const [],
     SelectedTextReply? replyTo,
-    FollowupProgressCallback? onProgress,
+    SubmissionProgressCallback? onProgress,
   });
 
   Future<bool> retryPending(FollowupScope scope);

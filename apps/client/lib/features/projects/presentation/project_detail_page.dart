@@ -41,6 +41,8 @@ typedef ProjectDetailOpenFileIntent =
       required String path,
     });
 
+/// Builds the project's session history. Must return a sliver: it is placed
+/// inside the sessions pane's [CustomScrollView].
 typedef ProjectDetailSessionsBuilder =
     Widget Function(
       BuildContext context, {
@@ -363,19 +365,24 @@ class _ProjectSessionsPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
+    return CustomScrollView(
       key: const Key('project-sessions-pane'),
-      child: sessionListBuilder == null
-          ? const _ProjectSessionsEmptyFallback(
+      slivers: [
+        if (sessionListBuilder == null)
+          const SliverToBoxAdapter(
+            child: _ProjectSessionsEmptyFallback(
               message: 'Session list unavailable in this context.',
-            )
-          : sessionListBuilder!(
-              context,
-              workspaceId: workspaceId,
-              peonId: peonId,
-              projectId: project.projectId,
-              projectKey: project.key,
             ),
+          )
+        else
+          sessionListBuilder!(
+            context,
+            workspaceId: workspaceId,
+            peonId: peonId,
+            projectId: project.projectId,
+            projectKey: project.key,
+          ),
+      ],
     );
   }
 }

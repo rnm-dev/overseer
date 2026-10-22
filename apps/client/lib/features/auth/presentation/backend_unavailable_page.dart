@@ -18,7 +18,7 @@ class BackendUnavailablePage extends StatelessWidget {
     return Scaffold(
       body: SafeArea(
         child: Padding(
-          padding: context.appSpacing.screenInsets(top: 20, bottom: 20),
+          padding: AppSpacing.screenInsets(top: 20, bottom: 20),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [

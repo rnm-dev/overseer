@@ -11,6 +11,8 @@ import 'package:overseer_mobile/features/auth/domain/auth_models.dart';
 import 'package:overseer_mobile/shared/layout/responsive_breakpoints.dart';
 import 'package:overseer_mobile/shared/widgets/app_navigation_bar.dart';
 
+import '../../../support/fake_fleet.dart';
+
 void main() {
   group('ResponsiveBreakpoints', () {
     test('classifies boundary widths', () {
@@ -157,16 +159,13 @@ Future<void> _pumpShell(
 
 Future<void> _signOut() async {}
 
-class _EmptyFleetRepository implements FleetRepository {
-  @override
-  Future<List<WorkspaceFleet>> loadFleet() async => const [];
-}
+class _EmptyFleetRepository extends FakeFleetRepository {}
 
-class _PendingFleetRepository implements FleetRepository {
+class _PendingFleetRepository extends FakeFleetRepository {
   const _PendingFleetRepository(this.result);
 
   final Future<List<WorkspaceFleet>> result;
 
   @override
-  Future<List<WorkspaceFleet>> loadFleet() => result;
+  Future<List<WorkspaceFleet>> refreshFleet() => result;
 }

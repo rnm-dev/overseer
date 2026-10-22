@@ -10,7 +10,7 @@ import '../../../core/time/app_time.dart';
 import '../domain/fleet_models.dart';
 import '../domain/fleet_repository.dart';
 
-class DioFleetRepository implements CachedFleetRepository {
+class DioFleetRepository implements FleetRepository {
   DioFleetRepository({
     required this._database,
     required this._dio,
@@ -23,9 +23,6 @@ class DioFleetRepository implements CachedFleetRepository {
 
   DurableProjectionTransaction get _projectionTransaction =>
       DurableProjectionTransaction(_database);
-
-  @override
-  Future<List<WorkspaceFleet>> loadFleet() => refreshFleet();
 
   @override
   Future<List<WorkspaceFleet>> loadCachedFleet() => _readCachedFleet();
@@ -256,7 +253,6 @@ class DioFleetRepository implements CachedFleetRepository {
   }) async {
     final syncedAt = _clock.now().millisecondsSinceEpoch.toDouble();
     final workspaceSnapshot = ResourceSnapshot<WorkspaceFleet>.validated(
-      authority: ResourceAuthority.overseer,
       items: fleet,
       identity: (item) => item.workspace.id,
     );
@@ -265,7 +261,6 @@ class DioFleetRepository implements CachedFleetRepository {
       await _database.delete(_database.cachedWorkspaces).go();
       for (final item in workspaceSnapshot.items) {
         final peonSnapshot = ResourceSnapshot<Peon>.validated(
-          authority: ResourceAuthority.peon,
           items: item.peons,
           identity: (peon) => peon.id,
         );
