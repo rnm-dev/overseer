@@ -84,6 +84,7 @@ export function SessionSidebarList({
   onPin,
   isPinned,
   appearance = "sidebar",
+  flush = false,
 }: {
   sessions: SessionLite[];
   to: (session: SessionLite) => string;
@@ -96,6 +97,8 @@ export function SessionSidebarList({
   onPin?: (session: SessionLite) => Promise<void>;
   isPinned?: (session: SessionLite) => boolean;
   appearance?: "sidebar" | "panel";
+  // Drop the top padding when the list sits directly under another row.
+  flush?: boolean;
 }) {
   const t = useT();
   const { locale } = useI18n();
@@ -230,7 +233,7 @@ export function SessionSidebarList({
   }, [sessions]);
 
   return (
-    <ul className="py-1">
+    <ul className={flush ? "pb-1" : "py-1"}>
       {sessions.map((session) => {
         const key = sessionIdentity(session);
         const flash = flashes.get(key);

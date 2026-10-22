@@ -1,12 +1,49 @@
 import { useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
-import { FolderTree, Share2 } from "lucide-react";
+import { BookOpen, FolderTree, Share2 } from "lucide-react";
 import { useT } from "../../shared/i18n";
-import { ConfirmationDialog, ContentHeader, ContentHeaderIdentitySkeleton, ContentHeaderLayout, ContentHeaderTitle, titleize } from "../../shared/ui";
+import { TOOLBAR_GROUP, toolbarItemClass, ConfirmationDialog, ContentHeader, ContentHeaderIdentitySkeleton, ContentHeaderLayout, ContentHeaderTitle, titleize } from "../../shared/ui";
 import { compactNum, type UsageBreakdown } from "./parsing";
 import { SessionPresence } from "./SessionPresence";
 import type { PresenceUser } from "../../realtime/liveSocket";
 import { MOBILE_CONTENT_HEADER_ID } from "./mobileHeader";
+
+// Sharing is hidden from the header for now; flip this to bring the button back.
+const SHARE_BUTTON_VISIBLE = false;
+// Deleting lives on the sidebar row menu, so the header menu is hidden too.
+const SESSION_MENU_VISIBLE = false;
+
+export type SessionPaneTab = "files" | "docs";
+
+// Tabs for the right-hand pane. A tab is "current" only while the pane is
+// open; selecting the current one closes the pane.
+export function SessionPaneTabs({ open, tab, onSelect }: { open: boolean; tab: SessionPaneTab; onSelect: (tab: SessionPaneTab) => void }) {
+  const t = useT();
+  const tabs = [
+    { id: "files" as const, label: t("session.tab.files"), icon: FolderTree },
+    { id: "docs" as const, label: t("session.tab.docs"), icon: BookOpen },
+  ];
+  return (
+    <div role="tablist" aria-label={t("session.tabs")} className={`hidden lg:flex ${TOOLBAR_GROUP}`}>
+      {tabs.map(({ id, label, icon: Icon }) => {
+        const active = open && tab === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onSelect(id)}
+            className={toolbarItemClass(active)}
+          >
+            <Icon size={16} aria-hidden />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 interface Props {
   peonId: string;
@@ -23,8 +60,9 @@ interface Props {
   openingMessage: string | null;
   turnTotal: number;
   usageSummary: UsageBreakdown | null;
-  filesOpen: boolean;
-  changeFilesOpen: (open: boolean) => void;
+  paneOpen: boolean;
+  paneTab: SessionPaneTab;
+  selectPaneTab: (tab: SessionPaneTab) => void;
   confirmDelete: boolean;
   setConfirmDelete: Dispatch<SetStateAction<boolean>>;
   deleting: boolean;
@@ -97,7 +135,7 @@ export function SessionHeaderStats({ turnTotal, usageSummary }: { turnTotal: num
   if (turnTotal <= 0 && !usageSummary) return null;
 
   return (
-    <div className="flex min-w-0 items-center gap-1.5 whitespace-nowrap font-mono text-[0.6875rem] text-ink-faint sm:text-[0.6875rem]">
+    <div className="flex h-3 min-w-0 items-center gap-1.5 whitespace-nowrap font-mono text-[0.625rem] leading-3 text-ink-faint">
       {turnTotal > 0 && <span>{t("session.chat.turns", { n: turnTotal })}</span>}
       {turnTotal > 0 && usageSummary && <span>·</span>}
       {usageSummary && (
@@ -160,7 +198,7 @@ export function SessionHeaderIdentity({
             if (e.key === "Enter") void saveName();
             if (e.key === "Escape") cancelRename();
           }}
-          className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 font-display text-sm font-semibold text-ink outline-none placeholder:text-ink placeholder:opacity-100 disabled:cursor-wait"
+          className="min-w-0 flex-1 truncate border-0 bg-transparent p-0 font-display text-[0.8rem] font-semibold leading-4 text-ink outline-none placeholder:text-ink placeholder:opacity-100 disabled:cursor-wait"
         />
         {editing && (
           <div className="ml-1 flex shrink-0 items-center gap-0.5 pr-0.5">
@@ -197,7 +235,7 @@ export function SessionHeader(props: Props) {
   const {
     peonId, metadataLoading, projectKey, title, draft, setDraft, editing, setEditing,
     savingName, renameNote, setRenameNote, openingMessage, turnTotal,
-    usageSummary, filesOpen, changeFilesOpen, confirmDelete, setConfirmDelete,
+    usageSummary, paneOpen, paneTab, selectPaneTab, confirmDelete, setConfirmDelete,
     deleting, deleteNote, setDeleteNote, stopNote, saveName, cancelRename, remove, viewers, onShare,
   } = props;
   const t = useT();
@@ -289,10 +327,10 @@ export function SessionHeader(props: Props) {
         actions={(
         <>
           <SessionPresence viewers={viewers} />
-          <button type="button" title="Share session" aria-label="Share session" onClick={onShare} className="grid size-7 place-items-center rounded text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">
+          {SHARE_BUTTON_VISIBLE && <button type="button" title="Share session" aria-label="Share session" onClick={onShare} className="grid size-7 place-items-center rounded text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">
             <Share2 size={15} aria-hidden />
-          </button>
-          {renderMenu(mobileMenuRef)}
+          </button>}
+          {SESSION_MENU_VISIBLE && renderMenu(mobileMenuRef)}
         </>
       )}
     />,
@@ -301,21 +339,14 @@ export function SessionHeader(props: Props) {
 
   <ContentHeader
     className="hidden md:block"
+    metadataPlacement="below"
     identity={identity}
     metadata={<SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} />}
     actions={(
       <>
         <SessionPresence viewers={viewers} />
-        <button
-          type="button"
-          title={t("session.files.open")}
-          aria-label={t("session.files.open")}
-          aria-expanded={filesOpen}
-          onClick={() => changeFilesOpen(!filesOpen)}
-          className={`hidden size-7 flex-none place-items-center rounded transition-colors lg:grid ${filesOpen ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`}
-        >
-          <FolderTree size={16} aria-hidden />
-        </button>
+        <SessionPaneTabs open={paneOpen} tab={paneTab} onSelect={selectPaneTab} />
+        {SHARE_BUTTON_VISIBLE && (
         <button
           type="button"
           title="Share session"
@@ -325,7 +356,8 @@ export function SessionHeader(props: Props) {
         >
           <Share2 size={16} aria-hidden />
         </button>
-        {renderMenu(desktopMenuRef)}
+        )}
+        {SESSION_MENU_VISIBLE && renderMenu(desktopMenuRef)}
       </>
     )}
     notices={(

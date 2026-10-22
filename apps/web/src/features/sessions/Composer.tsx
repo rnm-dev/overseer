@@ -6,6 +6,7 @@ import type { MessageAttachment } from "./parsing";
 import { isLongPastedText, isPastedTextName, pastedTextFile } from "./pastedText";
 import type { SelectedTextReply } from "./selectedTextReply";
 import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
+import { diffText, GLOW_LIFETIME_MS, glowSegments, MAX_GLOW_INSERTION, shiftGlowRanges, typingGlowEnabled, type GlowRange } from "./typingGlow";
 
 // author: Viktor
 // The prompt box shared by PeonNewSession (starting a session) and
@@ -124,6 +125,39 @@ export function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
+  const glowRef = useRef<HTMLDivElement>(null);
+  const [glowRanges, setGlowRanges] = useState<GlowRange[]>([]);
+  const previousValueRef = useRef(value);
+  const glowIdRef = useRef(0);
+  const glowTimersRef = useRef(new Set<number>());
+  // Track what was just typed so the overlay can flare it. Only themes that
+  // set --ov-typing-glow pay for this; everything else skips it entirely.
+  useEffect(() => {
+    const previous = previousValueRef.current;
+    previousValueRef.current = value;
+    if (previous === value) return;
+    if (!typingGlowEnabled()) {
+      setGlowRanges((current) => current.length ? [] : current);
+      return;
+    }
+    const edit = diffText(previous, value);
+    const id = ++glowIdRef.current;
+    setGlowRanges((current) => {
+      const shifted = shiftGlowRanges(current, edit);
+      return edit.inserted > 0 && edit.inserted <= MAX_GLOW_INSERTION
+        ? [...shifted, { id, start: edit.start, length: edit.inserted }]
+        : shifted;
+    });
+    if (edit.inserted === 0 || edit.inserted > MAX_GLOW_INSERTION) return;
+    const timer = window.setTimeout(() => {
+      glowTimersRef.current.delete(timer);
+      setGlowRanges((current) => current.filter((range) => range.id !== id));
+    }, GLOW_LIFETIME_MS);
+    glowTimersRef.current.add(timer);
+  }, [value]);
+  useEffect(() => () => {
+    for (const timer of glowTimersRef.current) window.clearTimeout(timer);
+  }, []);
   const dragDepthRef = useRef(0);
   const [dragActive, setDragActive] = useState(false);
   const canSubmit = !disabled && Boolean(value.trim() || files.length || carried.length);
@@ -285,6 +319,7 @@ export function Composer({
         onChange={(e) => onChange(e.target.value, e.target.selectionStart)}
         onScroll={(e) => {
           if (highlightRef.current) highlightRef.current.style.transform = `translateY(-${e.currentTarget.scrollTop}px)`;
+          if (glowRef.current) glowRef.current.style.transform = `translateY(-${e.currentTarget.scrollTop}px)`;
         }}
         onKeyDown={(e) => {
           if (onComposerKeyDown?.(e)) return;
@@ -317,6 +352,19 @@ export function Composer({
           addFiles(pasted.map((f, i) => (f.name && f.name !== "image.png" ? f : new File([f], `pasted-${Date.now()}-${i}.${(f.type.split("/")[1] || "bin").replace("jpeg", "jpg")}`, { type: f.type }))));
         }}
       />
+      {glowRanges.length > 0 && (
+        <div
+          ref={glowRef}
+          className="composer-input pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-1 py-1 font-body leading-normal text-transparent"
+          style={{ transform: `translateY(-${textareaRef.current?.scrollTop ?? 0}px)` }}
+          aria-hidden
+        >
+          {glowSegments(value, glowRanges).map((segment, index) => segment.glowId === undefined
+            ? <span key={`t${index}`}>{segment.text}</span>
+            : <span key={`g${segment.glowId}`} className="composer-typing-glow">{segment.text}</span>)}
+          {"\u200b"}
+        </div>
+      )}
       </div>
       <div className="composer-toolbar flex flex-wrap items-center justify-between gap-1.5 pt-1">
         <div className="composer-toolbar-left flex min-w-0 flex-wrap items-center gap-1.5">

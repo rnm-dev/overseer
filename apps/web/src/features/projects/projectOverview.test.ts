@@ -42,10 +42,17 @@ test("recent project sessions include rows the sidebar page never reached", () =
     { id: "beyond-page", peonId: "nova", projectKey: "OVSR", lastActivityAt: 100, syncedAt: 4 },
   ];
 
-  const recent = recentProjectSessions(sidebar, "OVSR", 8, projectPage);
+  const recent = recentProjectSessions(sidebar, "OVSR", undefined, projectPage);
   assert.deepEqual(recent.map((session) => session.id), ["in-page", "beyond-page"]);
   // The sidebar row is the live one, so its status wins over the fetched page.
   assert.equal(recent[0].status, "running");
+});
+
+test("while more pages remain, sidebar rows older than the fetched page wait", () => {
+  const sidebar = [{ id: "old-live", peonId: "nova", projectKey: "OVSR", lastActivityAt: 50 }];
+  const projectPage = [{ id: "fetched", peonId: "nova", projectKey: "OVSR", lastActivityAt: 100 }];
+  assert.deepEqual(recentProjectSessions(sidebar, "OVSR", undefined, projectPage, true).map((session) => session.id), ["fetched"]);
+  assert.deepEqual(recentProjectSessions(sidebar, "OVSR", undefined, projectPage, false).map((session) => session.id), ["fetched", "old-live"]);
 });
 
 test("project recent sessions reuse sidebar rows with status, presence hook, and session navigation", () => {
@@ -76,7 +83,7 @@ test("project recent sessions reuse sidebar rows with status, presence hook, and
   assert.match(html, /Live work/);
   assert.match(html, /bg-accent-strong/);
   assert.match(html, /href="\/peons\/nova\/sessions\/live"/);
-  assert.match(html, /href="\/peons\/nova\/sessions\/new\?project=OVSR".*\+ New session<\/a>/);
+  assert.match(html, /href="\/peons\/nova\/sessions\/new\?project=OVSR"[^>]*>New session<svg/);
   assert.match(html, /hover:bg-surface-hover\/70/);
   // The row's status now reads off the glowing left edge, so the panel no longer
   // needs its own inset hover marker.
@@ -85,7 +92,7 @@ test("project recent sessions reuse sidebar rows with status, presence hook, and
   assert.doesNotMatch(html, /Wrong project/);
   const header = html.slice(html.indexOf("<header"), html.indexOf("</header>"));
   const footer = html.slice(html.indexOf("<footer"), html.indexOf("</footer>"));
-  assert.doesNotMatch(header, /<svg|title="OVSR"|h-10 w-10/);
+  assert.doesNotMatch(header, /title="OVSR"|h-10 w-10/);
   assert.doesNotMatch(header, />1<\/span>/);
   assert.match(footer, />1 sessions$/);
 });

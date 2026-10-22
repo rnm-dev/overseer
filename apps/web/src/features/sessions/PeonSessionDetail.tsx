@@ -54,7 +54,8 @@ import { deleteSession, renameSession, sessionPath } from "./sessionApi";
 import { useSessionRunState } from "./useSessionRunState";
 import { useSessionMetadata } from "./useSessionMetadata";
 import { useComposerMentions, useMentionPicker } from "./useComposerMentions";
-import { readStoredJson, writeStoredValue } from "../../shared/storedValue";
+import { readStoredJson, readStoredValue, writeStoredValue } from "../../shared/storedValue";
+import type { SessionPaneTab } from "./SessionHeader";
 import { clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, type ComposerSelectionDraft, useComposerSelectionDraft } from "./drafts";
 import { createContinuationSession, lastUnexecutedUserPrompt, sessionContinuationFailure, type SessionContinuationFailure } from "./sessionContinuationRecovery";
 
@@ -102,6 +103,8 @@ function BranchMessageMenu({ branching, disabled, error, onBranch, t }: {
     </div>
   );
 }
+
+const PANE_TAB_STORAGE_KEY = "overseer:session-pane:tab";
 
 function storedOpenFilePanes(): Set<string> {
   const value = readStoredJson(FILE_PANES_STORAGE_KEY);
@@ -294,6 +297,18 @@ function PeonSessionDetailPage() {
     setFilesOpen(open);
     storeFilePaneState(filePanePageKey, open);
   }, [filePanePageKey]);
+  // The side pane is one surface with tabs; which tab it shows is remembered
+  // across sessions, while whether it is open stays per page.
+  const [paneTab, setPaneTab] = useState<SessionPaneTab>(() => readStoredValue(PANE_TAB_STORAGE_KEY) === "docs" ? "docs" : "files");
+  const selectPaneTab = useCallback((tab: SessionPaneTab) => {
+    if (filesOpen && paneTab === tab) {
+      changeFilesOpen(false);
+      return;
+    }
+    setPaneTab(tab);
+    writeStoredValue(PANE_TAB_STORAGE_KEY, tab);
+    changeFilesOpen(true);
+  }, [changeFilesOpen, filesOpen, paneTab]);
   const previewPinnedRef = useRef(false);
   useEffect(() => { previewPinnedRef.current = previewPinned; }, [previewPinned]);
   const [composerNode, setComposerNode] = useState<HTMLDivElement | null>(null);
@@ -786,8 +801,9 @@ function PeonSessionDetailPage() {
           openingMessage={headerIdentity.openingMessage}
           turnTotal={turnTotal}
           usageSummary={usageSummary}
-          filesOpen={filesOpen}
-          changeFilesOpen={changeFilesOpen}
+          paneOpen={filesOpen}
+          paneTab={paneTab}
+          selectPaneTab={selectPaneTab}
           confirmDelete={confirmDelete}
           setConfirmDelete={setConfirmDelete}
           deleting={deleting}
@@ -1023,6 +1039,7 @@ function PeonSessionDetailPage() {
         projectKey={headerIdentity.projectKey}
         projectKeyKnown={loadedMetadataKey === sessionKey || Boolean(selectedSession)}
         filesOpen={filesOpen}
+        paneTab={paneTab}
         fileRefreshRevision={fileRefreshRevision}
         projectFilePreview={projectFilePreview}
         setProjectFilePreview={setProjectFilePreview}

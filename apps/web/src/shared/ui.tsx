@@ -32,6 +32,14 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
   return <input className={`field ${className}`} {...props} />;
 }
 
+// One toolbar button language for every top bar, tab strip and dialog header:
+// 28px tall, 6px padding, 4px between items, 16px icons, and an accent tint for
+// the current item. Lay items out with TOOLBAR_GROUP.
+export const TOOLBAR_GROUP = "flex flex-none items-center gap-1";
+export function toolbarItemClass(active = false, iconOnly = false): string {
+  return `flex h-7 flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-body text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-default disabled:opacity-45 ${iconOnly ? "w-7" : "px-1.5"} ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink disabled:hover:bg-transparent disabled:hover:text-ink-muted"}`;
+}
+
 export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`surface ${className}`}>{children}</div>;
 }
@@ -282,7 +290,7 @@ export function FixedPaneHeader({ children, className = "" }: { children: ReactN
   return (
     <>
       {createPortal(
-        <div ref={setNode} className={`fixed-pane-header fixed left-0 right-0 top-12 z-20 border-b border-edge bg-canvas md:left-[var(--peon-sidebar-width)] md:top-0 ${className}`}>
+        <div ref={setNode} className={`fixed-pane-header app-backdrop fixed left-0 right-0 top-12 z-20 border-b border-edge md:left-[var(--peon-sidebar-width)] md:top-0 ${className}`}>
           {children}
         </div>,
         document.body,
@@ -317,7 +325,9 @@ export function ContentHeaderLayout({
     <div className={compact ? "min-w-0 flex-1" : "space-y-1.5 px-3 py-2.5 sm:px-6"}>
       <div className={`flex items-center ${compact ? "gap-2" : "min-h-7 gap-3"}`}>
         <div className={metadataBelow ? "flex min-w-0 flex-1 flex-col justify-center" : "flex min-w-0 flex-1 items-center gap-1.5"}>
-          {metadataBelow ? <div className="flex min-w-0 items-center gap-1.5">{identity}</div> : identity}
+          {/* Title and metadata share the single-line row height, so the bar keeps
+              the same height as the sidebar's top bar. */}
+          {metadataBelow ? <div className="flex h-4 min-w-0 items-center gap-1.5 [&_.typo-content-header]:text-[0.8rem] [&_.typo-content-header]:leading-4">{identity}</div> : identity}
           {metadataBelow && metadata}
         </div>
         {!metadataBelow && metadata && <div className="flex-none">{metadata}</div>}

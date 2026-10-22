@@ -39,17 +39,18 @@ export function ProjectQuickLinksList({ links, empty = true }: { links: ProjectQ
 
 export function ProjectQuickLinksCard({ links, cached = false }: { links: ProjectQuickLink[]; cached?: boolean }) {
   const t = useT();
+  if (links.length === 0) return null;
   return (
-    <Card className="px-3.5 py-3">
-      <div className="mb-2 flex items-center gap-2">
+    <section className="border-b border-edge">
+      <div className="flex h-8 flex-none items-center gap-3 border-b border-edge px-4 sm:px-5">
         <h2 className="font-display text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-ink-muted">{t("proj.quickLinks")}</h2>
-        {links.length > 0 && <span className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-[0.6rem] text-ink-faint">{links.length}</span>}
+        <span className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-[0.6rem] text-ink-faint">{links.length}</span>
       </div>
-      <div>
+      <div className="px-4 py-3 sm:px-5">
         {cached && <p className="mb-2 font-mono text-[0.65rem] text-warning/80">{t("proj.quickLinks.cached")}</p>}
         <ProjectQuickLinksList links={links} />
       </div>
-    </Card>
+    </section>
   );
 }
 

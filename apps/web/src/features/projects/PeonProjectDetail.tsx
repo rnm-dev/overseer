@@ -1,11 +1,12 @@
 import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
-import { useMemo } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Plus } from "lucide-react";
+import { api } from "../../shared/api";
 import { Link, useParams } from "react-router";
 import { useApiResource } from "../../shared/useApiResource";
 import { SessionSidebarList } from "../sessions/SessionSidebarList";
 import { useT } from "../../shared/i18n";
 import type { PresenceUser } from "../../realtime/liveSocket";
-import { Card } from "../../shared/ui";
 import { usePeon } from "../fleet/context";
 import { ProjectPageHeader } from "./ProjectPageHeader";
 import { ProjectTabs } from "./ProjectTabs";
@@ -17,21 +18,26 @@ import { prefetchTranscriptSnapshot } from "../sessions/transcriptSnapshotCache"
 
 // author: Viktor
 
-const RECENT_PROJECT_SESSION_LIMIT = 8;
+const PROJECT_SESSION_PAGE_SIZE = 50;
 
 // The sidebar holds one page of the peon's sessions, so a project whose work is
-// older than that page has none of its rows there. The card asks the index for
-// its own project-scoped page and merges the sidebar's rows over it, which keeps
+// older than that page has none of its rows there. The panel pages through the
+// index for its own project and merges the sidebar's rows over it, which keeps
 // live socket updates (status, attention) authoritative for the rows it does hold.
+// While more pages remain, sidebar rows older than the last fetched row are held
+// back so they cannot jump ahead of sessions not yet loaded.
 export function recentProjectSessions(
   sessions: SessionLite[],
   projectKey: string,
-  limit = RECENT_PROJECT_SESSION_LIMIT,
+  limit = Number.POSITIVE_INFINITY,
   projectPage: SessionLite[] = [],
+  hasMore = false,
 ): SessionLite[] {
+  const activity = (session: SessionLite) => session.lastActivityAt ?? session.startedAt ?? 0;
+  const oldestFetched = hasMore && projectPage.length > 0 ? Math.min(...projectPage.map(activity)) : Number.NEGATIVE_INFINITY;
   return mergeSessions(projectPage, sessions)
-    .filter((session) => session.projectKey === projectKey)
-    .sort((left, right) => (right.lastActivityAt ?? right.startedAt ?? 0) - (left.lastActivityAt ?? left.startedAt ?? 0))
+    .filter((session) => session.projectKey === projectKey && activity(session) >= oldestFetched)
+    .sort((left, right) => activity(right) - activity(left))
     .slice(0, Math.max(0, limit));
 }
 
@@ -63,24 +69,67 @@ export function ProjectRecentSessions({
   paginationSupported?: boolean;
 }) {
   const t = useT();
-  const projectPageResource = useApiResource<{ sessions: IndexedSessionLite[] }>(wsId && peonId && projectKey
-    ? `/workspaces/${encodeURIComponent(wsId)}/sessions?peonId=${encodeURIComponent(peonId)}`
-      + `&projectKey=${encodeURIComponent(projectKey)}&limit=${RECENT_PROJECT_SESSION_LIMIT}`
-    : null);
-  const projectPage = useMemo(() => projectPageResource.data ? (projectPageResource.data.sessions ?? []).map(sessionFromIndex) : null, [projectPageResource.data]);
-  const projectPageError = Boolean(projectPageResource.error);
+  const [projectPage, setProjectPage] = useState<SessionLite[] | null>(null);
+  const [projectTotal, setProjectTotal] = useState<number | null>(null);
+  const [pageLoading, setPageLoading] = useState(false);
+  const [projectPageError, setProjectPageError] = useState(false);
+  const loadEpoch = useRef(0);
+  const sentinel = useRef<HTMLDivElement>(null);
+
+  const loadPage = useCallback((offset: number) => {
+    if (!wsId || !peonId || !projectKey) return;
+    const epoch = loadEpoch.current;
+    setPageLoading(true);
+    setProjectPageError(false);
+    api<{ sessions: IndexedSessionLite[]; total?: number }>(
+      `/workspaces/${encodeURIComponent(wsId)}/sessions?peonId=${encodeURIComponent(peonId)}`
+        + `&projectKey=${encodeURIComponent(projectKey)}&limit=${PROJECT_SESSION_PAGE_SIZE}&offset=${offset}`,
+    ).then((data) => {
+      if (epoch !== loadEpoch.current) return;
+      const rows = (data.sessions ?? []).map(sessionFromIndex);
+      setProjectPage((current) => offset === 0 ? rows : mergeSessions(current ?? [], rows));
+      setProjectTotal(data.total ?? null);
+    }).catch(() => {
+      if (epoch === loadEpoch.current) setProjectPageError(true);
+    }).finally(() => {
+      if (epoch === loadEpoch.current) setPageLoading(false);
+    });
+  }, [peonId, projectKey, wsId]);
+
+  useEffect(() => {
+    loadEpoch.current += 1;
+    setProjectPage(null);
+    setProjectTotal(null);
+    loadPage(0);
+  }, [loadPage]);
+
+  const fetchedCount = projectPage?.length ?? 0;
+  const hasMore = projectTotal !== null && fetchedCount < projectTotal;
+
+  useEffect(() => {
+    const target = sentinel.current;
+    if (!target || !hasMore || pageLoading || projectPageError) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) loadPage(fetchedCount);
+    }, { rootMargin: "400px 0px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [fetchedCount, hasMore, loadPage, pageLoading, projectPageError]);
 
   const sessionPins = useSessionPins(wsId, peonId);
-  const recent = orderPinnedSessions(recentProjectSessions(sessions, projectKey, RECENT_PROJECT_SESSION_LIMIT, projectPage ?? []), sessionPins.pins.filter((session) => session.projectKey === projectKey), peonId);
+  const recent = orderPinnedSessions(recentProjectSessions(sessions, projectKey, undefined, projectPage ?? [], hasMore), sessionPins.pins.filter((session) => session.projectKey === projectKey), peonId);
   const pending = loading || (wsId ? projectPage === null && !projectPageError : false);
   const failed = error && (wsId ? projectPageError : true);
 
   return (
-    <Card className="overflow-hidden">
-      <header className="flex min-h-12 items-center gap-3 border-b border-edge/90 bg-gradient-to-r from-warning/[0.06] via-transparent to-transparent px-5 py-2">
+    <section className="min-w-0 border-b border-edge lg:border-b-0">
+      <header className="flex h-8 flex-none items-center gap-3 border-b border-edge px-4 sm:px-5">
         <h2 className="min-w-0 flex-1 font-display text-sm font-bold tracking-wide text-ink">{t("peon.dash.recentSessions")}</h2>
         <span className="hidden md:inline-flex">
-          <Link to={newSessionTo} className="btn btn-accent btn-sm h-7">{t("newSession.new")}</Link>
+          <Link to={newSessionTo} className="flex items-center gap-1 font-body text-xs font-bold text-accent-strong transition-opacity hover:opacity-75">
+            {t("sidebar.newSession")}
+            <Plus size={15} aria-hidden />
+          </Link>
         </span>
       </header>
 
@@ -110,12 +159,22 @@ export function ProjectRecentSessions({
           <p className="px-3 py-8 text-center font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
         )}
       </div>
+      {hasMore && (
+        <div ref={sentinel} className="flex min-h-10 items-center justify-center" aria-live="polite">
+          {pageLoading && <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />}
+          {projectPageError && (
+            <button type="button" className="font-body text-[0.68rem] text-ink-muted hover:text-accent-strong" onClick={() => loadPage(fetchedCount)}>
+              {t("sessions.retry")}
+            </button>
+          )}
+        </div>
+      )}
       {recent.length > 0 && (
-        <footer className="border-t border-edge/90 px-5 py-2.5 text-right font-mono text-xs tabular-nums text-ink-faint">
-          {t("peon.projects.sessions", { n: recent.length })}
+        <footer className="border-t border-edge px-4 py-2.5 sm:px-5 text-right font-mono text-xs tabular-nums text-ink-faint">
+          {t("peon.projects.sessions", { n: Math.max(recent.length, projectTotal ?? 0) })}
         </footer>
       )}
-    </Card>
+    </section>
   );
 }
 
@@ -137,25 +196,13 @@ export function PeonProjectDetail() {
   const detailErr = Boolean(detailError);
 
   return (
-    <div className="space-y-3">
+    <div>
       <ProjectPageHeader showDesktopNewSession={false} />
       <ProjectTabs />
 
-      {detail && <ProjectQuickLinksCard links={liveProject?.quickLinks ?? detail.quickLinks ?? []} cached={!peon.online} />}
-
-      <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(20rem,2fr)]">
-        {detail ? (
-          <ProjectDocumentation base={base} projectId={detail.projectId ?? null} />
-        ) : detailErr ? (
-          <Card className="grid min-h-40 place-items-center px-6 py-8">
-            <p className="font-mono text-xs text-danger">⚠ {t("error.loadFailed")}</p>
-          </Card>
-        ) : (
-          <Card className="grid min-h-40 place-items-center">
-            <span className="loading-spinner" role="status" aria-label={t("proj.docs.loading")} />
-          </Card>
-        )}
-      <ProjectRecentSessions
+      {/* Edge-to-edge grid under the top bar: cells are divided by lines, not cards. */}
+      <div className="-mx-3 -mb-4 grid border-t border-edge sm:-mx-6 sm:-mb-7 md:border-t-0 lg:min-h-[calc(100dvh-var(--fixed-pane-header-height,49px))] lg:grid-cols-[minmax(20rem,2fr)_minmax(0,3fr)]">
+        <ProjectRecentSessions
           projectKey={key}
           peonId={peon.peonId}
           wsId={peonContext.wsId}
@@ -165,10 +212,24 @@ export function PeonProjectDetail() {
           error={sessionPageError}
           viewersFor={viewersFor}
           onRename={renameSession}
-        onDelete={deleteSession}
-        base={base}
-        paginationSupported={peon.capabilities.includes("transcript-pagination-v1")}
+          onDelete={deleteSession}
+          base={base}
+          paginationSupported={peon.capabilities.includes("transcript-pagination-v1")}
         />
+        <div className="min-w-0 lg:border-l lg:border-edge">
+          {detail && <ProjectQuickLinksCard links={liveProject?.quickLinks ?? detail.quickLinks ?? []} cached={!peon.online} />}
+          {detail ? (
+            <ProjectDocumentation base={base} projectId={detail.projectId ?? null} />
+          ) : detailErr ? (
+            <div className="grid min-h-40 place-items-center px-6 py-8">
+              <p className="font-mono text-xs text-danger">⚠ {t("error.loadFailed")}</p>
+            </div>
+          ) : (
+            <div className="grid min-h-40 place-items-center">
+              <span className="loading-spinner" role="status" aria-label={t("proj.docs.loading")} />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

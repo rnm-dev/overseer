@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { useT } from "../../shared/i18n";
 import { useWorkspacePeonPresence } from "../fleet/usePeonPresence";
 import { DropdownMenu, menuItemClass } from "../../shared/ui";
-import { PeonConnectionStatusDot } from "../fleet/PeonConnectionStatusDot";
+import { PeonConnectionStatusDot, peonConnectionDotState } from "../fleet/PeonConnectionStatusDot";
 
 export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string; peonId?: string }) {
   const t = useT();
@@ -28,8 +28,8 @@ export function PeonScopeSwitcher({ workspaceId, peonId }: { workspaceId: string
       menuWidthClassName="w-full min-w-52"
       trigger={(open) => (
         <>
-          {selected && <PeonConnectionStatusDot {...selected} />}
           <span className="min-w-0 truncate font-display text-base font-extrabold tracking-wide text-ink" title={currentLabel}>{currentLabel}</span>
+          {selected && peonConnectionDotState(selected) !== "on" && <PeonConnectionStatusDot {...selected} />}
           <ChevronDown size={15} className={`flex-none text-ink-muted transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
         </>
       )}

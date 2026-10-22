@@ -78,7 +78,7 @@ test("collapsed project status badges link to the first working and unread sessi
   assert.match(markup, /cursor-pointer transition-colors hover:bg-warning\/20 hover:text-warning-strong/);
 });
 
-test("grouped sidebar renders collapsible project toolbars, limits rows, and ends with the new-project ghost", () => {
+test("grouped sidebar renders collapsible project toolbars and limits rows", () => {
   const markup = renderToStaticMarkup(React.createElement(
     I18nProvider,
     null,
@@ -98,7 +98,6 @@ test("grouped sidebar renders collapsible project toolbars, limits rows, and end
         projectTo: () => "/projects/OVSR",
         sessionTo: (session: { id: string }) => `/sessions/${session.id}`,
         newSessionTo: () => "/sessions/new?project=OVSR",
-        onNewProject: () => {},
         onRename: async () => {},
         onDelete: async () => {},
       })),
@@ -111,7 +110,7 @@ test("grouped sidebar renders collapsible project toolbars, limits rows, and end
   assert.match(markup, /title="Overseer"[^>]+href="\/projects\/OVSR"/);
   assert.match(markup, /h-7 min-w-0 flex-1 items-center truncate px-2 font-body typo-chat-message font-semibold text-ink/);
   assert.match(markup, /h-7 w-7 flex-none place-items-center border-r border-edge\/70/);
-  assert.match(markup, /h-7 w-7 place-items-center border-l border-edge\/70 text-accent-strong/);
+  assert.match(markup, /h-7 w-7 place-items-center text-accent-strong/);
   assert.match(markup, /role="toolbar" aria-label="Overseer"/);
   assert.doesNotMatch(markup, /All sessions/);
   assert.match(markup, /aria-label="\+ New session: Overseer"/);
@@ -120,10 +119,6 @@ test("grouped sidebar renders collapsible project toolbars, limits rows, and end
   assert.match(markup, />First</);
   assert.match(markup, />Second</);
   assert.doesNotMatch(markup, /Hidden by limit/);
-  assert.ok(markup.indexOf("Second") < markup.lastIndexOf("New project"));
-  assert.match(markup, /group flex h-7 w-full items-stretch border-b border-dashed/);
-  assert.match(markup, /grid w-7 flex-none place-items-center border-r border-dashed border-edge/);
-  assert.doesNotMatch(markup, />\+ New project</);
 });
 
 test("expanded project preferences are validated and persisted", () => {

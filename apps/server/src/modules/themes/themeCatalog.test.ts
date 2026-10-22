@@ -11,6 +11,8 @@ test("bundled theme manifests are ordered, bounded and CSS-renderable", () => {
     "org.overseer.neon-nocturne",
     "org.overseer.amber-terminal",
     "org.overseer.candy-static",
+    "org.overseer.tidepool",
+    "org.overseer.blueprint",
   ]);
   const css = renderThemeCss();
   for (const theme of THEME_CATALOG) {
@@ -18,6 +20,8 @@ test("bundled theme manifests are ordered, bounded and CSS-renderable", () => {
     assert.match(css, new RegExp(`--ov-canvas: ${theme.tokens["--ov-canvas"]}`));
   }
   assert.doesNotMatch(css, /url\s*\(|@import|expression\s*\(/i);
+  // Font tokens are plain system stacks and render like any other token.
+  assert.match(css, /--ov-font-display: ui-monospace/);
 });
 
 test("theme validation rejects executable or escaping CSS values", () => {

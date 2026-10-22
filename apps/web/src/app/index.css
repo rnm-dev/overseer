@@ -6,9 +6,11 @@
  *  Design tokens (Tailwind v4 @theme -> utilities: bg-accent, text-ink…) *
  * ------------------------------------------------------------------ */
 @theme {
-  --font-display: "Golos Text", ui-sans-serif, system-ui, sans-serif;
-  --font-body: "Golos Text", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Ubuntu Mono", ui-monospace, monospace;
+  /* Themes may override these with --ov-font-* tokens (system font stacks only:
+     manifests cannot load font files). */
+  --font-display: var(--ov-font-display, "Golos Text", ui-sans-serif, system-ui, sans-serif);
+  --font-body: var(--ov-font-body, "Golos Text", ui-sans-serif, system-ui, sans-serif);
+  --font-mono: var(--ov-font-mono, "Ubuntu Mono", ui-monospace, monospace);
   --font-size-chat-message: 0.875rem;
   --line-height-chat-message: 1.4;
   --font-size-chat-system-message: 0.625rem;
@@ -24,9 +26,9 @@
   --color-surface-hover: var(--ov-surface-hover);
   --color-surface-active: var(--ov-surface-active);
   --color-surface-disabled: var(--ov-surface-disabled);
-  --color-edge-subtle: var(--ov-edge-subtle);
-  --color-edge: var(--ov-edge);
-  --color-edge-strong: var(--ov-edge-strong);
+  --color-edge-subtle: color-mix(in srgb, var(--ov-edge-subtle) 50%, transparent);
+  --color-edge: color-mix(in srgb, var(--ov-edge) 55%, transparent);
+  --color-edge-strong: color-mix(in srgb, var(--ov-edge-strong) 65%, transparent);
   --color-edge-emphasis: var(--ov-edge-emphasis);
   --color-ink: var(--ov-ink);
   --color-ink-muted: var(--ov-ink-muted);
@@ -64,6 +66,69 @@ body {
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
+}
+
+/* Optional text glow. Themes set --ov-display-text-shadow for headings and
+   titles, and --ov-accent-text-shadow for accent-coloured text. */
+h1, h2, h3, .font-display, .markdown-body :is(h1, h2, h3) {
+  text-shadow: var(--ov-display-text-shadow, none);
+}
+
+.text-accent-strong, .text-accent {
+  text-shadow: var(--ov-accent-text-shadow, none);
+}
+
+/* Optional typing glow: themes set --ov-typing-glow to an animation such as
+   "ov-typing-glow 900ms ease-out forwards". The composer mirrors freshly typed
+   characters in an overlay; without the token they stay invisible. */
+.composer-typing-glow {
+  color: transparent;
+  animation: var(--ov-typing-glow, none);
+}
+
+@keyframes ov-typing-glow {
+  0% {
+    color: var(--ov-typing-glow-color, var(--color-accent-strong));
+    text-shadow: var(--ov-typing-glow-shadow, 0 0 4px var(--color-accent-strong), 0 0 12px var(--color-accent));
+  }
+  100% {
+    color: transparent;
+    text-shadow: 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-typing-glow { animation: none; }
+}
+
+/* Opaque chrome that should read as the page itself: repaint the theme's
+   background image, pinned to the viewport exactly like the body's, so a
+   fixed bar shows no seam while still covering content scrolling beneath. */
+.app-backdrop {
+  background-color: var(--color-canvas);
+  background-image: var(--ov-app-background-image, none);
+  background-attachment: fixed;
+  background-position: center;
+  background-size: cover;
+}
+
+/* Optional perspective floor: a theme supplies --ov-app-floor-image and it is
+   laid on a plane tilted away from the viewer, fading out at the horizon.
+   #root sits above it (z-index 1). */
+body::before {
+  content: "";
+  position: fixed;
+  left: -50%;
+  right: -50%;
+  bottom: 0;
+  height: 70vh;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--ov-app-floor-image, none);
+  transform: perspective(42vh) rotateX(62deg);
+  transform-origin: 50% 100%;
+  -webkit-mask-image: linear-gradient(to top, #000 15%, transparent 85%);
+  mask-image: linear-gradient(to top, #000 15%, transparent 85%);
 }
 
 /* iOS Safari can keep the root scrolling element movable behind a fixed,
@@ -804,6 +869,10 @@ html.peon-sidebar-resizing * {
 .theme-user-message {
   background: var(--ov-user-message-background);
   color: var(--ov-user-message-ink);
+  /* Optional glass: a blur of what is behind and an inset rim. */
+  -webkit-backdrop-filter: var(--ov-user-message-backdrop, none);
+  backdrop-filter: var(--ov-user-message-backdrop, none);
+  box-shadow: var(--ov-user-message-rim, none);
 }
 
 .theme-user-message-ink { color: var(--ov-user-message-ink); }

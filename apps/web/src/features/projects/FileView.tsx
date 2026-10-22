@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Code2, Download, Eye, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { HighlightedCode, Markdown, languageForPath } from "../../shared/RichText";
 import { useT, type Translate } from "../../shared/i18n";
+import { toolbarItemClass } from "../../shared/ui";
 import { fileDownloadUrl, fileKind, fileName, fileUrl, formatFileSize, isUnviewableFile, rendersHtmlInline, type FileKind, type FileSource } from "./fileLinks";
 import { canZoom, fitScale, nextZoom, zoomLabel, type Size } from "./imageZoom";
 
@@ -137,7 +138,7 @@ export function FileDownloadButton({ source, variant = "icon", className = "" }:
       aria-label={t("file.download")}
       className={`${variant === "segment"
         ? "grid h-full flex-none place-items-center border-l border-edge px-3 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
-        : "grid h-8 w-8 flex-none place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink"} ${className}`}
+        : toolbarItemClass(false, true)} ${className}`}
     >
       <Download size={variant === "segment" ? 14 : 16} aria-hidden />
     </a>

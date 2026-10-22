@@ -4,6 +4,7 @@ import { ChevronRight, Check, Copy, Download, ExternalLink, Folder, FolderOpen, 
 import { ApiError } from "../../shared/api";
 import { useSingleFlight } from "../../shared/useSingleFlight";
 import { useT } from "../../shared/i18n";
+import { toolbarItemClass } from "../../shared/ui";
 import { ConfirmationDialog } from "../../shared/ui";
 import { CodeEditor } from "./CodeEditor";
 import { canEditFile, useFileEditor } from "./fileEditing";
@@ -454,8 +455,8 @@ function FileTreeLoader({ depth, label }: { depth: number; label: string }) {
 // A title-bar action: the same height and corner as the download and close
 // buttons beside it, so the row reads as one set of controls rather than a
 // button dropped into a header.
-const MODAL_ACTION = "flex h-8 flex-none items-center gap-1.5 rounded-lg border border-transparent px-2.5 font-display text-[0.7rem] font-semibold text-ink-muted transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink disabled:cursor-default disabled:opacity-45 disabled:hover:border-transparent disabled:hover:bg-transparent disabled:hover:text-ink-muted";
-const MODAL_ACTION_PRIMARY = "flex h-8 flex-none items-center gap-1.5 rounded-lg border border-accent/45 bg-accent/15 px-3 font-display text-[0.7rem] font-semibold text-accent-strong transition-colors hover:border-accent/70 hover:bg-accent/25 disabled:cursor-default disabled:opacity-45 disabled:hover:border-accent/45 disabled:hover:bg-accent/15";
+const MODAL_ACTION = toolbarItemClass();
+const MODAL_ACTION_PRIMARY = toolbarItemClass(true);
 
 export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writable = true, onSaved, onClose }: {
   source: FileSource;
@@ -501,26 +502,26 @@ export function ProjectFilePreviewModal({ source, path, size, viewerUrl, writabl
     <div className="fixed inset-0 z-50 grid place-items-center bg-[radial-gradient(circle_at_50%_18%,rgba(149,201,103,0.08),transparent_38%),rgba(2,4,3,0.82)] p-4 backdrop-blur-md" onMouseDown={(event) => event.target === event.currentTarget && requestClose()}>
       <section role="dialog" aria-modal="true" aria-label={path} className="relative flex h-[min(88vh,56rem)] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-edge-strong/80 bg-surface/95 shadow-[0_28px_90px_rgba(0,0,0,0.65),0_0_0_1px_rgba(149,201,103,0.04)]">
         <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-accent/45 to-transparent" />
-        <header className="flex items-center gap-2 border-b border-edge bg-surface-raised/70 px-4 py-3.5">
+        <header className="flex items-center gap-1 border-b border-edge bg-surface-raised/70 px-4 py-2.5">
           <FileTypeIcon name={path} size={16} />
-          <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-muted" title={path}>{path}</span>
+          <span className="ml-1 min-w-0 flex-1 truncate font-mono text-xs text-ink-muted" title={path}>{path}</span>
           {/* Unsaved work is said in the title bar, where the operator is
               looking when they reach for the close button. */}
           {editor.dirty && <span className="flex-none rounded-full bg-warning/15 px-2 py-0.5 font-display text-[0.6rem] font-semibold uppercase tracking-[0.12em] text-warning-strong">{t("file.unsaved")}</span>}
           {editor.editing ? <>
             <button type="button" className={MODAL_ACTION} onClick={editor.close} disabled={editor.saving}>{t(editor.dirty ? "action.cancel" : "file.closeEditor")}</button>
             <button type="button" className={MODAL_ACTION_PRIMARY} title={t("file.saveShortcut")} onClick={() => void editor.save()} disabled={!editor.dirty || editor.saving}>
-              {editor.saving ? <LoaderCircle size={13} className="animate-spin" aria-hidden /> : <Save size={13} aria-hidden />}
+              {editor.saving ? <LoaderCircle size={16} className="animate-spin" aria-hidden /> : <Save size={16} aria-hidden />}
               {editor.saving ? t("file.saving") : t("file.save")}
             </button>
           </> : editable && (
             <button type="button" className={MODAL_ACTION} onClick={editor.open}>
-              <Pencil size={13} aria-hidden />
+              <Pencil size={16} aria-hidden />
               {t("file.edit")}
             </button>
           )}
           <FileDownloadButton source={source} />
-          <button type="button" onClick={requestClose} className="grid h-8 w-8 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" aria-label={t("session.preview.close")}><X size={18} /></button>
+          <button type="button" onClick={requestClose} className={toolbarItemClass(false, true)} aria-label={t("session.preview.close")}><X size={16} /></button>
         </header>
         {editor.error && <p role="alert" className="flex-none border-b border-danger/35 bg-danger/10 px-4 py-2 font-mono text-[0.68rem] text-danger">{editor.error}</p>}
         <div className="min-h-0 flex-1 overflow-auto">

@@ -1,10 +1,103 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { readStoredValue, writeStoredValue } from "../../shared/storedValue";
 import { createPortal } from "react-dom";
 import { useT } from "../../shared/i18n";
 import { ProjectFilePreviewModal, ProjectFileTree } from "../projects/ProjectFiles";
 import { AttachmentPreview } from "./AttachmentPreview";
 import { PreviewPanel, type PreviewTarget } from "./PreviewPanel";
 import type { MessageAttachment } from "./parsing";
+import type { SessionPaneTab } from "./SessionHeader";
+import { ProjectDocumentation } from "../projects/ProjectDocumentation";
+import { useApiResource } from "../../shared/useApiResource";
+import type { ProjectDetail } from "../fleet/peonApi";
+
+const PANE_WIDTH_KEY = "overseer:session-pane:width";
+const PANE_MIN_WIDTH = 260;
+const PANE_MAX_WIDTH = 760;
+// Leave the transcript at least this much room beside the pane.
+const PANE_MIN_MAIN_WIDTH = 420;
+
+function savedPaneWidth(): number | null {
+  const value = Number(readStoredValue(PANE_WIDTH_KEY));
+  return Number.isFinite(value) && value >= PANE_MIN_WIDTH && value <= PANE_MAX_WIDTH ? value : null;
+}
+
+// Drags the pane's left edge. The width is published as
+// --session-files-pane-width, which the transcript, composer and scroll
+// control already use to stay clear of the pane.
+function SessionPaneResizeHandle() {
+  const [width, setWidth] = useState(savedPaneWidth);
+  const [resizing, setResizing] = useState(false);
+
+  useEffect(() => {
+    if (width === null) return;
+    const root = document.documentElement;
+    root.style.setProperty("--session-files-pane-width", `${width}px`);
+    return () => { root.style.removeProperty("--session-files-pane-width"); };
+  }, [width]);
+
+  useEffect(() => {
+    if (!resizing) return;
+    const sidebar = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--peon-sidebar-width")) || 0;
+    const resize = (event: PointerEvent) => {
+      const maximum = Math.min(PANE_MAX_WIDTH, window.innerWidth - sidebar - PANE_MIN_MAIN_WIDTH);
+      setWidth(Math.round(Math.max(PANE_MIN_WIDTH, Math.min(maximum, window.innerWidth - event.clientX))));
+    };
+    const stop = () => setResizing(false);
+    document.documentElement.classList.add("peon-sidebar-resizing");
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      document.documentElement.classList.remove("peon-sidebar-resizing");
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+  }, [resizing]);
+
+  useEffect(() => {
+    if (!resizing && width !== null) writeStoredValue(PANE_WIDTH_KEY, String(width));
+  }, [resizing, width]);
+
+  const nudge = useCallback((change: number) => {
+    setWidth((current) => {
+      const base = current ?? (document.querySelector(".session-files-pane")?.getBoundingClientRect().width ?? 344);
+      return Math.round(Math.max(PANE_MIN_WIDTH, Math.min(PANE_MAX_WIDTH, base + change)));
+    });
+  }, []);
+
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize pane"
+      aria-valuemin={PANE_MIN_WIDTH}
+      aria-valuemax={PANE_MAX_WIDTH}
+      aria-valuenow={width ?? undefined}
+      tabIndex={0}
+      className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-accent/70 focus-visible:after:bg-accent"
+      onPointerDown={(event) => {
+        event.preventDefault();
+        setResizing(true);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        nudge(event.key === "ArrowLeft" ? 16 : -16);
+      }}
+    />
+  );
+}
+
+// The docs tab shows the same browser as the project overview, sized for the pane.
+function SessionDocsPane({ base, projectKey }: { base: string; projectKey: string }) {
+  const t = useT();
+  const { data, error } = useApiResource<ProjectDetail>(`${base}/projects/${encodeURIComponent(projectKey)}`);
+  if (error) return <p className="p-3 font-mono text-xs text-danger">⚠ {t("error.loadFailed")}</p>;
+  if (!data) return <div className="grid flex-1 place-items-center"><span className="loading-spinner scale-75" role="status" aria-label={t("proj.docs.loading")} /></div>;
+  return <div className="min-h-0 flex-1 overflow-y-auto"><ProjectDocumentation base={base} projectId={data.projectId ?? null} compact /></div>;
+}
 
 interface FilePreview {
   path: string;
@@ -20,6 +113,7 @@ interface Props {
   // Absent and not-yet-known are different states and must not read alike.
   projectKeyKnown: boolean;
   filesOpen: boolean;
+  paneTab: SessionPaneTab;
   fileRefreshRevision: number;
   projectFilePreview: FilePreview | null;
   setProjectFilePreview: Dispatch<SetStateAction<FilePreview | null>>;
@@ -34,7 +128,7 @@ interface Props {
 }
 
 export function SessionOverlays({
-  peonId, base, sid, projectKey, projectKeyKnown, filesOpen, fileRefreshRevision, projectFilePreview, setProjectFilePreview,
+  peonId, base, sid, projectKey, projectKeyKnown, filesOpen, paneTab, fileRefreshRevision, projectFilePreview, setProjectFilePreview,
   attachmentPreview, setAttachmentPreview, sentAttachmentPreview,
   setSentAttachmentPreview, artifactPreview, setArtifactPreview,
   previewPinned, setPreviewPinned,
@@ -44,8 +138,15 @@ export function SessionOverlays({
   return (
     <>
       {filesOpen && createPortal(
-        <aside className="session-files-pane fixed bottom-3 right-3 z-30 hidden w-80 min-h-0 flex-col overflow-hidden rounded-xl bg-surface-raised shadow-2xl lg:flex" style={{ top: "calc(var(--fixed-pane-header-height, 49px) + 0.75rem)" }} aria-label={t("session.files.title")}>
-          {projectKey ? (
+        <aside
+          className="session-files-pane fixed bottom-0 right-0 z-30 hidden min-h-0 flex-col border-l border-edge app-backdrop lg:flex"
+          style={{ top: "var(--fixed-pane-header-height, 49px)", width: "var(--session-files-pane-width)" }}
+          aria-label={paneTab === "docs" ? t("session.tab.docs") : t("session.files.title")}
+        >
+          <SessionPaneResizeHandle />
+          {projectKey && paneTab === "docs" ? (
+            <SessionDocsPane base={base} projectKey={projectKey} />
+          ) : projectKey ? (
             <ProjectFileTree
               peonId={peonId}
               projectKey={projectKey}
