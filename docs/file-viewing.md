@@ -105,6 +105,25 @@ keeps its no-clobber rename and its dev/inode fencing, and returns
 tree drops the cached subtree of a moved folder rather than rewriting the paths
 it held.
 
+## Links an agent writes
+
+An agent links a file every way a person would: `/abs/app.ts:12`,
+`file:///C:/work/a.html`, `docs/spec.md`, `report.md:12`.
+`apps/web/src/shared/localFileLinks.ts` owns reading those, and `Markdown`
+(`shared/RichText.tsx`) routes them. In a session with a known project, a path
+under the project root (or relative to it) becomes a `/view/...` URL. Any other
+absolute path opens the session-file preview. So does a relative path when there
+is no project, because Peon resolves it against the session's directory.
+
+`Markdown` passes its own `urlTransform`. react-markdown's default empties any
+href whose scheme is not a web one, and it does so before a component sees the
+link. `file://`, a drive letter and `name.ext:12` all came back as `href=""`,
+and an empty href opened in a new tab is the same chat again (OVSR-597). An
+href the renderer resolves itself is kept. Everything else still goes through
+the library's sanitizer, and an emptied link is rendered as plain text. Tests
+must render `<Markdown>` rather than call the path helpers alone, because the
+helpers were correct the whole time this was broken.
+
 ## Attachment paths
 
 Transcript attachments may contain absolute Peon paths while `/files/...` is
