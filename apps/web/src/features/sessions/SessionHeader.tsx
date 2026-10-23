@@ -215,7 +215,7 @@ export function SessionHeaderIdentity({
             </button>
             <button
               type="button"
-              className="grid size-5 place-items-center rounded text-sm text-ink-muted transition-colors hover:bg-surface-active hover:text-ink disabled:opacity-50"
+              className="grid size-5 place-items-center rounded text-sm text-ink-muted transition-colors hover-wash hover:text-ink disabled:opacity-50"
               title={t("action.cancel")}
               aria-label={t("action.cancel")}
               onMouseDown={(e) => e.preventDefault()}
@@ -272,7 +272,7 @@ export function SessionHeader(props: Props) {
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         onClick={() => setMenuOpen((o) => !o)}
-        className="flex items-center rounded p-1 text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+        className="flex items-center rounded p-1 text-ink-muted transition-colors hover-wash hover:text-ink"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
           <circle cx="12" cy="5" r="1.75" />
@@ -327,7 +327,7 @@ export function SessionHeader(props: Props) {
         actions={(
         <>
           <SessionPresence viewers={viewers} />
-          {SHARE_BUTTON_VISIBLE && <button type="button" title="Share session" aria-label="Share session" onClick={onShare} className="grid size-7 place-items-center rounded text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">
+          {SHARE_BUTTON_VISIBLE && <button type="button" title="Share session" aria-label="Share session" onClick={onShare} className="grid size-7 place-items-center rounded text-ink-muted transition-colors hover-wash hover:text-ink">
             <Share2 size={15} aria-hidden />
           </button>}
           {SESSION_MENU_VISIBLE && renderMenu(mobileMenuRef)}
@@ -338,7 +338,7 @@ export function SessionHeader(props: Props) {
   )}
 
   <ContentHeader
-    className="hidden md:block"
+    className="fixed-pane-header-clear hidden md:block"
     metadataPlacement="below"
     identity={identity}
     metadata={<SessionHeaderStats turnTotal={turnTotal} usageSummary={usageSummary} />}
@@ -352,7 +352,7 @@ export function SessionHeader(props: Props) {
           title="Share session"
           aria-label="Share session"
           onClick={onShare}
-          className="hidden size-7 flex-none place-items-center rounded text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink lg:grid"
+          className="hidden size-7 flex-none place-items-center rounded text-ink-muted transition-colors hover-wash hover:text-ink lg:grid"
         >
           <Share2 size={16} aria-hidden />
         </button>

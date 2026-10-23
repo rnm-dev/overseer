@@ -20,9 +20,9 @@ import { simpleToolFileName, simpleToolKind, type SimpleToolKind } from "./simpl
 // lives in ./parsing. author: Viktor
 
 const OWN_ATTACHMENT_CLASS = "theme-user-message-ink bg-surface/25 hover:bg-surface/40";
-const OTHER_ATTACHMENT_CLASS = "on-surface text-ink hover:bg-surface-active/60";
+const OTHER_ATTACHMENT_CLASS = "on-surface text-ink hover-wash";
 const TOOL_ROW_LAYOUT_CLASS = "grid w-fit min-w-0 max-w-[85%] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 py-0.5 typo-chat-system-message";
-const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover:bg-surface-hover/70 hover:text-ink`;
+const TOOL_ROW_CLASS = `${TOOL_ROW_LAYOUT_CLASS} rounded text-left transition-colors hover-wash hover:text-ink`;
 // The 2px rule under a tool row is centered on that row's size-4 icon column ((16-2)/2 = 7px),
 // and its text resumes where the row's label does (16px icon + gap-x-1.5 - 7px - 2px = 13px).
 export const TOOL_DETAIL_RULE_CLASS = "ml-[7px] border-l-2 pl-[13px]";

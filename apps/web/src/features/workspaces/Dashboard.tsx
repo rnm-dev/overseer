@@ -37,7 +37,7 @@ export function userBoxLayoutClass(workspaceCount: number): string {
   return `mt-4 ${workspaceListClass(workspaceCount)}`;
 }
 
-export const HOME_WORKSPACE_CARD_CLASS = "surface overflow-hidden";
+export const HOME_WORKSPACE_CARD_CLASS = "glass-panel overflow-hidden";
 export const HOME_WORKSPACE_HEADER_CLASS = "group block px-5 py-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/60";
 export const HOME_WORKSPACE_TITLE_CLASS = "truncate font-display text-lg font-bold tracking-[0.06em] text-accent-strong drop-shadow-[0_0_8px_rgba(134,171,99,0.18)] transition-colors group-hover:text-accent";
 export const HOME_PEON_LIST_CLASS = "space-y-3 px-4 pb-4";
@@ -81,7 +81,7 @@ export function Dashboard() {
       ) : (
         <>
           {groups.length === 0 ? (
-            <div className="surface px-6 py-12 text-center">
+            <div className="glass-panel px-6 py-12 text-center">
               <p className="font-display text-base font-semibold text-ink">{t("workspace.empty")}</p>
               <p className="mx-auto mt-1 max-w-md text-sm text-ink-faint">{t("workspace.emptyJoinedHint")}</p>
             </div>

@@ -150,7 +150,7 @@ export function saveExpandedProjectGroups(groups: string[]): void {
 // Shared by the "New session" and "New project" rows so they read as list items:
 // same hover and selected backgrounds as session rows.
 export function sidebarCreateRowClass(active: boolean): string {
-  return `group flex h-9 w-full items-center gap-2 overflow-y-hidden pl-3 text-left [scrollbar-gutter:stable] font-body typo-chat-message transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${active ? "bg-accent/10 text-accent-strong" : "text-ink hover:bg-surface-raised"}`;
+  return `group flex h-9 w-full items-center gap-2 overflow-y-hidden pl-3 text-left [scrollbar-gutter:stable] font-body typo-chat-message transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60 ${active ? "bg-accent/10 text-accent-strong" : "text-ink hover-wash"}`;
 }
 
 // Same cell as the "+" on project rows, so every plus in the sidebar lines up.
@@ -223,7 +223,7 @@ export function ProjectGroupedSessionList({
                 aria-expanded={isExpanded}
                 aria-controls={controls}
                 aria-label={`${isExpanded ? t("sessions.project.collapse") : t("sessions.project.expand")}: ${label}`}
-                className="grid h-7 w-7 flex-none place-items-center border-r border-edge/70 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
+                className="grid h-7 w-7 flex-none place-items-center border-r border-edge/70 text-ink-faint transition-colors hover-wash hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
                 onClick={() => toggle(group.id)}
               >
                 {isExpanded ? <ChevronDown size={13} className="flex-none text-ink-faint" aria-hidden /> : <ChevronRight size={13} className="flex-none text-ink-faint" aria-hidden />}
@@ -232,7 +232,7 @@ export function ProjectGroupedSessionList({
                 <Link
                   to={projectTo(project)}
                   title={label}
-                  className="flex h-7 min-w-0 flex-1 items-center truncate px-2 font-body typo-chat-message font-semibold text-ink transition-colors hover:bg-surface-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
+                  className="flex h-7 min-w-0 flex-1 items-center truncate px-2 font-body typo-chat-message font-semibold text-ink transition-colors hover-wash focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
                 >
                   <span className="truncate">{label}</span>
                 </Link>

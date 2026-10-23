@@ -65,7 +65,7 @@ test("the create-workspace action is presented as a prominent header button", ()
 });
 
 test("the user card shares the workspace visual system", () => {
-  assert.match(HOME_USER_CARD_CLASS, /\bsurface\b/);
+  assert.match(HOME_USER_CARD_CLASS, /\bglass-panel\b/);
   assert.doesNotMatch(HOME_USER_CARD_CLASS, /\bbg-transparent\b/);
   assert.match(HOME_USER_TITLE_CLASS, /text-lg/);
   assert.match(HOME_USER_TITLE_CLASS, /px-5/);
@@ -84,8 +84,8 @@ test("the user card shares the workspace visual system", () => {
   assert.match(HOME_USER_SIGN_OUT_CLASS, /focus-visible:ring-danger/);
 });
 
-test("home workspaces use the canonical app surface with unfilled headers", () => {
-  assert.match(HOME_WORKSPACE_CARD_CLASS, /\bsurface\b/);
+test("home workspaces use the glass panel with unfilled headers", () => {
+  assert.match(HOME_WORKSPACE_CARD_CLASS, /\bglass-panel\b/);
   assert.doesNotMatch(HOME_WORKSPACE_CARD_CLASS, /\bbg-transparent\b/);
   assert.doesNotMatch(HOME_WORKSPACE_HEADER_CLASS, /\bbg-/);
 });

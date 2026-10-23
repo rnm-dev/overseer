@@ -1,4 +1,4 @@
-import { ArrowUpRight, KeyRound, LoaderCircle, LogIn } from "lucide-react";
+import { ArrowUpRight, LoaderCircle, LogIn } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, json } from "../../shared/api";
 import { Button } from "../../shared/ui";
@@ -63,16 +63,15 @@ export function ProviderLogin({ base, provider, onSuccess }: {
   }
   const pending = loginPending(attempt);
   const url = attempt?.authorizationUrl ?? attempt?.verificationUrl;
-  return <div className="my-4 overflow-hidden rounded-xl border border-accent/20 bg-gradient-to-br from-accent/10 via-surface-raised/40 to-surface p-4 font-body text-sm shadow-sm">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg border border-accent/20 bg-accent/10 text-accent-strong" aria-hidden="true">
-          {busy || (pending && !url) ? <LoaderCircle size={17} className="animate-spin" /> : <KeyRound size={17} />}
-        </span>
-        <span className="font-display text-xs font-semibold tracking-wide text-ink">{t(`peon.quota.provider.${provider}`)}</span>
-      </div>
-      {!pending && <Button size="sm" disabled={busy} className="!rounded-lg gap-2" onClick={() => void mutate("", json({}))}><LogIn size={14} aria-hidden="true" />{t("providerLogin.login")}</Button>}
-      {pending && <Button variant="ghost" size="sm" disabled={busy} onClick={() => void mutate(`/${encodeURIComponent(attempt!.id)}`, { method: "DELETE" })}>{t("providerLogin.cancel")}</Button>}
+  return <div className="mt-3 font-body text-sm">
+    <div className="flex flex-wrap items-center gap-2">
+      {!pending && <Button size="sm" disabled={busy} className="!rounded-lg gap-2" onClick={() => void mutate("", json({}))}>
+        {busy ? <LoaderCircle size={14} className="animate-spin" aria-hidden="true" /> : <LogIn size={14} aria-hidden="true" />}{t("providerLogin.login")}
+      </Button>}
+      {pending && <>
+        {(busy || !url) && <LoaderCircle size={14} className="animate-spin text-accent-strong" aria-hidden="true" />}
+        <Button variant="ghost" size="sm" disabled={busy} onClick={() => void mutate(`/${encodeURIComponent(attempt!.id)}`, { method: "DELETE" })}>{t("providerLogin.cancel")}</Button>
+      </>}
     </div>
     <div className="space-y-3 empty:hidden [&:not(:empty)]:mt-3">
     {attempt && <p role="status" className="text-xs leading-relaxed text-ink-muted">{t(`providerLogin.${attempt.status}`)}</p>}

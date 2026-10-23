@@ -102,7 +102,7 @@ export function PathInput({ base, value, onChange, browseRoot, browseBase, brows
           type="button"
           disabled={disabled}
           onClick={() => setOpen(true)}
-          className="absolute bottom-px right-px top-px grid w-10 place-items-center rounded-r-[5px] border-l border-edge-strong text-ink-faint transition-colors hover:bg-surface-raised hover:text-accent-strong disabled:cursor-not-allowed disabled:opacity-40"
+          className="absolute bottom-px right-px top-px grid w-10 place-items-center rounded-r-[5px] border-l border-edge-strong text-ink-faint transition-colors hover-wash hover:text-accent-strong disabled:cursor-not-allowed disabled:opacity-40"
           title={t("pathSelector.open")}
           aria-label={t("pathSelector.open")}
         >

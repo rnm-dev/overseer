@@ -25,7 +25,7 @@ export function SelectedTextReplyCard({
       {onClear && (
         <button
           type="button"
-          className="grid size-5 shrink-0 place-items-center rounded text-ink-faint hover:bg-surface-active hover:text-danger"
+          className="grid size-5 shrink-0 place-items-center rounded text-ink-faint hover-wash hover:text-danger"
           aria-label="Clear selected-text reply"
           title="Clear selected-text reply"
           onClick={(event) => { event.stopPropagation(); onClear(); }}

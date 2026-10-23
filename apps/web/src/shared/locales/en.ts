@@ -3,6 +3,8 @@
 
 export const en = {
   "providerLogin.logout": "Log out",
+  "providerLogin.logoutConfirmTitle": "Log out of {provider}?",
+  "providerLogin.logoutConfirmBody": "This Peon will sign out of {provider}. Agents using it stop working until you sign in again.",
   "providerLogin.loggingOut": "Signing out…",
   "providerLogin.logoutError": "Could not sign out. Finish any active sign-in and retry.",
   "providerLogin.login": "Log in",
@@ -379,6 +381,7 @@ export const en = {
   "peon.stats.stateSize": "Stored session state",
   "peon.quota.provider.claude-code": "Claude Code",
   "peon.quota.provider.codex": "Codex",
+  "peon.quota.actions": "Provider actions",
   "peon.quota.status.ok": "Limits available",
   "peon.quota.status.unavailable": "Limits unavailable",
   "peon.quota.status.error": "Needs attention",

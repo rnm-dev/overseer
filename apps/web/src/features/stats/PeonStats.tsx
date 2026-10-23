@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "../../shared/api";
 import { useApiResource } from "../../shared/useApiResource";
-import { Card, StatPlate } from "../../shared/ui";
+import { Card, StatPlate, TOOLBAR_GROUP, toolbarItemClass } from "../../shared/ui";
 import { useT, type MessageKey } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
-import { CliUpdatesPanel } from "../settings/CliUpdatesPanel";
 import {
   EMPTY_CAPABILITIES,
   EMPTY_QUOTA,
@@ -161,18 +160,24 @@ export function PeonStats() {
   ];
   const hasBreakdown = breakdown.some(([, n]) => typeof n === "number");
   const byModel = stats?.byModel ?? [];
+  const attributionHint = analytics.users?.attribution?.note || analytics.projects?.attribution?.note
+    ? t(usageIsPerTurn(analytics.users, analytics.projects) ? "peon.stats.attributionNote" : "peon.stats.attributionNoteLegacy")
+    : undefined;
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap" role="group">
+      <div
+        className={`glass-panel inline-flex p-1 ${TOOLBAR_GROUP}`}
+        role="group"
+        title={stats?.timeZone ? t("peon.stats.timeZone", { zone: stats.timeZone }) : undefined}
+      >
         {PERIODS.map((p) => (
           <button
             key={p}
+            type="button"
             onClick={() => setPeriod(p)}
             aria-pressed={period === p}
-            className={`min-h-10 whitespace-nowrap rounded-sm border px-4 py-2 font-display text-[0.68rem] font-bold uppercase tracking-[0.12em] transition-colors ${
-              period === p ? "border-accent text-accent-strong" : "border-edge text-ink-muted hover:text-ink"
-            }`}
+            className={toolbarItemClass(period === p)}
           >
             {t(`peon.stats.period.${p}`)}
           </button>
@@ -183,20 +188,24 @@ export function PeonStats() {
       {!stats && !error && <div className="loading-spinner" />}
       {stats && (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <StatPlate value={fmtCount(stats.sessionCount)} label={t("peon.stats.sessions")} />
-            <StatPlate value={fmtCount(stats.processedTokens ?? stats.totalTokens)} label={t("peon.stats.processedTokens")} tone="warning" />
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatPlate
+              value={fmtCount(stats.sessionCount)}
+              label={t("peon.stats.sessions")}
+              hint={missingUsage > 0 ? t("peon.stats.missingUsage", { n: missingUsage }) : undefined}
+            />
+            <StatPlate
+              value={fmtCount(stats.processedTokens ?? stats.totalTokens)}
+              label={t("peon.stats.processedTokens")}
+              tone="warning"
+              hint={[t("peon.stats.usageExplanation"), (stats.usagePartialTurns ?? 0) > 0 || (stats.usageLegacyTurns ?? 0) > 0 ? t("peon.stats.partialUsage") : ""].filter(Boolean).join("\n")}
+            />
             <StatPlate value={fmtDuration(stats.totalDurationMs)} label={t("peon.stats.agentRuntime")} tone="ink" />
+            <StatPlate value={fmtBytes(stats.sessionsSizeBytes)} label={t("peon.stats.stateSize")} tone="ink" />
           </div>
 
-          {missingUsage > 0 && <p className="font-mono text-xs text-ink-faint">{t("peon.stats.missingUsage", { n: missingUsage })}</p>}
-          <p className="font-mono text-xs text-ink-faint">{t("peon.stats.usageExplanation")}</p>
-          {((stats.usagePartialTurns ?? 0) > 0 || (stats.usageLegacyTurns ?? 0) > 0) &&
-            <p className="font-mono text-xs text-ink-faint">{t("peon.stats.partialUsage")}</p>}
-          {stats.timeZone && <p className="font-mono text-xs text-ink-faint">{t("peon.stats.timeZone", { zone: stats.timeZone })}</p>}
-
           {hasBreakdown && (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-ink-muted">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs tabular-nums text-ink-muted">
               {breakdown.map(([key, n]) => (
                 <span key={key}>
                   <span className="text-ink-faint">{t(key)}</span> {fmtCount(n)}
@@ -204,9 +213,6 @@ export function PeonStats() {
               ))}
             </div>
           )}
-          <div className="font-mono text-xs text-ink-muted">
-            <span className="text-ink-faint">{t("peon.stats.stateSize")}</span> {fmtBytes(stats.sessionsSizeBytes)}
-          </div>
         </>
       )}
 
@@ -217,6 +223,7 @@ export function PeonStats() {
           label={(row) => row.user === "unknown" || !row.user ? t("peon.stats.unknownUser") : row.user}
           empty={t("peon.stats.noUserUsage")}
           loading={!analytics.users && !analyticsError}
+          hint={attributionHint}
         />
         <UsageBreakdown
           title={t("peon.stats.byProject")}
@@ -224,16 +231,12 @@ export function PeonStats() {
           label={(row) => row.projectKey || (row.projectId ? row.projectId : t("peon.stats.unknownProject"))}
           empty={t("peon.stats.noProjectUsage")}
           loading={!analytics.projects && !analyticsError}
+          hint={attributionHint}
         />
       </div>
       {analyticsError && <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {t("peon.stats.breakdownUnavailable")}</p>}
-      {(analytics.users?.attribution?.note || analytics.projects?.attribution?.note) && (
-        <p className="font-mono text-xs text-ink-faint">
-          {t(usageIsPerTurn(analytics.users, analytics.projects) ? "peon.stats.attributionNote" : "peon.stats.attributionNoteLegacy")}
-        </p>
-      )}
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-4">
         {PROVIDERS.map((provider) => (
           <ProviderUsage
             key={provider}
@@ -253,7 +256,6 @@ export function PeonStats() {
         ))}
       </div>
 
-      {isOwner && <CliUpdatesPanel base={base} online={peon.online} />}
     </div>
   );
 }
@@ -264,20 +266,22 @@ function UsageBreakdown({
   label,
   empty,
   loading,
+  hint,
 }: {
   title: string;
   rows?: AnalyticsRow[];
   label: (row: AnalyticsRow) => string;
   empty: string;
   loading: boolean;
+  hint?: string;
 }) {
   const t = useT();
   const ordered = analyticsRows(rows);
   return (
-    <Card className="overflow-hidden px-0 py-0">
-      <div className="border-b border-edge px-5 py-4 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{title}</div>
+    <Card className="overflow-hidden px-0 py-0" title={hint}>
+      <div className="border-b border-edge px-5 py-3 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{title}</div>
       {loading ? <div className="m-5 loading-spinner" /> : ordered.length === 0 ? (
-        <p className="px-5 py-6 font-mono text-sm text-ink-faint">{empty}</p>
+        <p className="px-5 py-4 font-mono text-xs text-ink-faint">{empty}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[28rem] text-left font-mono text-xs">

@@ -256,7 +256,7 @@ export function Members() {
               ) : (
                 <ul className="divide-y divide-edge">
                   {members.map((member) => (
-                    <li key={member.userId} className="transition-colors hover:bg-surface-hover/20">
+                    <li key={member.userId} className="transition-colors hover-wash">
                     <div className="group flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex min-w-0 items-center gap-3.5">
                         <Avatar src={member.avatarUrl} label={member.githubLogin || member.email} size="xl" className="border-edge-strong" />
@@ -266,7 +266,7 @@ export function Members() {
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                        {member.role === "member" && <button type="button" className={`h-9 rounded-md px-3 font-display text-xs transition-colors ${accessMember === member.userId ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`} onClick={() => void openAccess(member)}>{t("members.access")}</button>}
+                        {member.role === "member" && <button type="button" className={`h-9 rounded-md px-3 font-display text-xs transition-colors ${accessMember === member.userId ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover-wash hover:text-ink"}`} onClick={() => void openAccess(member)}>{t("members.access")}</button>}
                         <select style={{ width: 124 }} className="field !py-2 !text-xs" aria-label={t("members.roleFor", { name: member.githubLogin || member.email })} disabled={busy === member.userId} value={member.role} onChange={(event) => void changeRole(member, event.target.value as Role)}>
                           <option value="member">{t("role.member")}</option>
                           <option value="owner">{t("role.owner")}</option>
@@ -314,7 +314,7 @@ export function Members() {
               </div>
               <ul className="divide-y divide-edge">
                 {invites.map((invite) => (
-                  <li key={invite.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover:bg-surface-hover/20 sm:flex-row sm:items-center sm:justify-between">
+                  <li key={invite.id} className="flex flex-col gap-3 px-5 py-4 transition-colors hover-wash sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="h-2 w-2 flex-none rounded-full bg-warning-strong shadow-[0_0_8px_rgba(217,148,65,0.35)]" />

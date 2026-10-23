@@ -312,7 +312,7 @@ export function PeonDetail() {
       <aside
         id="peon-navigation"
         data-open={drawerOpen}
-        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-edge bg-surface shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-surface/50 md:shadow-none"
+        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-edge bg-surface shadow-2xl md:visible md:sticky md:top-1 md:z-auto md:my-1 md:mx-1 md:h-[calc(100vh-0.5rem)] md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:overflow-hidden glass-panel-md"
       >
         {/* header: back + workspace-wide Peon scope switcher */}
         <div className="px-2 py-2">
@@ -321,7 +321,7 @@ export function PeonDetail() {
               to="/"
               title={t("peon.back")}
               aria-label={t("peon.back")}
-              className="flex-none rounded p-1.5 text-ink-muted transition-colors hover:bg-surface-hover hover:text-accent-strong"
+              className="flex-none rounded p-1.5 text-ink-muted transition-colors hover-wash hover:text-accent-strong"
             >
               <ArrowLeft size={16} />
             </Link>
@@ -484,7 +484,7 @@ export function PeonDetail() {
           aria-valuemax={sidebar.maxWidth}
           aria-valuenow={Math.round(sidebar.sidebarWidth)}
           tabIndex={0}
-          className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-accent/70 focus-visible:after:bg-accent md:block"
+          className="absolute right-0 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none panel-resize-handle md:block"
           onPointerDown={(event) => {
             event.preventDefault();
             sidebar.startResize();
@@ -502,7 +502,7 @@ export function PeonDetail() {
         <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-edge bg-canvas/95 px-3 backdrop-blur md:hidden">
           <button
             type="button"
-            className="-ml-1 rounded p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink"
+            className="-ml-1 rounded p-2 text-ink-muted transition-colors hover-wash hover:text-ink"
             aria-label={t("peon.tab.sessions")}
             aria-expanded={drawerOpen}
             aria-controls="peon-navigation"

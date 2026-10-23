@@ -68,6 +68,26 @@ accent-coloured text. Both default to none. Neon Nocturne uses them.
 `--ov-user-message-background` they give the operator's bubble a frosted-glass
 look. Neon Nocturne uses them.
 
+## Glass panels
+
+The desktop sidebar, the Files/Docs pane, the composer, home-screen cards and
+every `Card` (stats, settings, Armory, project settings) are frosted panels
+(`.glass-panel` in `index.css`). Rows and hovers inside a panel are neutral
+washes; interactive ones hover with `--ov-hover-wash`. All tokens are optional:
+
+- `--ov-panel-bg` — fill; default surface at 12%.
+- `--ov-panel-backdrop` — `backdrop-filter`; default `blur(6px) saturate(1.3)`.
+  Keep the blur small: a large one smears thin backgrounds such as Neon
+  Nocturne's grid into a flat fill and the panel reads as opaque.
+- `--ov-panel-border` — border colour; default ink at 10%.
+- `--ov-panel-shadow` — `box-shadow`; default a soft drop shadow.
+- `--ov-panel-radius` — corner radius; default `0.75rem`.
+
+Neon Nocturne sets a fainter fill and border.
+
+Rows and quiet buttons hover with `--ov-hover-wash` (`.hover-wash`), default
+ink at 6% — a neutral wash rather than the theme's surface colour.
+
 ## Typing glow
 
 `--ov-typing-glow` is an optional CSS animation value, normally
@@ -80,6 +100,13 @@ overlay (`typingGlow.ts`, rendered in `Composer.tsx`) shows only the recent
 insertions, so input methods, undo and paste behave as before. Insertions longer
 than 200 characters, such as pastes, do not glow, and reduced-motion users get
 no animation. Without the token nothing is tracked.
+
+
+`--ov-composer-heat-shadow` (a `box-shadow` value) is optional. When set, typing
+in the composer heats it: an extra copy of that shadow fades in with each
+keystroke, capped at full strength, so faster typing settles brighter, and cools
+over about a second once typing stops (`composerHeat.ts`). Reduced-motion
+users never see it. Neon Nocturne uses a brighter version of its composer glow.
 
 ## Borders are softened in the web app
 

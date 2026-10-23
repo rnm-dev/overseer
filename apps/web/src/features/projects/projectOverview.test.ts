@@ -84,7 +84,7 @@ test("project recent sessions reuse sidebar rows with status, presence hook, and
   assert.match(html, /bg-accent-strong/);
   assert.match(html, /href="\/peons\/nova\/sessions\/live"/);
   assert.match(html, /href="\/peons\/nova\/sessions\/new\?project=OVSR"[^>]*>New session<svg/);
-  assert.match(html, /hover:bg-surface-hover\/70/);
+  assert.match(html, /\bhover-wash\b/);
   // The row's status now reads off the glowing left edge, so the panel no longer
   // needs its own inset hover marker.
   assert.match(html, /class="absolute inset-y-1 left-0 w-0\.5 bg-accent-strong status-edge/);

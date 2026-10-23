@@ -259,7 +259,7 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
             // (uploads and moves land in it); a file only carries.
             {...transfers.dragHandleProps(dragged)}
             {...(directory ? transfers.dropZoneProps(fullPath) : {})}
-            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow,opacity] duration-150 ${transfers.dragSource?.path === fullPath ? "opacity-40" : "opacity-100"} ${transfers.dropTarget === fullPath ? "bg-accent/20 text-ink shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover:bg-surface-hover/85 hover:text-ink"}`}
+            className={`group flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-left font-mono text-xs transition-[background-color,color,box-shadow,opacity] duration-150 ${transfers.dragSource?.path === fullPath ? "opacity-40" : "opacity-100"} ${transfers.dropTarget === fullPath ? "bg-accent/20 text-ink shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent-deep)_85%,transparent),0_2px_10px_rgba(0,0,0,0.18)]" : activePath === fullPath ? "bg-surface-hover text-accent-strong" : "text-ink-muted hover-wash hover:text-ink"}`}
             style={{ paddingLeft: 8 + depth * 16 }}
             title={fullPath}
           >
@@ -388,7 +388,7 @@ export function ProjectFileTree({ peonId, projectKey, filesBase, sourceFor, acti
   );
 }
 
-const FILE_MENU_ITEM_CLASS = "flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60";
+const FILE_MENU_ITEM_CLASS = "flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover-wash hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60";
 
 // The ring stands where the file's icon will be, so a row does not change
 // shape when the bytes land — it only swaps the ring for the icon.

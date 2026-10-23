@@ -71,12 +71,9 @@ export function CliUpdatesPanel({ base, online }: Props) {
   if (!online) return null;
 
   return (
-    <Card className="space-y-4 px-5 py-5">
+    <Card className="space-y-3 px-5 py-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h3 className="font-display text-sm font-bold text-ink">{t("peon.cliUpdates.title")}</h3>
-          <p className="mt-1 font-mono text-xs text-ink-muted">{t("peon.cliUpdates.hint")}</p>
-        </div>
+        <h3 className="font-display text-sm font-bold text-ink">{t("peon.cliUpdates.title")}</h3>
         {supported && <Button variant="secondary" size="sm" onClick={() => void load(true)} disabled={loading || refreshing || busy}>{refreshing ? t("peon.cliUpdates.refreshing") : t("peon.cliUpdates.refresh")}</Button>}
       </div>
 
@@ -92,12 +89,9 @@ export function CliUpdatesPanel({ base, online }: Props) {
             const available = item.updateAvailable === true;
             const unsupported = item.updateSupported === false;
             return (
-              <div key={item.provider} className="surface surface--inset flex min-h-44 flex-col px-4 py-4">
+              <div key={item.provider} className="flex flex-col rounded-md bg-ink/[0.04] px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-display text-sm font-bold text-ink">{labels[item.provider]}</p>
-                    <p className="mt-1 font-mono text-[0.68rem] text-ink-faint">{t(`peon.cliUpdates.${item.provider === "codex" ? "codexPackage" : "claudePackage"}`)}</p>
-                  </div>
+                  <p className="font-display text-sm font-bold text-ink" title={t(`peon.cliUpdates.${item.provider === "codex" ? "codexPackage" : "claudePackage"}`)}>{labels[item.provider]}</p>
                   <Badge tone={failed || unsupported ? "red" : available ? "amber" : active ? "neutral" : "green"}>
                     {failed ? t("peon.cliUpdates.failed") : unsupported ? t("peon.cliUpdates.unavailable") : active ? t("peon.cliUpdates.updating") : available ? t("peon.cliUpdates.available") : t("peon.cliUpdates.current")}
                   </Badge>

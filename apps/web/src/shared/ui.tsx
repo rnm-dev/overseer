@@ -37,11 +37,11 @@ export function Input({ className = "", ...props }: InputHTMLAttributes<HTMLInpu
 // the current item. Lay items out with TOOLBAR_GROUP.
 export const TOOLBAR_GROUP = "flex flex-none items-center gap-1";
 export function toolbarItemClass(active = false, iconOnly = false): string {
-  return `flex h-7 flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-body text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-default disabled:opacity-45 ${iconOnly ? "w-7" : "px-1.5"} ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink disabled:hover:bg-transparent disabled:hover:text-ink-muted"}`;
+  return `flex h-7 flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-body text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-default disabled:opacity-45 ${iconOnly ? "w-7" : "px-1.5"} ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover-wash hover:text-ink disabled:hover:bg-transparent disabled:hover:text-ink-muted"}`;
 }
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={`surface ${className}`}>{children}</div>;
+export function Card({ children, className = "", title }: { children: ReactNode; className?: string; title?: string }) {
+  return <div className={`glass-panel ${className}`} title={title}>{children}</div>;
 }
 
 export function Dialog({ title, children, actions, onClose, size = "md", dismissible = true }: { title: ReactNode; children: ReactNode; actions?: ReactNode; onClose: () => void; size?: "md" | "lg"; dismissible?: boolean }) {
@@ -175,7 +175,7 @@ export function Dialog({ title, children, actions, onClose, size = "md", dismiss
         <div className="mb-4 flex items-start gap-3 border-b border-edge/90 pb-4">
           <h3 id={titleId} className="min-w-0 flex-1 font-display text-base font-bold tracking-wide text-ink">{title}</h3>
           {actions}
-          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink" onClick={requestClose} disabled={!dismissible} aria-label={t("a11y.close")}>
+          <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-base leading-none text-ink-faint transition-colors hover:border-edge-strong hover-wash hover:text-ink" onClick={requestClose} disabled={!dismissible} aria-label={t("a11y.close")}>
             ✕
           </button>
         </div>
@@ -241,10 +241,10 @@ export function GithubMark({ size = 18 }: { size?: number }) {
   );
 }
 
-export function StatPlate({ value, label, tone = "accent" }: { value: ReactNode; label: string; tone?: "accent" | "warning" | "ink" }) {
+export function StatPlate({ value, label, tone = "accent", hint }: { value: ReactNode; label: string; tone?: "accent" | "warning" | "ink"; hint?: string }) {
   const color = tone === "accent" ? "text-accent-strong" : tone === "warning" ? "text-warning-strong" : "text-ink";
   return (
-    <Card className="px-4 py-3">
+    <Card className="px-4 py-3" title={hint}>
       <div className={`font-display text-2xl font-extrabold leading-none ${color}`}>{value}</div>
       <div className="mt-1.5 font-display text-[0.6rem] uppercase tracking-[0.16em] text-ink-muted">{label}</div>
     </Card>
@@ -290,7 +290,7 @@ export function FixedPaneHeader({ children, className = "" }: { children: ReactN
   return (
     <>
       {createPortal(
-        <div ref={setNode} className={`fixed-pane-header app-backdrop fixed left-0 right-0 top-12 z-20 border-b border-edge md:left-[var(--peon-sidebar-width)] md:top-0 ${className}`}>
+        <div ref={setNode} className={`fixed-pane-header fixed left-0 right-0 top-12 z-20 md:left-[calc(var(--peon-sidebar-width)+0.5rem)] md:top-0 ${className}`}>
           {children}
         </div>,
         document.body,
@@ -322,11 +322,10 @@ export function ContentHeaderLayout({
 }: ContentHeaderLayoutProps) {
   const metadataBelow = metadataPlacement === "below";
   return (
-    <div className={compact ? "min-w-0 flex-1" : "space-y-1.5 px-3 py-2.5 sm:px-6"}>
+    <div className={compact ? "min-w-0 flex-1" : `space-y-1.5 px-3 sm:px-6 ${metadataBelow ? "py-3.5" : "py-2.5"}`}>
       <div className={`flex items-center ${compact ? "gap-2" : "min-h-7 gap-3"}`}>
-        <div className={metadataBelow ? "flex min-w-0 flex-1 flex-col justify-center" : "flex min-w-0 flex-1 items-center gap-1.5"}>
-          {/* Title and metadata share the single-line row height, so the bar keeps
-              the same height as the sidebar's top bar. */}
+        <div className={metadataBelow ? `flex min-w-0 flex-1 flex-col justify-center ${compact ? "" : "gap-1"}` : "flex min-w-0 flex-1 items-center gap-1.5"}>
+          {/* Title and metadata stack with breathing room; the bar grows to fit. */}
           {metadataBelow ? <div className="flex h-4 min-w-0 items-center gap-1.5 [&_.typo-content-header]:text-[0.8rem] [&_.typo-content-header]:leading-4">{identity}</div> : identity}
           {metadataBelow && metadata}
         </div>
@@ -442,6 +441,6 @@ export function DropdownMenu({
 // class directly so links and buttons stay visually consistent.
 export function menuItemClass(tone: "default" | "danger" = "default"): string {
   return `block w-full px-3 py-1.5 text-left font-body text-xs transition-colors disabled:opacity-40 ${
-    tone === "danger" ? "text-danger hover:bg-danger/10" : "text-ink-muted hover:bg-surface-raised hover:text-accent-strong"
+    tone === "danger" ? "text-danger hover:bg-danger/10" : "text-ink-muted hover-wash hover:text-accent-strong"
   }`;
 }

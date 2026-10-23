@@ -6,6 +6,7 @@ import type { MessageAttachment } from "./parsing";
 import { isLongPastedText, isPastedTextName, pastedTextFile } from "./pastedText";
 import type { SelectedTextReply } from "./selectedTextReply";
 import { SelectedTextReplyCard } from "./SelectedTextReplyCard";
+import { useComposerHeat } from "./composerHeat";
 import { diffText, GLOW_LIFETIME_MS, glowSegments, MAX_GLOW_INSERTION, shiftGlowRanges, typingGlowEnabled, type GlowRange } from "./typingGlow";
 
 // author: Viktor
@@ -47,7 +48,7 @@ export function supportsDesktopComposerFocus(): boolean {
     : window.innerWidth >= 768;
 }
 
-const COMPOSER_SHELL_CLASS = "surface theme-composer-shell composer-shell relative p-2 transition-[border-color,box-shadow]";
+const COMPOSER_SHELL_CLASS = "glass-panel theme-composer-shell composer-shell relative p-2 transition-[border-color,box-shadow]";
 const COMPOSER_ICON_ACTION_CLASS = "on-surface on-surface--interactive flex h-8 w-8 flex-none items-center justify-center rounded-lg";
 const COMPOSER_TEXT_ACTION_CLASS = "on-surface on-surface--interactive h-8 flex-none rounded-lg px-3";
 
@@ -122,6 +123,7 @@ export function Composer({
   caretRequest,
 }: ComposerProps) {
   const t = useT();
+  const heat = useComposerHeat<HTMLDivElement>();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
@@ -205,8 +207,9 @@ export function Composer({
 
   return (
     <div
+      ref={heat.nodeRef}
       data-file-drop-zone="composer"
-      className={`${COMPOSER_SHELL_CLASS} ${dragActive ? "border-accent bg-accent/10" : ""}`}
+      className={`${COMPOSER_SHELL_CLASS} ${dragActive ? "composer-drop-active" : ""}`}
       onDragEnter={(event) => {
         if (!isFileDrag(event.dataTransfer.types)) return;
         event.preventDefault();
@@ -316,7 +319,7 @@ export function Composer({
         placeholder={placeholder}
         disabled={disabled && !autoFocus}
         readOnly={disabled && Boolean(autoFocus)}
-        onChange={(e) => onChange(e.target.value, e.target.selectionStart)}
+        onChange={(e) => { heat.bump(); onChange(e.target.value, e.target.selectionStart); }}
         onScroll={(e) => {
           if (highlightRef.current) highlightRef.current.style.transform = `translateY(-${e.currentTarget.scrollTop}px)`;
           if (glowRef.current) glowRef.current.style.transform = `translateY(-${e.currentTarget.scrollTop}px)`;

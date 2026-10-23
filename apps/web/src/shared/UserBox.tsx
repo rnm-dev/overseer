@@ -9,7 +9,7 @@ import { useTheme } from "../features/themes/ThemeProvider";
 
 // author: Viktor
 // Account panel, shown as the final in-flow block on the fleet dashboard.
-export const HOME_USER_CARD_CLASS = "surface user-box w-full overflow-hidden";
+export const HOME_USER_CARD_CLASS = "glass-panel user-box w-full overflow-hidden";
 export const HOME_USER_TITLE_CLASS = "truncate px-5 py-5 font-display text-lg font-bold tracking-[0.06em] text-accent-strong drop-shadow-[0_0_8px_rgba(134,171,99,0.18)]";
 export const HOME_USER_ITEMS_CLASS = "space-y-3 px-4 pb-4";
 export const HOME_USER_ITEM_CLASS = "on-surface flex min-h-12 items-center justify-between gap-4 rounded-lg px-4 py-3";

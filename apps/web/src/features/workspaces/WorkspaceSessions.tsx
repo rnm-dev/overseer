@@ -267,7 +267,7 @@ export function WorkspaceSessions() {
 
       <main className="peon-main-pane min-w-0 flex-1">
         <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-edge bg-canvas/95 px-3 backdrop-blur md:hidden">
-          <button type="button" className="-ml-1 rounded p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink" aria-label={t("peon.tab.sessions")} aria-expanded={drawerOpen} aria-controls="workspace-session-navigation" onClick={() => setDrawerOpen(true)}>
+          <button type="button" className="-ml-1 rounded p-2 text-ink-muted transition-colors hover-wash hover:text-ink" aria-label={t("peon.tab.sessions")} aria-expanded={drawerOpen} aria-controls="workspace-session-navigation" onClick={() => setDrawerOpen(true)}>
             <Menu size={20} />
           </button>
           <span className="min-w-0 flex-1 truncate font-display text-sm font-bold text-ink">{t("sessions.allPeons")}</span>

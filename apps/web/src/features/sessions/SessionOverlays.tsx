@@ -76,7 +76,7 @@ function SessionPaneResizeHandle() {
       aria-valuemax={PANE_MAX_WIDTH}
       aria-valuenow={width ?? undefined}
       tabIndex={0}
-      className="absolute -left-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-accent/70 focus-visible:after:bg-accent"
+      className="absolute left-0 top-0 z-10 h-full w-2 cursor-col-resize touch-none outline-none panel-resize-handle"
       onPointerDown={(event) => {
         event.preventDefault();
         setResizing(true);
@@ -139,8 +139,8 @@ export function SessionOverlays({
     <>
       {filesOpen && createPortal(
         <aside
-          className="session-files-pane fixed bottom-0 right-0 z-30 hidden min-h-0 flex-col border-l border-edge app-backdrop lg:flex"
-          style={{ top: "var(--fixed-pane-header-height, 49px)", width: "var(--session-files-pane-width)" }}
+          className="session-files-pane fixed bottom-1 right-1 z-30 hidden min-h-0 flex-col overflow-hidden glass-panel lg:flex"
+          style={{ top: "var(--fixed-pane-header-height, 49px)", width: "calc(var(--session-files-pane-width) - 0.5rem)" }}
           aria-label={paneTab === "docs" ? t("session.tab.docs") : t("session.files.title")}
         >
           <SessionPaneResizeHandle />

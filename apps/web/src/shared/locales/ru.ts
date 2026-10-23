@@ -5,6 +5,8 @@ import type { MessageKey } from "./en";
 
 export const ru: Record<MessageKey, string> = {
   "providerLogin.logout": "Выйти",
+  "providerLogin.logoutConfirmTitle": "Выйти из {provider}?",
+  "providerLogin.logoutConfirmBody": "Этот Peon выйдет из {provider}. Агенты, которые его используют, перестанут работать, пока вы снова не войдёте.",
   "providerLogin.loggingOut": "Выходим…",
   "providerLogin.logoutError": "Не удалось выйти. Завершите текущий вход и повторите попытку.",
   "providerLogin.login": "Логин",
@@ -381,6 +383,7 @@ export const ru: Record<MessageKey, string> = {
   "peon.stats.stateSize": "Размер сохранённых сессий",
   "peon.quota.provider.claude-code": "Claude Code",
   "peon.quota.provider.codex": "Codex",
+  "peon.quota.actions": "Действия провайдера",
   "peon.quota.status.ok": "Лимиты доступны",
   "peon.quota.status.unavailable": "Лимиты недоступны",
   "peon.quota.status.error": "Требует внимания",

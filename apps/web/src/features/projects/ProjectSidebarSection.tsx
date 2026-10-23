@@ -153,7 +153,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                     >
                       <NavLink
                         to={to(project)}
-                        className={({ isActive }) => `relative block min-w-0 flex-1 py-1.5 pl-3 transition-colors ${project.quickLinks?.length ? "pr-8" : "pr-2"} ${isActive ? "bg-accent/10" : "hover:bg-surface-raised"}`}
+                        className={({ isActive }) => `relative block min-w-0 flex-1 py-1.5 pl-3 transition-colors ${project.quickLinks?.length ? "pr-8" : "pr-2"} ${isActive ? "bg-accent/10" : "hover-wash"}`}
                         title={project.name ?? project.key}
                       >
                         <span
@@ -188,7 +188,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                           type="button"
                           aria-label={`${t("proj.quickLinks")}: ${project.name?.trim() || project.key}`}
                           aria-haspopup="menu"
-                          className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded text-ink-faint opacity-70 transition-colors hover:bg-surface-hover hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 md:opacity-0 md:group-hover/project:opacity-100"
+                          className="absolute right-1 top-1 grid h-7 w-7 place-items-center rounded text-ink-faint opacity-70 transition-colors hover-wash hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 md:opacity-0 md:group-hover/project:opacity-100"
                           onClick={(event) => {
                             const rect = event.currentTarget.getBoundingClientRect();
                             openContextMenu(project, rect.right, rect.bottom);
@@ -224,7 +224,7 @@ export function ProjectSidebarSection({ projects, error = false, to, onNew }: Pr
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
+                className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left font-body text-[0.7rem] text-ink-muted transition-colors hover-wash hover:text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-accent/60"
                 onClick={() => setContextMenu(null)}
               >
                 <span className="min-w-0 flex-1 truncate">{link.title}</span>
