@@ -1668,7 +1668,6 @@ html.peon-sidebar-resizing * {
   inset: 0;
   z-index: -1;
   backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
   mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
   -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent 100%);
   pointer-events: none;
@@ -1723,7 +1722,6 @@ html.peon-sidebar-resizing * {
 .glass-panel {
   background: var(--panel-bg);
   backdrop-filter: var(--panel-backdrop);
-  -webkit-backdrop-filter: var(--panel-backdrop);
   border: 1px solid var(--panel-border);
   border-radius: var(--panel-radius);
   box-shadow: var(--panel-shadow);
@@ -1732,7 +1730,6 @@ html.peon-sidebar-resizing * {
   .glass-panel-md {
     background: var(--panel-bg);
     backdrop-filter: var(--panel-backdrop);
-    -webkit-backdrop-filter: var(--panel-backdrop);
     border: 1px solid var(--panel-border);
     border-radius: var(--panel-radius);
     box-shadow: var(--panel-shadow);
