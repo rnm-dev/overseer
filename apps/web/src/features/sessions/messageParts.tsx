@@ -248,6 +248,26 @@ function ToolRow({ name, input, result, t, simple = false }: { name?: string; in
   );
 }
 
+// What a subagent did inside its Agent call, indented under that row. Open
+// while it runs so progress is visible; folded once its result lands.
+function SubagentSteps({ items, running, t, render }: { items: Item[]; running: boolean; t: T; render: (item: Item) => ReactNode }) {
+  const [open, setOpen] = useState<boolean | null>(null);
+  const expanded = open ?? running;
+  return (
+    <div className="ml-2 mt-1 border-l border-edge pl-3">
+      <button
+        type="button"
+        onClick={() => setOpen(!expanded)}
+        aria-expanded={expanded}
+        className="typo-chat-system-message text-ink-faint hover:text-ink"
+      >
+        {expanded ? "▾" : "▸"} {t("session.chat.subagentSteps", { n: items.length })}
+      </button>
+      {expanded && <div className="mt-1 flex flex-col gap-1.5">{items.map((child) => <div key={child.key}>{render(child)}</div>)}</div>}
+    </div>
+  );
+}
+
 function EditStats({ operation, stats }: { operation: EditOperation; stats: { added: number; removed: number } }) {
   return (
     <span className="ml-0.5 typo-chat-system-message font-normal">
@@ -421,8 +441,18 @@ export function ItemView({ item, t, locale = "en", yesterdayLabel = "Yesterday",
       );
     case "thinking":
       return <Thinking text={item.text} />;
-    case "tool":
-      return <ToolRow name={item.name} input={item.input} result={item.result} t={t} simple={simpleTools} />;
+    case "tool": {
+      const row = <ToolRow name={item.name} input={item.input} result={item.result} t={t} simple={simpleTools} />;
+      if (!item.children?.length) return row;
+      return (
+        <div>
+          {row}
+          <SubagentSteps items={item.children} running={!item.result} t={t} render={(child) => (
+            <ItemView item={child} t={t} locale={locale} yesterdayLabel={yesterdayLabel} simpleTools={simpleTools} onOpenPreview={onOpenPreview} onOpenAttachment={onOpenAttachment} onOpenReplySource={onOpenReplySource} onOpenProjectFile={onOpenProjectFile} projectViewer={projectViewer} />
+          )} />
+        </div>
+      );
+    }
     case "loose":
       return <ActionResult text={item.text} t={t} />;
     case "notice":

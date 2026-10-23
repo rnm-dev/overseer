@@ -218,7 +218,8 @@ export type Item =
   | { kind: "participant"; key: string; text: string; sourceEventId?: string; author: MentionPrincipal; mentions?: ComposerMention[]; attachments?: MessageAttachment[]; createdAt?: number }
   | { kind: "text"; key: string; text: string; providerError?: string; sourceEventId?: string; createdAt?: number; resultMeta?: { tone?: "neutral" | "error"; text: string } }
   | { kind: "thinking"; key: string; text: string }
-  | { kind: "tool"; key: string; name?: string; input?: unknown; result?: { text: string; error?: boolean } }
+  // `children` holds what a subagent did inside this (Agent) tool call.
+  | { kind: "tool"; key: string; name?: string; input?: unknown; result?: { text: string; error?: boolean }; children?: Item[] }
   | { kind: "loose"; key: string; text: string }
   | { kind: "notice"; key: string; tone?: "neutral" | "error"; text: string }
   | { kind: "preview"; key: string; path: string; author?: string; createdAt?: number }
@@ -248,10 +249,20 @@ function renderEventKey(event: Ev, index: number): string {
 
 export function flattenEvents(events: Ev[], t: T): Item[] {
   const items: Item[] = [];
-  const toolIndex = new Map<string, number>(); // tool_use id -> index in items, for pairing its later result
+  // tool_use id -> where its row lives, for pairing its later result and for
+  // nesting a subagent's events under the Agent call that spawned it.
+  const toolIndex = new Map<string, { list: Item[]; index: number }>();
+  const tool = (id: string | undefined) => {
+    const at = id ? toolIndex.get(id) : undefined;
+    return at && { ...at, item: at.list[at.index] as Extract<Item, { kind: "tool" }> };
+  };
 
   events.forEach((ev, ei) => {
     const eventKey = renderEventKey(ev, ei);
+    // Claude stamps every event a subagent emits with the Agent call's id. An
+    // unknown parent (older transcript, or an earlier page) stays top level.
+    const parent = typeof ev.parent_tool_use_id === "string" ? tool(ev.parent_tool_use_id) : undefined;
+    const list = parent ? (parent.item.children ??= []) : items;
     switch (ev.type) {
       case "user_message":
         items.push({ kind: "user", key: eventKey, sourceEventId: ev.eventId, replyTo: ev.replyTo, text: ev.text || "", mentions: ev.mentions, author: typeof ev.author === "string" ? ev.author : ev.author?.label, authorEmail: ev.authorEmail, authorGithubLogin: ev.authorGithubLogin, authorAvatarUrl: ev.authorAvatarUrl, attachments: ev.attachments, createdAt: ev.createdAt });
@@ -265,11 +276,11 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
         const blocks = Array.isArray(ev.message?.content) ? (ev.message!.content as Block[]) : [];
         blocks.forEach((b, bi) => {
           const key = `${eventKey}:${bi}`;
-          if (b.type === "text" && b.text?.trim()) items.push({ kind: "text", key, sourceEventId: ev.eventId, text: b.text, createdAt: ev.createdAt, ...(ev.error ? { providerError: ev.error } : {}) });
-          else if (b.type === "thinking" && b.thinking?.trim()) items.push({ kind: "thinking", key, text: b.thinking });
+          if (b.type === "text" && b.text?.trim()) list.push({ kind: "text", key, sourceEventId: parent ? undefined : ev.eventId, text: b.text, createdAt: ev.createdAt, ...(ev.error ? { providerError: ev.error } : {}) });
+          else if (b.type === "thinking" && b.thinking?.trim()) list.push({ kind: "thinking", key, text: b.thinking });
           else if (b.type === "tool_use") {
-            items.push({ kind: "tool", key, name: b.name, input: b.input });
-            if (b.id) toolIndex.set(b.id, items.length - 1);
+            list.push({ kind: "tool", key, name: b.name, input: b.input });
+            if (b.id) toolIndex.set(b.id, { list, index: list.length - 1 });
           }
         });
         return;
@@ -281,11 +292,12 @@ export function flattenEvents(events: Ev[], t: T): Item[] {
           const key = `${eventKey}:${bi}`;
           if (b.type === "tool_result") {
             const result = { text: textFromContent(b.content), error: !!b.is_error };
-            const idx = b.tool_use_id ? toolIndex.get(b.tool_use_id) : undefined;
-            if (idx !== undefined) items[idx] = { ...(items[idx] as Extract<Item, { kind: "tool" }>), result };
-            else items.push({ kind: "tool", key, result }); // no matching tool_use (older transcript) — show standalone
+            const call = tool(b.tool_use_id);
+            if (call) call.list[call.index] = { ...call.item, result };
+            else list.push({ kind: "tool", key, result }); // no matching tool_use (older transcript) — show standalone
           } else if (b.type === "text" && b.text) {
-            items.push({ kind: "loose", key, text: b.text });
+            // A subagent's prompt arrives as a user text block; the Agent row already shows it.
+            if (!parent) items.push({ kind: "loose", key, text: b.text });
           }
         });
         return;

@@ -59,5 +59,7 @@
   "sessionRecoveryNotExecuted": "Your last request was not executed and will be carried into the new session.",
   "sessionRecoveryAction": "Continue in a new session",
   "sessionRecoveryCreating": "Creating session…",
-  "sessionRecoveryFailed": "Could not create a continuation session."
+  "sessionRecoveryFailed": "Could not create a continuation session.",
+  "subagentSteps": "{count, plural, =1{subagent · 1 step} other{subagent · {count} steps}}",
+  "@subagentSteps": {"placeholders": {"count": {"type": "int"}}}
 }

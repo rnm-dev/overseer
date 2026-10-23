@@ -57,5 +57,6 @@
   "sessionRecoveryNotExecuted": "Последний запрос не выполнялся и будет перенесён в новую сессию.",
   "sessionRecoveryAction": "Продолжить в новой сессии",
   "sessionRecoveryCreating": "Создаём сессию…",
-  "sessionRecoveryFailed": "Не удалось создать сессию для продолжения."
+  "sessionRecoveryFailed": "Не удалось создать сессию для продолжения.",
+  "subagentSteps": "субагент · шагов: {count}"
 }

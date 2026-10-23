@@ -91,6 +91,16 @@ flattens them into the same semantic rows as the web client:
   output is formatted, and errors retain their failure treatment. Edit-family
   rows show web-compatible colored added/removed line counts and the details
   sheet replaces output with a numbered, colored diff.
+- Claude subagents (the built-in Agent tool) run inside the parent turn. Peon
+  keeps Claude's `parent_tool_use_id` on every event a subagent emits, and
+  web and Flutter nest those events under the Agent row that spawned them in
+  a collapsible "subagent · N steps" block: open while the call runs, folded
+  once its result lands. Parallel subagents therefore never interleave. An
+  event whose parent row is not loaded (an older page, or a transcript from
+  before 2026-10-23) stays at top level. A subagent's prompt row is hidden
+  because the Agent row already shows it. Subagent assistant turns do not
+  count toward the session's turn budget or list preview, but they do count
+  as output, so a failed turn after subagent work is never auto-retried.
 - System reinitialization and rate-limit events are hidden.
 - Run duration, turn count, cost, and output-token metadata attach to the last
   assistant text in that turn.

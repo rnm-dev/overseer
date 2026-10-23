@@ -450,6 +450,7 @@ export const ru: Record<MessageKey, string> = {
   "session.chat.less": "свернуть",
   "session.chat.tool": "инструмент",
   "session.chat.details": "детали",
+  "session.chat.subagentSteps": "субагент · шагов: {n}",
   "session.chat.command": "Команда",
   "session.chat.changes": "Изменения",
   "session.chat.output": "Вывод",

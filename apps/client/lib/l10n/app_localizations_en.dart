@@ -204,4 +204,15 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get sessionRecoveryFailed =>
       'Could not create a continuation session.';
+
+  @override
+  String subagentSteps(int count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: 'subagent · $count steps',
+      one: 'subagent · 1 step',
+    );
+    return '$_temp0';
+  }
 }

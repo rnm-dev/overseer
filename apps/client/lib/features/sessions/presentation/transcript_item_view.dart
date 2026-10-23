@@ -56,6 +56,28 @@ class TranscriptItemView extends StatelessWidget {
         item: thinking,
         label: thinkingLabel,
       ),
+      TranscriptToolItem tool when tool.children.isNotEmpty => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ToolRow(item: tool, displayMode: toolDisplayMode),
+          _SubagentSteps(
+            items: tool.children,
+            running: tool.result == null,
+            build: (child) => TranscriptItemView(
+              key: ValueKey(child.key),
+              item: child,
+              thinkingLabel: thinkingLabel,
+              toolDisplayMode: toolDisplayMode,
+              operator: operator,
+              onOpenAttachment: onOpenAttachment,
+              onOpenPreview: onOpenPreview,
+              onOpenLink: onOpenLink,
+              onSelectedText: onSelectedText,
+              onOpenReplySource: onOpenReplySource,
+            ),
+          ),
+        ],
+      ),
       TranscriptToolItem tool => _ToolRow(
         item: tool,
         displayMode: toolDisplayMode,
@@ -545,6 +567,61 @@ class _ThinkingRowState extends State<_ThinkingRow> {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// What a subagent did inside its Agent call, indented under that row. Open
+/// while it runs so progress is visible; folded once its result lands.
+class _SubagentSteps extends StatefulWidget {
+  const _SubagentSteps({
+    required this.items,
+    required this.running,
+    required this.build,
+  });
+
+  final List<TranscriptItem> items;
+  final bool running;
+  final Widget Function(TranscriptItem item) build;
+
+  @override
+  State<_SubagentSteps> createState() => _SubagentStepsState();
+}
+
+class _SubagentStepsState extends State<_SubagentSteps> {
+  bool? _open;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final expanded = _open ?? widget.running;
+    return Container(
+      margin: const EdgeInsets.only(left: 8, top: 4),
+      padding: const EdgeInsets.only(left: 12),
+      decoration: BoxDecoration(
+        border: Border(left: BorderSide(color: colors.outlineVariant)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _open = !expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Text(
+                '${expanded ? '▾' : '▸'} ${context.l10n.subagentSteps(widget.items.length)}',
+                style: AppTypography.metadata(color: colors.onSurfaceVariant),
+              ),
+            ),
+          ),
+          if (expanded)
+            for (final item in widget.items)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: widget.build(item),
+              ),
+        ],
       ),
     );
   }

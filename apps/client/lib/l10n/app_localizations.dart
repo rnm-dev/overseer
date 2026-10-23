@@ -445,6 +445,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Could not create a continuation session.'**
   String get sessionRecoveryFailed;
+
+  /// No description provided for @subagentSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'{count, plural, =1{subagent · 1 step} other{subagent · {count} steps}}'**
+  String subagentSteps(int count);
 }
 
 class _AppLocalizationsDelegate

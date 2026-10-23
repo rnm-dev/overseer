@@ -96,6 +96,9 @@ export function normalizeClaudeCodeEvent(raw: Record<string, unknown>, cwd?: str
         ...(typeof message.model === "string" ? { model: message.model } : {}),
         content,
       },
+      // Set on everything a subagent emits: the id of the Agent tool call
+      // that spawned it, so clients can nest its work under that call.
+      ...(typeof raw.parent_tool_use_id === "string" ? { parent_tool_use_id: raw.parent_tool_use_id } : {}),
       ...sourceTimestamp,
     };
   }

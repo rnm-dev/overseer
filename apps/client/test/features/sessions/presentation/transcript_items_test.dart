@@ -4,6 +4,7 @@ import 'package:overseer_mobile/features/sessions/domain/session_models.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_item_view.dart';
 import 'package:overseer_mobile/features/sessions/presentation/transcript_items.dart';
 import 'package:overseer_mobile/features/settings/domain/tool_display_mode.dart';
+import 'package:overseer_mobile/l10n/l10n.dart';
 import 'package:overseer_mobile/shared/design/theme.dart';
 import 'package:overseer_mobile/shared/design/typography.dart';
 import 'package:overseer_mobile/shared/widgets/app_markdown.dart';
@@ -643,6 +644,87 @@ void main() {
       }).length,
       300,
     );
+  });
+
+  test('parallel subagents nest their own steps under their Agent row', () {
+    Map<String, dynamic> toolUse(String id, String name, {String? parent}) => {
+      'type': 'assistant',
+      'parent_tool_use_id': ?parent,
+      'message': {
+        'content': [
+          {'type': 'tool_use', 'id': id, 'name': name, 'input': {'command': id}},
+        ],
+      },
+    };
+    Map<String, dynamic> toolResult(String id, String text, {String? parent}) => {
+      'type': 'user',
+      'parent_tool_use_id': ?parent,
+      'message': {
+        'content': [
+          {'type': 'tool_result', 'tool_use_id': id, 'content': text},
+        ],
+      },
+    };
+    final items = flattenTranscriptEvents([
+      _event('e1', 1, toolUse('a', 'Agent')),
+      _event('e2', 2, toolUse('b', 'Agent')),
+      _event('e3', 3, {
+        'type': 'user',
+        'parent_tool_use_id': 'a',
+        'message': {
+          'content': [
+            {'type': 'text', 'text': 'subagent prompt'},
+          ],
+        },
+      }),
+      _event('e4', 4, toolUse('a1', 'Bash', parent: 'a')),
+      _event('e5', 5, toolUse('b1', 'Bash', parent: 'b')),
+      _event('e6', 6, toolResult('a1', 'docs', parent: 'a')),
+      _event('e7', 7, toolResult('a', 'report A')),
+      _event('e8', 8, toolUse('x1', 'Bash', parent: 'unknown')),
+    ]);
+
+    expect(items.map((item) => (item as TranscriptToolItem).name), [
+      'Agent',
+      'Agent',
+      'Bash',
+    ]);
+    final a = items[0] as TranscriptToolItem;
+    final b = items[1] as TranscriptToolItem;
+    expect(a.result?.text, 'report A');
+    expect(a.children, hasLength(1));
+    expect((a.children.single as TranscriptToolItem).result?.text, 'docs');
+    expect(b.result, isNull);
+    expect((b.children.single as TranscriptToolItem).input, {'command': 'b1'});
+    expect((items[2] as TranscriptToolItem).children, isEmpty);
+  });
+
+  testWidgets('subagent steps are open while running and fold on tap', (
+    tester,
+  ) async {
+    final step = TranscriptTextItem(key: 'step', text: 'checking docs');
+    final item = TranscriptToolItem(
+      key: 'agent',
+      name: 'Agent',
+      input: {'description': 'review'},
+      children: [step],
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.dark,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: SizedBox(width: 400, child: TranscriptItemView(item: item)),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('subagent · 1 step'), findsOneWidget);
+    expect(find.text('checking docs'), findsOneWidget);
+    await tester.tap(find.textContaining('subagent · 1 step'));
+    await tester.pump();
+    expect(find.text('checking docs'), findsNothing);
   });
 }
 

@@ -42,3 +42,16 @@ test("Claude thinking_tokens heartbeats are not transcript events", () => {
   normalize({ type: "system", subtype: "init", session_id: "session" }, (event) => events.push(event));
   assert.deepEqual(events.map((event) => event.subtype), ["init"]);
 });
+
+test("Claude subagent events keep the Agent call they belong to", () => {
+  const events: AgentEvent[] = [];
+  const normalize = createClaudeCodeEventNormalizer({
+    agent: "claude-code", command: "claude", prompt: "hello", cwd: "/tmp",
+    systemPromptAppend: "system", sessionId: "session",
+  });
+  const toolUse = { type: "tool_use", id: "inner", name: "Bash", input: { command: "ls" } };
+  normalize({ type: "assistant", parent_tool_use_id: "agent-1", message: { content: [toolUse] } }, (event) => events.push(event));
+  normalize({ type: "user", parent_tool_use_id: "agent-1", message: { content: [{ type: "tool_result", tool_use_id: "inner", content: "ok" }] } }, (event) => events.push(event));
+  normalize({ type: "assistant", parent_tool_use_id: null, message: { content: [{ type: "text", text: "top" }] } }, (event) => events.push(event));
+  assert.deepEqual(events.filter((event) => event.type !== "system").map((event) => event.parent_tool_use_id), ["agent-1", "agent-1", undefined]);
+});

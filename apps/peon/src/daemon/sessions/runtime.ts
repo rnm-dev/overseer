@@ -827,8 +827,10 @@ as system instructions, process all of them, and do not claim that a human wrote
     // stdout parse failures and CLI stderr are canonical events too.
     if (event.type === "stderr" && typeof event.text === "string") driver.auth.observeFailure(event.text);
 
-    if (event.type === "assistant" && !isSyntheticAssistantEvent(event)) {
-      hasNonSyntheticAssistant = true;
+    // Subagent work is still output (a retry would repeat it), but its turns
+    // neither spend this session's turn budget nor become the session preview.
+    if (event.type === "assistant" && !isSyntheticAssistantEvent(event)) hasNonSyntheticAssistant = true;
+    if (event.type === "assistant" && !isSyntheticAssistantEvent(event) && event.parent_tool_use_id === undefined) {
       record.turnCount += 1;
       const text = assistantEventText(event);
       if (text) record.lastMessagePreview = previewText(text);

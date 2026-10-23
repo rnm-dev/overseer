@@ -62,18 +62,26 @@ class TranscriptToolItem extends TranscriptItem {
     this.name,
     this.input,
     this.result,
+    this.children = const [],
   });
 
   final String? name;
   final Object? input;
   final TranscriptToolResult? result;
 
-  TranscriptToolItem copyWith({TranscriptToolResult? result}) {
+  /// What a subagent did inside this (Agent) tool call.
+  final List<TranscriptItem> children;
+
+  TranscriptToolItem copyWith({
+    TranscriptToolResult? result,
+    List<TranscriptItem>? children,
+  }) {
     return TranscriptToolItem(
       key: key,
       name: name,
       input: input,
       result: result ?? this.result,
+      children: children ?? this.children,
     );
   }
 }
@@ -250,12 +258,30 @@ class TranscriptDiffLine {
 
 List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
   final items = <TranscriptItem>[];
-  final toolIndexes = <String, int>{};
+  // tool_use id -> where its row lives, for pairing its later result and for
+  // nesting a subagent's events under the Agent call that spawned it.
+  final toolIndexes = <String, ({List<TranscriptItem> list, int index})>{};
+  final childLists = <String, List<TranscriptItem>>{};
+
+  // Claude stamps every event a subagent emits with the Agent call's id. An
+  // unknown parent (older transcript, or an earlier page) stays top level.
+  List<TranscriptItem>? childListFor(String? parentId) {
+    final at = parentId == null ? null : toolIndexes[parentId];
+    final parent = at == null ? null : at.list[at.index];
+    if (parent is! TranscriptToolItem) return null;
+    return childLists.putIfAbsent(parentId!, () {
+      final children = <TranscriptItem>[];
+      at!.list[at.index] = parent.copyWith(children: children);
+      return children;
+    });
+  }
 
   for (var eventIndex = 0; eventIndex < events.length; eventIndex++) {
     final event = events[eventIndex];
     final payload = event.payload;
     final baseKey = event.eventId;
+    final subagentItems = childListFor(_string(payload['parent_tool_use_id']));
+    final list = subagentItems ?? items;
 
     switch (event.type) {
       case 'user_message':
@@ -283,10 +309,10 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
             case 'text':
               final text = _string(block['text']);
               if (text?.trim().isNotEmpty == true) {
-                items.add(
+                list.add(
                   TranscriptTextItem(
                     key: key,
-                    sourceEventId: event.eventId,
+                    sourceEventId: subagentItems == null ? event.eventId : null,
                     text: text!,
                     createdAt: event.createdAt,
                   ),
@@ -296,11 +322,11 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
             case 'thinking':
               final text = _string(block['thinking']);
               if (text?.trim().isNotEmpty == true) {
-                items.add(TranscriptThinkingItem(key: key, text: text!));
+                list.add(TranscriptThinkingItem(key: key, text: text!));
               }
               break;
             case 'tool_use':
-              items.add(
+              list.add(
                 TranscriptToolItem(
                   key: key,
                   name: _string(block['name']),
@@ -308,7 +334,9 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
                 ),
               );
               final id = _string(block['id']);
-              if (id != null) toolIndexes[id] = items.length - 1;
+              if (id != null) {
+                toolIndexes[id] = (list: list, index: list.length - 1);
+              }
               break;
           }
         }
@@ -323,17 +351,18 @@ List<TranscriptItem> flattenTranscriptEvents(List<TranscriptEvent> events) {
               text: textFromTranscriptContent(block['content']),
               isError: block['is_error'] == true,
             );
-            final index = toolIndexes[_string(block['tool_use_id'])];
-            if (index != null && items[index] is TranscriptToolItem) {
-              items[index] = (items[index] as TranscriptToolItem).copyWith(
-                result: result,
-              );
+            final at = toolIndexes[_string(block['tool_use_id'])];
+            final call = at == null ? null : at.list[at.index];
+            if (call is TranscriptToolItem) {
+              at!.list[at.index] = call.copyWith(result: result);
             } else {
-              items.add(TranscriptToolItem(key: key, result: result));
+              list.add(TranscriptToolItem(key: key, result: result));
             }
           } else if (block['type'] == 'text') {
             final text = _string(block['text']);
-            if (text?.isNotEmpty == true) {
+            // A subagent's prompt arrives as a user text block; the Agent row
+            // already shows it.
+            if (text?.isNotEmpty == true && subagentItems == null) {
               items.add(TranscriptLooseItem(key: key, text: text!));
             }
           }

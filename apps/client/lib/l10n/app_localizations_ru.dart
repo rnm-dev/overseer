@@ -207,4 +207,9 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get sessionRecoveryFailed =>
       'Не удалось создать сессию для продолжения.';
+
+  @override
+  String subagentSteps(int count) {
+    return 'субагент · шагов: $count';
+  }
 }

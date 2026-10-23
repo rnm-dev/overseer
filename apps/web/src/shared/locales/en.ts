@@ -448,6 +448,7 @@ export const en = {
   "session.chat.less": "show less",
   "session.chat.tool": "tool",
   "session.chat.details": "details",
+  "session.chat.subagentSteps": "subagent · {n} steps",
   "session.chat.command": "Command",
   "session.chat.changes": "Changes",
   "session.chat.output": "Output",
