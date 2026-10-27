@@ -1,5 +1,5 @@
 import express from "express";
-import { ClaudeLoginError } from "../agents/index.js";
+import { ClaudeLoginError } from "./claudeLogin.js";
 export function createClaudeLoginRouter(service, actor) {
     const router = express.Router();
     router.use((req, res, next) => {

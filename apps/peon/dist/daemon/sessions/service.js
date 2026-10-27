@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getAgentDriver, requireAgentDriver } from "../agents/index.js";
+import { getAgentDriver, LEGACY_DEFAULT_AGENT, requireAgentDriver } from "../agents/index.js";
 import { projectStore } from "../projects/index.js";
 import { settings } from "../settings/index.js";
 import { buildAugmentedPrompt } from "./sessionPrompts.js";
@@ -53,7 +53,7 @@ function reconcileTerminalRegistries() {
         sessionState.activeRuns.delete(id);
         sessionState.resumePending.delete(id);
         sessionState.steerPending.delete(id);
-        getAgentDriver(record?.agent ?? "claude-code")?.interrupt(run, "cancel");
+        getAgentDriver(record?.agent ?? LEGACY_DEFAULT_AGENT)?.interrupt(run, "cancel");
     }
     for (const id of [...sessionState.resumePending.values()]) {
         if (sessionState.records.get(id)?.status !== "running")
@@ -732,12 +732,12 @@ export const sessions = {
         return calculateStatsForPeriod(sessionState.records.values(), period, sessionsSizeBytes());
     },
     getTranscript(id) {
-        const agent = sessionState.records.get(id)?.agent ?? "claude-code";
+        const agent = sessionState.records.get(id)?.agent ?? LEGACY_DEFAULT_AGENT;
         const anchors = messageThreadAnchors(id);
         return readTranscriptEntries(id, agent).map(({ id: eventId, event }) => withMessageThreadAnchor(event, eventId, anchors));
     },
     async getTranscriptPage(id, options) {
-        const agent = sessionState.records.get(id)?.agent ?? "claude-code";
+        const agent = sessionState.records.get(id)?.agent ?? LEGACY_DEFAULT_AGENT;
         const page = await readTranscriptPage(id, agent, options);
         const anchors = messageThreadAnchors(id);
         // The reader built these events for this response (concurrent identical

@@ -257,6 +257,25 @@ to every author who wrote in it. Peon's own
 `exact`/`estimated`/`mixed`/`missing` attribution rule, separate
 `reported`/`partial`/`legacy` capture provenance, and driver-specific limitations.
 
+## Agent drivers are the only harness-specific code
+
+Every harness Peon can run is an `AgentDriver` (`apps/peon/src/daemon/agents/registry.ts`):
+the contract and registry are harness-neutral, each harness is one driver module
+(`claudeCodeDriver.ts`, `codexAppServerDriver.ts`), and `builtinDrivers.ts` is
+the only file that names them. Core code reads driver metadata instead of
+comparing agent ids: `tokenUsage.cacheIncludedInInput` for usage buckets,
+`turns.replayUnprocessedResume` for the silent resume replay,
+`services.authStatus` for `/status` admission, `services.loginRouter` for
+`/driver/<service name>` routes, and `startRuntime`/`shutdownRuntime` for boot
+and shutdown. Adding a harness means a new driver module plus one line in
+`builtinDrivers.ts`.
+
+Two kinds of harness naming deliberately remain outside the drivers:
+`LEGACY_DEFAULT_AGENT` (`claude-code`), used only to read records written before
+Peon had more than one harness, and the per-harness settings keys
+(`agentCommand`, `codexCommand`) plus first-boot default selection in
+`settingsStore.ts`, which are part of the persisted settings schema.
+
 ## Codex runs only on the app-server driver
 
 Codex execution uses only the native `codex-app-server` driver. The former

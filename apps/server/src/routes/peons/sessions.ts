@@ -603,10 +603,19 @@ export async function agentAuthBlocked(record: PeonRecord, agent: unknown, model
     const catalog = await callPeon(connOfRecord(record), "GET", "/models");
     effectiveAgent = effectiveAgentForAdmission(catalog.ok ? catalog.json : null, agent, model);
   }
-  if (effectiveAgent && effectiveAgent !== "claude-code") return null;
   const r = await callPeon(connOfRecord(record), "GET", "/status");
   if (!r.ok || !r.json || typeof r.json !== "object") return null;
-  const auth = (r.json as { agentAuth?: unknown }).agentAuth;
+  const body = r.json as { agentAuth?: unknown; agentAuthByAgent?: unknown };
+  let auth: unknown;
+  if (effectiveAgent && body.agentAuthByAgent && typeof body.agentAuthByAgent === "object") {
+    // Current Peons report every harness's auth keyed by agent id. A harness
+    // that reports none is not gated.
+    auth = (body.agentAuthByAgent as Record<string, unknown>)[effectiveAgent];
+  } else {
+    // Older Peons report only Claude Code's auth as `agentAuth`.
+    if (effectiveAgent && effectiveAgent !== "claude-code") return null;
+    auth = body.agentAuth;
+  }
   const state = auth && typeof auth === "object" ? (auth as { authState?: unknown }).authState : undefined;
   return state === "broken" || state === "unauthenticated" ? state : null;
 }

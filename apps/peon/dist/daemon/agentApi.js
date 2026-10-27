@@ -1,6 +1,5 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import { createClaudeLoginRouter } from "./http/claudeLogin.js";
-import { createCodexLoginRouter } from "./http/codexLogin.js";
+import { mountDriverLoginRoutes } from "./http/driverLogin.js";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, promises as fsPromises, readdirSync, renameSync, statSync, unlinkSync } from "node:fs";
 import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
@@ -12,7 +11,7 @@ import { pairing } from "./identity/pairing.js";
 import { ensurePeonId } from "./identity/peonIdentity.js";
 import { peonPublicUrl } from "./identity/peonAddress.js";
 import { modelCatalog, refreshAgentModelCatalogs } from "./providers/modelCatalog.js";
-import { agentServices, configureManagedPluginToolHandler, getAgentDriver, getAgentServiceDriver, getCodexAppServerRuntime } from "./agents/index.js";
+import { agentAuthByAgent, agentServices, configureManagedPluginToolHandler, getAgentServiceDriver, getCodexAppServerRuntime, LEGACY_DEFAULT_AGENT } from "./agents/index.js";
 import { ManagedPluginInquiryError, ManagedPluginInquiryService, MANAGED_PLUGIN_INQUIRY_CAPABILITY, } from "./plugins/managedPluginInquiries.js";
 import { updateChecker } from "./updates/updateChecker.js";
 import { applyUpdate, checkUpdate, updateOperationStatus } from "./updates/updateOperations.js";
@@ -166,6 +165,7 @@ function hashFile(abs) {
 // Keep the fleet error envelope at the transport boundary while the shared
 // project service owns validation and state changes for both API profiles.
 function agentStatusView() {
+    const auth = agentAuthByAgent();
     return {
         protocol: PROTOCOL_VERSION,
         name: settings.get().name || null,
@@ -174,10 +174,11 @@ function agentStatusView() {
         sessionCount: sessions.list().length,
         filesEnabled: Boolean(settings.get().fileTransferRoot),
         capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY],
-        agentAuth: (() => {
-            const s = getAgentDriver("claude-code")?.services.status?.();
-            return { authState: s?.authState, available: s?.available, checkedAt: s?.checkedAt };
-        })(),
+        // `agentAuthByAgent` is the per-harness gate. `agentAuth` is the
+        // single-harness field older Overseer servers still read; it describes
+        // the harness sessions without an explicit agent historically used.
+        agentAuthByAgent: auth,
+        agentAuth: auth[LEGACY_DEFAULT_AGENT] ?? {},
         ...updateStatusView(),
         uptimeSec: Math.floor(process.uptime()),
         eventLoopDelay: eventLoopDelayStats(),
@@ -334,8 +335,7 @@ export function createAgentRouter(options = {}) {
         next();
     });
     // --- health / load -------------------------------------------------------
-    router.use("/driver/claude-code", createClaudeLoginRouter(() => getAgentServiceDriver("claude-code")?.services.claudeLogin, (req) => req.actor ?? null));
-    router.use("/driver/codex", createCodexLoginRouter(() => getAgentServiceDriver("codex")?.services.codexLogin, (req) => req.actor ?? null));
+    mountDriverLoginRoutes(router, "/driver", (req) => req.actor ?? null);
     router.get("/status", (_req, res) => {
         res.json(agentStatusView());
     });

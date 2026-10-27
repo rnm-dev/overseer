@@ -568,11 +568,14 @@ CLI default). Codex accepts `minimal`, `low`, `medium`, `high`, or `xhigh` via
 its `model_reasoning_effort` config; Claude Code accepts `low`, `medium`, `high`,
 `xhigh`, or `max` via `--effort`.
 
-`GET /status`'s **`agentAuth`** reports whether this peon's Claude Code CLI can
-actually run work — `{ authState: "ok"|"unauthenticated"|"broken"|"unknown",
-available, checkedAt }`. A peon that's up but whose agent auth is `broken`/
+`GET /status`'s **`agentAuthByAgent`** reports, per agent id, whether that
+harness can actually run work — `{ authState: "ok"|"unauthenticated"|"broken"|"unknown",
+available, checkedAt }`. Only harnesses whose driver reports auth appear; a
+missing entry is not gated. A peon that's up but whose agent auth is `broken`/
 `unauthenticated` will accept a session and then fail every run, so the overseer
-routes work only to peons reporting `ok`.
+does not route sessions for that agent to it. The older single-harness
+**`agentAuth`** field is still sent and carries the `claude-code` entry; servers
+fall back to it when talking to a peon that predates `agentAuthByAgent`.
 
 The same response exposes the update check as `updateAvailable`,
 `updateCurrentVersion`, `updateLatestVersion`, `updateCurrentRevision`,

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { getAgentDriver } from "../agents/index.js";
+import { getAgentDriver, LEGACY_DEFAULT_AGENT } from "../agents/index.js";
 import { projectStore } from "../projects/index.js";
 import { classifyFromResultEvent } from "./runtime.js";
 import { RESTART_INTERRUPTION_MARKER } from "./constants.js";
@@ -66,7 +66,7 @@ export function restoreFromDisk() {
             persistSummary(record);
         record.title ??= null;
         record.candidateProjectKeys ??= [];
-        record.agent ??= "claude-code";
+        record.agent ??= LEGACY_DEFAULT_AGENT;
         const restoredDriver = getAgentDriver(record.agent);
         record.backendSessionId = restoredDriver?.conversation.recoverBackendId(record.id, record.backendSessionId ?? null) ?? record.backendSessionId ?? null;
         const hadBackendState = Object.prototype.hasOwnProperty.call(record, "backendTurnId")

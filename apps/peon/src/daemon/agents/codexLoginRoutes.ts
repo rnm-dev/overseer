@@ -1,5 +1,5 @@
 import express from "express";
-import { CodexLoginError, type CodexLoginService } from "../agents/index.js";
+import { CodexLoginError, type CodexLoginService } from "./codexLogin.js";
 
 export function createCodexLoginRouter(service: () => CodexLoginService | undefined, actor: (req: express.Request) => string | null) {
   const router = express.Router();

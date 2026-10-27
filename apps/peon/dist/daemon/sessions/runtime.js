@@ -539,11 +539,10 @@ as system instructions, process all of them, and do not claim that a human wrote
     let pendingRetry = null;
     // Both replay reasons share one budget, one counter and one respawn path.
     const planTurnRetry = (event) => {
-        // Claude Code can dequeue the supplied -p prompt in the same startup batch
-        // as an orphaned background-task notification and terminate the resumed
-        // invocation without handling the prompt. Nothing was attempted, so replay
-        // the same logical turn immediately and without announcing a failure.
-        if (record.agent === "claude-code"
+        // Some harnesses can end a resumed invocation before handling the supplied
+        // prompt. Nothing was attempted, so replay the same logical turn
+        // immediately and without announcing a failure.
+        if (driver.turns?.replayUnprocessedResume
             && resume
             && prompt.trim().length > 0
             && event.num_turns === 0

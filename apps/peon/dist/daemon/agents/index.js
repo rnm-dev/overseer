@@ -5,4 +5,5 @@ export { configureManagedPluginToolHandler, getCodexAppServerRuntime } from "./c
 export { CodexAppServerRuntime } from "./runtimes/codexAppServerRuntime.js";
 export { agentCliUpdateRuntime, classifyAgentCliInstallation, createSelfUpdatingCliUpdater, } from "./cliUpdater.js";
 export { claudeModelCatalogService, createCodexModelCatalogService, normalizeClaudeModelResponse, normalizeCodexModelResponse, } from "./modelDiscovery.js";
-export { agentServices, registerAgentDriver, getAgentDriver, getAgentServiceDriver, requireAgentDriver, listAgentDrivers, shutdownAgentDriverRuntimes, REASONING_EFFORTS, } from "./registry.js";
+import "./builtinDrivers.js";
+export { agentServices, agentServiceName, agentAuthByAgent, registerAgentDriver, getAgentDriver, getAgentServiceDriver, requireAgentDriver, listAgentDrivers, startAgentDriverRuntimes, shutdownAgentDriverRuntimes, LEGACY_DEFAULT_AGENT, REASONING_EFFORTS, } from "./registry.js";

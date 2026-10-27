@@ -4,9 +4,13 @@ Agent drivers own their login implementations and API contracts. Claude Code and
 Codex share only `terminalHarness.ts` and its process supervisor. There is no
 generic login-action union or common provider login state machine.
 
-The driver model catalog advertises `capabilities.login`. The Claude driver owns
-`services.claudeLogin`; the Codex driver owns `services.codexLogin`. Both participate
-in `shutdownAgentDriverRuntimes()`.
+The driver model catalog advertises `capabilities.login`. Each driver that
+supports login exposes `services.loginRouter(actor)`, built from its own login
+service and routes (`agents/claudeLoginRoutes.ts`, `agents/codexLoginRoutes.ts`).
+`http/driverLogin.ts` mounts every such router at
+`/driver/<serviceProvider ?? id>`, so a new harness gets login routes without
+touching the HTTP layer. The login services shut down in
+`shutdownAgentDriverRuntimes()`.
 
 ## Access and paths
 

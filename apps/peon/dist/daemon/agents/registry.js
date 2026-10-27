@@ -1,17 +1,14 @@
 import path from "node:path";
 import { storedTimestampMetadata } from "../sessions/index.js";
-import { claudeCodeAuth } from "../providers/claudeCodeAuth.js";
-import { CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessions/index.js";
-import { forkClaudeCodeSession, normalizeClaudeCodeEvent, runClaudeCode } from "./claudeCode.js";
-import { codexAppServerHealth, forkCodexAppServerThread, getCodexAppServerRuntime, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
-import { getClaudeQuota, getCodexQuota } from "../providers/providerQuota.js";
-import { getClaudeCapabilities, getCodexCapabilities } from "../providers/providerCapabilities.js";
-import { createSelfUpdatingCliUpdater } from "./cliUpdater.js";
-import { ClaudeLoginService } from "./claudeLogin.js";
-import { CodexLoginService } from "./codexLogin.js";
-import { settings as loginSettings } from "../settings/index.js";
-import { claudeModelCatalogService, createCodexModelCatalogService, } from "./modelDiscovery.js";
+// Session records written before Peon knew more than one harness carry no
+// `agent`; they were all Claude Code. Use this only to read such records.
+export const LEGACY_DEFAULT_AGENT = "claude-code";
 export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+// The public name a driver's services are addressed by: login routes, quota,
+// usage attribution. `codex-app-server` is served as `codex`.
+export function agentServiceName(driver) {
+    return driver.serviceProvider ?? driver.id;
+}
 const drivers = new Map();
 export function registerAgentDriver(driver) {
     if (!driver.id.trim())
@@ -42,7 +39,9 @@ export function listAgentDrivers(options = {}) {
     return [...drivers.values()].filter((driver) => (options.visible === undefined || driver.visible === options.visible)
         && (options.available === undefined || driver.available() === options.available));
 }
-function previewEvent(raw) {
+// Shared normalization helpers for driver modules. Peon writes these event
+// types itself, so they read the same whichever harness ran the session.
+export function previewEvent(raw) {
     const timestamps = storedTimestampMetadata(raw);
     if (raw.type === "warning") {
         if (typeof raw.sessionId !== "string" || typeof raw.message !== "string"
@@ -105,7 +104,7 @@ function storedReplyTo(value) {
         return null;
     return { eventId: replyTo.eventId, selectedText: replyTo.selectedText };
 }
-function canonicalStored(raw) {
+export function canonicalStored(raw) {
     const common = previewEvent(raw);
     if (common)
         return common;
@@ -114,89 +113,20 @@ function canonicalStored(raw) {
     const { timestamp: _timestamp, sourceTimestamp: _sourceTimestamp, createdAt: _createdAt, ...fields } = raw;
     return { ...fields, ...storedTimestampMetadata(raw) };
 }
-function normalizeOutcome(value, includePreview) {
+export function normalizeOutcome(value, includePreview) {
     const output = value && typeof value === "object" ? value : null;
     if (!output || !["success", "failure", "needs_human"].includes(String(output.result)) || typeof output.summary !== "string")
         return null;
     return { result: output.result, summary: output.summary,
         ...(includePreview ? { previewPath: typeof output.previewPath === "string" && output.previewPath.trim() ? output.previewPath.trim() : null } : {}) };
 }
-const codexModelCatalogService = createCodexModelCatalogService(getCodexAppServerRuntime);
-const claudeLogin = new ClaudeLoginService({
-    command: () => loginSettings.get().agentCommand || "claude",
-    onSuccess: () => { claudeCodeAuth.clearObservedFailure(); void claudeCodeAuth.refresh(); },
-    onLogout: () => { void claudeCodeAuth.refresh(); },
-});
-const codexLogin = new CodexLoginService({ command: () => loginSettings.get().codexCommand || "codex" });
-registerAgentDriver({
-    id: "claude-code", label: "Claude Code", available: () => true, visible: true, models: [],
-    canonicalModel: () => undefined,
-    reasoningEffort: () => undefined,
-    command: (current) => current.agentCommand,
-    conversation: { initialBackendId: (id) => id, recoverBackendId: (id, persisted) => persisted ?? id },
-    outcomeSchema: (expects) => expects ? OUTCOME_SCHEMA : undefined, normalizeOutcome: (value) => normalizeOutcome(value, false),
-    normalizeStoredEvent(raw) {
-        // Provider normalization must not reinterpret persisted accounting or strip
-        // harness-owned invocation identity when replaying after restart/branch.
-        if (raw.type === "result" || (raw.type === "system" && raw.subtype === "usage"))
-            return canonicalStored(raw);
-        const common = previewEvent(raw);
-        const event = common ?? normalizeClaudeCodeEvent(raw);
-        return event ? { ...event, ...storedTimestampMetadata(raw) } : null;
-    },
-    run: runClaudeCode,
-    forkConversation: forkClaudeCodeSession,
-    interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
-    shutdownRuntime: () => claudeLogin.shutdown(),
-    auth: {
-        observeSuccess: () => claudeCodeAuth.clearObservedFailure(),
-        observeFailure: (message) => { if (claudeCodeAuth.isLikelyAuthFailure(message))
-            claudeCodeAuth.recordPossibleAuthFailure(message, Date.now()); },
-    },
-    capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false, login: true, logout: true },
-    services: {
-        claudeLogin,
-        status: () => claudeCodeAuth.getState(), quota: getClaudeQuota,
-        capabilities: getClaudeCapabilities,
-        modelCatalog: claudeModelCatalogService,
-        cliUpdate: createSelfUpdatingCliUpdater({
-            packageName: "@anthropic-ai/claude-code",
-            versionPattern: /\bClaude Code\b/i,
-            nativePathFragments: ["/.local/share/claude/versions/"],
-        }),
-    },
-});
-registerAgentDriver({
-    id: "codex-app-server", serviceProvider: "codex", label: "Codex", available: () => true, visible: true, models: [],
-    canonicalModel: () => undefined,
-    reasoningEffort: () => undefined,
-    command: (current) => current.codexCommand,
-    conversation: { initialBackendId: () => null, recoverBackendId: (_id, persisted) => persisted },
-    outcomeSchema: (expects) => expects ? CODEX_OUTCOME_SCHEMA : undefined,
-    normalizeOutcome: (value) => normalizeOutcome(value, true),
-    normalizeStoredEvent: canonicalStored,
-    run: runCodexAppServer,
-    steer: (run, input, callbacks) => {
-        const attempt = run.steer?.(input);
-        if (!attempt)
-            return false;
-        void attempt.then(callbacks.accepted, callbacks.rejected);
-        return true;
-    },
-    reconcile: reconcileCodexAppServerTurn,
-    forkConversation: forkCodexAppServerThread,
-    interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
-    shutdownRuntime: async () => { await Promise.all([shutdownCodexAppServerRuntime(), codexLogin.shutdown()]); },
-    auth: { observeSuccess() { }, observeFailure() { } },
-    capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: true, login: true, logout: true },
-    services: {
-        codexLogin,
-        status: () => codexAppServerHealth(), quota: getCodexQuota,
-        capabilities: getCodexCapabilities,
-        modelCatalog: codexModelCatalogService,
-        cliUpdate: createSelfUpdatingCliUpdater({ packageName: "@openai/codex", versionPattern: /\bcodex(?:-cli)?\b/i }),
-    },
-});
+export function agentAuthByAgent() {
+    return Object.fromEntries(listAgentDrivers().flatMap((driver) => driver.services.authStatus ? [[driver.id, driver.services.authStatus()]] : []));
+}
+export function startAgentDriverRuntimes() {
+    for (const driver of listAgentDrivers())
+        driver.startRuntime?.();
+}
 export async function shutdownAgentDriverRuntimes() {
     await Promise.all(listAgentDrivers().flatMap((driver) => driver.shutdownRuntime ? [driver.shutdownRuntime()] : []));
 }

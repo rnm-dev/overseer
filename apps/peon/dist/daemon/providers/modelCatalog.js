@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { getAgentDriver, listAgentDrivers, REASONING_EFFORTS, } from "../agents/index.js";
+import { getAgentDriver, LEGACY_DEFAULT_AGENT, listAgentDrivers, REASONING_EFFORTS, } from "../agents/index.js";
 export { REASONING_EFFORTS };
 function allDrivers() {
     return listAgentDrivers();
@@ -183,9 +183,9 @@ export function listConfiguredAgents(options = {}) {
     return listAgentDrivers(options).map((driver) => driver.id);
 }
 export function isValidModel(value) {
-    return canonicalModel("claude-code", value) !== undefined;
+    return canonicalModel(LEGACY_DEFAULT_AGENT, value) !== undefined;
 }
-export function narrowModel(value, agent = "claude-code") {
+export function narrowModel(value, agent = LEGACY_DEFAULT_AGENT) {
     return canonicalModel(agent, value);
 }
 export function resolveModel(agent, turnModel, sessionModel, savedAgent, savedModel) {
@@ -210,6 +210,6 @@ export function reasoningEffortsForModel(agent, model) {
     const canonical = canonicalModel(agent, model) ?? models.find((candidate) => candidate.default)?.id;
     return driver ? models.find((candidate) => candidate.id === canonical)?.reasoningEfforts?.map((item) => ({ ...item })) ?? [] : [];
 }
-export function narrowReasoningEffort(value, agent = "claude-code", model) {
+export function narrowReasoningEffort(value, agent = LEGACY_DEFAULT_AGENT, model) {
     return effortForModels(modelsFor(agent), value, model);
 }

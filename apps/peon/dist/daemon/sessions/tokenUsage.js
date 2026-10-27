@@ -1,7 +1,10 @@
+import { agentServiceName, getAgentServiceDriver } from "../agents/index.js";
 export const TOKEN_USAGE_SEMANTICS_VERSION = 1;
-const CODEX_AGENTS = new Set(["codex", "codex-app-server"]);
+// Usage is attributed to the driver's service name, so sessions from the
+// retired `codex` exec driver and from `codex-app-server` aggregate together.
 export function canonicalUsageProvider(agent) {
-    return CODEX_AGENTS.has(agent) ? "codex" : agent;
+    const driver = getAgentServiceDriver(agent);
+    return driver ? agentServiceName(driver) : agent;
 }
 function token(value) {
     return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -9,12 +12,13 @@ function token(value) {
 /**
  * Normalize provider usage without changing the persisted raw provider fields.
  *
- * Claude reports uncached input, cache writes, and cache reads as disjoint
- * categories. Codex reports cached input as a subset of input, so it must be
- * subtracted from input when producing mutually exclusive canonical buckets.
+ * The driver declares whether its cache counts are disjoint from input
+ * (Claude) or a subset of it (Codex); a subset must be subtracted from input
+ * when producing mutually exclusive canonical buckets.
  */
 export function normalizeTokenUsage(agent, usage, onDiagnostic) {
     const provider = canonicalUsageProvider(agent);
+    const cacheIncludedInInput = getAgentServiceDriver(agent)?.tokenUsage.cacheIncludedInInput ?? false;
     if (!usage) {
         onDiagnostic?.({ provider, reason: "missing_token_usage" });
         return null;
@@ -37,27 +41,27 @@ export function normalizeTokenUsage(agent, usage, onDiagnostic) {
         onDiagnostic?.({ provider, reason: "invalid_token_usage" });
         return null;
     }
-    if (provider === "codex") {
-        const codexCachedInput = cacheRead ?? 0;
-        const codexCacheWrite = cacheWrite ?? 0;
-        if (input === null || codexCachedInput + codexCacheWrite > input) {
+    if (cacheIncludedInInput) {
+        const includedCacheRead = cacheRead ?? 0;
+        const includedCacheWrite = cacheWrite ?? 0;
+        if (input === null || includedCacheRead + includedCacheWrite > input) {
             onDiagnostic?.({
                 provider,
-                reason: input !== null && codexCachedInput + codexCacheWrite > input
+                reason: input !== null && includedCacheRead + includedCacheWrite > input
                     ? "overlapping_codex_cache"
                     : "missing_token_usage",
             });
             return null;
         }
-        const uncachedInputTokens = input - codexCachedInput - codexCacheWrite;
-        const cachedInputTokens = codexCachedInput;
+        const uncachedInputTokens = input - includedCacheRead - includedCacheWrite;
+        const cachedInputTokens = includedCacheRead;
         const outputTokens = output ?? 0;
         return {
             semanticsVersion: TOKEN_USAGE_SEMANTICS_VERSION,
             provider,
             uncachedInputTokens,
             cachedInputTokens,
-            cacheWriteInputTokens: codexCacheWrite,
+            cacheWriteInputTokens: includedCacheWrite,
             outputTokens,
             processedTokens: input + outputTokens,
         };

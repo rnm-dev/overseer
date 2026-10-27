@@ -20,14 +20,20 @@ export {
   normalizeCodexModelResponse,
   type AgentModelCatalogService,
 } from "./modelDiscovery.js";
+import "./builtinDrivers.js";
 export {
   agentServices,
+  agentServiceName,
+  agentAuthByAgent,
   registerAgentDriver,
   getAgentDriver,
   getAgentServiceDriver,
   requireAgentDriver,
   listAgentDrivers,
+  startAgentDriverRuntimes,
   shutdownAgentDriverRuntimes,
+  LEGACY_DEFAULT_AGENT,
+  type AgentAuthStatus,
   type CodingAgent,
   REASONING_EFFORTS,
   type ReasoningEffort,

@@ -1,5 +1,5 @@
 import express from "express";
-import { ClaudeLoginError, type ClaudeLoginService } from "../agents/index.js";
+import { ClaudeLoginError, type ClaudeLoginService } from "./claudeLogin.js";
 
 export function createClaudeLoginRouter(service: () => ClaudeLoginService | undefined, actor: (req: express.Request) => string | null) {
   const router = express.Router();

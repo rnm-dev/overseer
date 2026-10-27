@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createClaudeLoginRouter } from "./http/claudeLogin.js";
-import { createCodexLoginRouter } from "./http/codexLogin.js";
+import { mountDriverLoginRoutes } from "./http/driverLogin.js";
 import { readFileSync, statSync, watch } from "node:fs";
 import { eventLoopDelayStats } from "./runtime/eventLoopMonitor.js";
 import path from "node:path";
@@ -16,7 +15,7 @@ import { createHumanProjectsRouter } from "./http/human/projects.js";
 import { createHumanSessionsRouter } from "./http/human/sessions.js";
 import { createScopedMcpRouter } from "./scopedMcp.js";
 import { modelCatalog, narrowNewSessionAgent, narrowModel, narrowReasoningEffort, refreshAgentModelCatalogs } from "./providers/modelCatalog.js";
-import { agentServices, getAgentDriver, getAgentServiceDriver, listAgentDrivers } from "./agents/index.js";
+import { agentAuthByAgent, agentServices, getAgentDriver, getAgentServiceDriver, listAgentDrivers } from "./agents/index.js";
 import { startSelfUpdate } from "./updates/selfUpdate.js";
 import { attachHumanFilesystemRoutes } from "./http/human/files.js";
 import { peonRegistrar, peonSocket } from "./overseer/index.js";
@@ -167,10 +166,9 @@ export function createControlServer(options = {}) {
             updateLatestRevision: updateState.latestRevision,
             updateCheckedAt: updateState.checkedAt,
             updateCheckError: updateState.error,
-            // Cheap piggyback so the sidebar can render its "AI" warning dot off
-            // the poll it's already subscribed to — full detail lives in
-            // GET /api/v1/ai/claude-code/status.
-            claudeCodeAuthState: getAgentDriver("claude-code")?.services.status?.()?.authState,
+            // Per-harness auth summary, keyed by agent id; full detail lives in
+            // GET /api/v1/ai/status/:provider.
+            agentAuth: agentAuthByAgent(),
             // Live fleet-link state for the Overseer view + sidebar warn dot, off the
             // same poll. `enabled` reflects whether overseerUrl+overseerToken are set;
             // `derecruited` (a revoked credential) is what the sidebar flags.
@@ -253,16 +251,12 @@ export function createControlServer(options = {}) {
             throw error;
         }
     });
-    app.get("/api/v1/ai/claude-code/status", (_req, res) => {
-        res.json(getAgentDriver("claude-code")?.services.status?.() ?? null);
-    });
     app.use("/api/v1/driver", (req, res, next) => {
         if (req.headers.origin !== undefined)
             return res.status(403).json({ code: "LOCAL_CLI_ONLY", error: "Use Overseer for browser login" });
         next();
     });
-    app.use("/api/v1/driver/claude-code", createClaudeLoginRouter(() => getAgentServiceDriver("claude-code")?.services.claudeLogin, () => CLI_ACTOR));
-    app.use("/api/v1/driver/codex", createCodexLoginRouter(() => getAgentServiceDriver("codex")?.services.codexLogin, () => CLI_ACTOR));
+    mountDriverLoginRoutes(app, "/api/v1/driver", () => CLI_ACTOR);
     app.get("/api/v1/ai/status/:provider", (req, res) => {
         const driver = getAgentDriver(req.params.provider);
         if (!driver)

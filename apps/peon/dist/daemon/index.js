@@ -4,11 +4,10 @@ import { sdNotify } from "./runtime/sdNotify.js";
 import { peonRegistrar, peonSocket } from "./overseer/index.js";
 import { sessions } from "./sessions/index.js";
 import { updateChecker } from "./updates/updateChecker.js";
-import { claudeCodeAuth } from "./providers/claudeCodeAuth.js";
 import { configDir, stateDir } from "./runtime/xdgPaths.js";
 import { createDaemonCompositionRoot } from "./bootstrap/compositionRoot.js";
 import { reconcileArmoryInstalledState, recoverInterruptedArmoryOperations, recoverInterruptedArmoryUninstalls } from "./armory/index.js";
-import { shutdownAgentDriverRuntimes } from "./agents/index.js";
+import { shutdownAgentDriverRuntimes, startAgentDriverRuntimes } from "./agents/index.js";
 import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js";
 import { recoverUpdateOperation } from "./updates/updateOperations.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
@@ -113,7 +112,7 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
     // network/server failures and owns session-catalog synchronization.
     peonSocket.start();
     updateChecker.start();
-    claudeCodeAuth.start();
+    startAgentDriverRuntimes();
     sessions.restoreFromDisk();
     // After reconciliation, auto-resume any eligible ad-hoc session this restart
     // (or a prior crash) killed mid-run.

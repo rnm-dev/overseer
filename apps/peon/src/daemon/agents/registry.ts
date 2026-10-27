@@ -1,25 +1,23 @@
 import type { EventEmitter } from "node:events";
 import path from "node:path";
+import type { Request, Router } from "express";
 import { storedTimestampMetadata } from "../sessions/index.js";
-import { claudeCodeAuth } from "../providers/claudeCodeAuth.js";
-import { CODEX_OUTCOME_SCHEMA, OUTCOME_SCHEMA } from "../sessions/index.js";
 import type { DaemonSettings } from "../settings/index.js";
-import { forkClaudeCodeSession, normalizeClaudeCodeEvent, runClaudeCode } from "./claudeCode.js";
-import { codexAppServerHealth, forkCodexAppServerThread, getCodexAppServerRuntime, reconcileCodexAppServerTurn, runCodexAppServer, shutdownCodexAppServerRuntime } from "./codexAppServer.js";
-import { getClaudeQuota, getCodexQuota, type ProviderQuotaSnapshot } from "../providers/providerQuota.js";
-import { getClaudeCapabilities, getCodexCapabilities, type ProviderCapabilitiesSnapshot } from "../providers/providerCapabilities.js";
+import type { ProviderQuotaSnapshot } from "../providers/providerQuota.js";
+import type { ProviderCapabilitiesSnapshot } from "../providers/providerCapabilities.js";
 import type { AgentContextUsage } from "../sessions/index.js";
-import { createSelfUpdatingCliUpdater, type AgentCliUpdater } from "./cliUpdater.js";
-import { ClaudeLoginService } from "./claudeLogin.js";
-import { CodexLoginService } from "./codexLogin.js";
-import { settings as loginSettings } from "../settings/index.js";
-import {
-  claudeModelCatalogService,
-  createCodexModelCatalogService,
-  type AgentModelCatalogService,
-} from "./modelDiscovery.js";
+import type { AgentCliUpdater } from "./cliUpdater.js";
+import type { AgentModelCatalogService } from "./modelDiscovery.js";
+
+// This file is the harness-neutral contract and registry. Everything specific
+// to one harness lives in that harness's driver module, and the only place
+// that names the built-in harnesses is builtinDrivers.ts.
 
 export type CodingAgent = string;
+
+// Session records written before Peon knew more than one harness carry no
+// `agent`; they were all Claude Code. Use this only to read such records.
+export const LEGACY_DEFAULT_AGENT: CodingAgent = "claude-code";
 
 export const REASONING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
 export type ReasoningEffort = string;
@@ -126,6 +124,14 @@ export interface CanonicalOutcome {
   previewPath?: string | null;
 }
 
+// Whether a harness can run work right now, as reported on Peon's /status so
+// Overseer can refuse to route sessions to a Peon that would fail every turn.
+export interface AgentAuthStatus {
+  authState?: string;
+  available?: boolean;
+  checkedAt?: number;
+}
+
 export interface AgentDriver {
   id: CodingAgent;
   serviceProvider?: string;
@@ -148,10 +154,22 @@ export interface AgentDriver {
   forkConversation?(input: { command: string; backendSessionId: string; targetSessionId: string; cwd: string; lastTurnId?: string }): Promise<{ backendSessionId: string }>;
   interrupt(run: AgentRun, reason: "cancel" | "timeout" | "superseded" | "shutdown"): void;
   shutdown(run: AgentRun): void;
+  startRuntime?(): void;
   shutdownRuntime?(): void | Promise<void>;
   auth: {
     observeSuccess(): void;
     observeFailure(message: string): void;
+  };
+  turns?: {
+    // The harness can end a resumed invocation before it reads the supplied
+    // prompt (num_turns 0, no assistant output). Replay such a turn once,
+    // silently, because nothing was attempted.
+    replayUnprocessedResume?: boolean;
+  };
+  tokenUsage: {
+    // Claude reports uncached input, cache writes and cache reads as disjoint
+    // buckets. Codex reports cached input as a subset of input.
+    cacheIncludedInInput: boolean;
   };
   capabilities: {
     steering: boolean;
@@ -167,13 +185,21 @@ export interface AgentDriver {
   };
   services: {
     status?: () => unknown;
+    authStatus?: () => AgentAuthStatus;
     quota?: (force: boolean) => Promise<ProviderQuotaSnapshot>;
     capabilities?: (force: boolean) => Promise<ProviderCapabilitiesSnapshot>;
     cliUpdate?: AgentCliUpdater;
     modelCatalog?: AgentModelCatalogService;
-    claudeLogin?: ClaudeLoginService;
-    codexLogin?: CodexLoginService;
+    // Mounted at /driver/<serviceProvider ?? id>. Each harness owns its own
+    // login dialogue, so the routes are the driver's, not a shared shape.
+    loginRouter?: (actor: (req: Request) => string | null) => Router;
   };
+}
+
+// The public name a driver's services are addressed by: login routes, quota,
+// usage attribution. `codex-app-server` is served as `codex`.
+export function agentServiceName(driver: AgentDriver): string {
+  return driver.serviceProvider ?? driver.id;
 }
 
 const drivers = new Map<CodingAgent, AgentDriver>();
@@ -208,7 +234,9 @@ export function listAgentDrivers(options: { visible?: boolean; available?: boole
     && (options.available === undefined || driver.available() === options.available));
 }
 
-function previewEvent(raw: Record<string, unknown>): AgentEvent | null {
+// Shared normalization helpers for driver modules. Peon writes these event
+// types itself, so they read the same whichever harness ran the session.
+export function previewEvent(raw: Record<string, unknown>): AgentEvent | null {
   const timestamps = storedTimestampMetadata(raw);
   if (raw.type === "warning") {
     if (typeof raw.sessionId !== "string" || typeof raw.message !== "string"
@@ -262,7 +290,7 @@ function storedReplyTo(value: unknown): { eventId: string; selectedText: string 
   return { eventId: replyTo.eventId, selectedText: replyTo.selectedText };
 }
 
-function canonicalStored(raw: Record<string, unknown>): AgentEvent | null {
+export function canonicalStored(raw: Record<string, unknown>): AgentEvent | null {
   const common = previewEvent(raw);
   if (common) return common;
   if (typeof raw.type !== "string" || !["system", "assistant", "user", "result"].includes(raw.type)) return null;
@@ -270,87 +298,21 @@ function canonicalStored(raw: Record<string, unknown>): AgentEvent | null {
   return { ...(fields as AgentEvent), ...storedTimestampMetadata(raw) };
 }
 
-function normalizeOutcome(value: unknown, includePreview: boolean): CanonicalOutcome | null {
+export function normalizeOutcome(value: unknown, includePreview: boolean): CanonicalOutcome | null {
   const output = value && typeof value === "object" ? value as Record<string, unknown> : null;
   if (!output || !["success", "failure", "needs_human"].includes(String(output.result)) || typeof output.summary !== "string") return null;
   return { result: output.result as CanonicalOutcome["result"], summary: output.summary,
     ...(includePreview ? { previewPath: typeof output.previewPath === "string" && output.previewPath.trim() ? output.previewPath.trim() : null } : {}) };
 }
 
-const codexModelCatalogService = createCodexModelCatalogService(getCodexAppServerRuntime);
-const claudeLogin = new ClaudeLoginService({
-  command: () => loginSettings.get().agentCommand || "claude",
-  onSuccess: () => { claudeCodeAuth.clearObservedFailure(); void claudeCodeAuth.refresh(); },
-  onLogout: () => { void claudeCodeAuth.refresh(); },
-});
-const codexLogin = new CodexLoginService({ command: () => loginSettings.get().codexCommand || "codex" });
-registerAgentDriver({
-  id: "claude-code", label: "Claude Code", available: () => true, visible: true, models: [],
-  canonicalModel: () => undefined,
-  reasoningEffort: () => undefined,
-  command: (current) => current.agentCommand,
-  conversation: { initialBackendId: (id) => id, recoverBackendId: (id, persisted) => persisted ?? id },
-  outcomeSchema: (expects) => expects ? OUTCOME_SCHEMA : undefined, normalizeOutcome: (value) => normalizeOutcome(value, false),
-  normalizeStoredEvent(raw) {
-    // Provider normalization must not reinterpret persisted accounting or strip
-    // harness-owned invocation identity when replaying after restart/branch.
-    if (raw.type === "result" || (raw.type === "system" && raw.subtype === "usage")) return canonicalStored(raw);
-    const common = previewEvent(raw);
-    const event = common ?? normalizeClaudeCodeEvent(raw);
-    return event ? { ...event, ...storedTimestampMetadata(raw) } : null;
-  },
-  run: runClaudeCode,
-  forkConversation: forkClaudeCodeSession,
-  interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
-  shutdownRuntime: () => claudeLogin.shutdown(),
-  auth: {
-    observeSuccess: () => claudeCodeAuth.clearObservedFailure(),
-    observeFailure: (message) => { if (claudeCodeAuth.isLikelyAuthFailure(message)) claudeCodeAuth.recordPossibleAuthFailure(message, Date.now()); },
-  },
-  capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false, login: true, logout: true },
-  services: {
-    claudeLogin,
-    status: () => claudeCodeAuth.getState(), quota: getClaudeQuota,
-    capabilities: getClaudeCapabilities,
-    modelCatalog: claudeModelCatalogService,
-    cliUpdate: createSelfUpdatingCliUpdater({
-      packageName: "@anthropic-ai/claude-code",
-      versionPattern: /\bClaude Code\b/i,
-      nativePathFragments: ["/.local/share/claude/versions/"],
-    }),
-  },
-});
+export function agentAuthByAgent(): Record<CodingAgent, AgentAuthStatus> {
+  return Object.fromEntries(listAgentDrivers().flatMap((driver) =>
+    driver.services.authStatus ? [[driver.id, driver.services.authStatus()]] : []));
+}
 
-registerAgentDriver({
-  id: "codex-app-server", serviceProvider: "codex", label: "Codex", available: () => true, visible: true, models: [],
-  canonicalModel: () => undefined,
-  reasoningEffort: () => undefined,
-  command: (current) => current.codexCommand,
-  conversation: { initialBackendId: () => null, recoverBackendId: (_id, persisted) => persisted },
-  outcomeSchema: (expects) => expects ? CODEX_OUTCOME_SCHEMA : undefined,
-  normalizeOutcome: (value) => normalizeOutcome(value, true),
-  normalizeStoredEvent: canonicalStored,
-  run: runCodexAppServer,
-  steer: (run, input, callbacks) => {
-    const attempt = run.steer?.(input);
-    if (!attempt) return false;
-    void attempt.then(callbacks.accepted, callbacks.rejected);
-    return true;
-  },
-  reconcile: reconcileCodexAppServerTurn,
-  forkConversation: forkCodexAppServerThread,
-  interrupt: (run) => run.kill(), shutdown: (run) => run.kill(),
-  shutdownRuntime: async () => { await Promise.all([shutdownCodexAppServerRuntime(), codexLogin.shutdown()]); },
-  auth: { observeSuccess() {}, observeFailure() {} },
-  capabilities: { steering: true, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: true, login: true, logout: true },
-  services: {
-    codexLogin,
-    status: () => codexAppServerHealth(), quota: getCodexQuota,
-    capabilities: getCodexCapabilities,
-    modelCatalog: codexModelCatalogService,
-    cliUpdate: createSelfUpdatingCliUpdater({ packageName: "@openai/codex", versionPattern: /\bcodex(?:-cli)?\b/i }),
-  },
-});
+export function startAgentDriverRuntimes(): void {
+  for (const driver of listAgentDrivers()) driver.startRuntime?.();
+}
 
 export async function shutdownAgentDriverRuntimes(): Promise<void> {
   await Promise.all(listAgentDrivers().flatMap((driver) => driver.shutdownRuntime ? [driver.shutdownRuntime()] : []));

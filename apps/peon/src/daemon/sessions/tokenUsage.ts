@@ -1,4 +1,4 @@
-import type { CodingAgent } from "../providers/modelCatalog.js";
+import { agentServiceName, getAgentServiceDriver, type CodingAgent } from "../agents/index.js";
 import type { SessionUsage } from "./sessionTypes.js";
 
 export const TOKEN_USAGE_SEMANTICS_VERSION = 1 as const;
@@ -16,6 +16,7 @@ export interface CanonicalTokenUsage {
 export type TokenUsageRejectionReason =
   | "missing_token_usage"
   | "invalid_token_usage"
+  // Persisted diagnostic code; the name predates driver-declared semantics.
   | "overlapping_codex_cache";
 
 export interface TokenUsageDiagnostic {
@@ -23,10 +24,11 @@ export interface TokenUsageDiagnostic {
   reason: TokenUsageRejectionReason;
 }
 
-const CODEX_AGENTS = new Set<CodingAgent>(["codex", "codex-app-server"]);
-
+// Usage is attributed to the driver's service name, so sessions from the
+// retired `codex` exec driver and from `codex-app-server` aggregate together.
 export function canonicalUsageProvider(agent: CodingAgent): CodingAgent {
-  return CODEX_AGENTS.has(agent) ? "codex" : agent;
+  const driver = getAgentServiceDriver(agent);
+  return driver ? agentServiceName(driver) : agent;
 }
 
 function token(value: number | null | undefined): number | null {
@@ -36,9 +38,9 @@ function token(value: number | null | undefined): number | null {
 /**
  * Normalize provider usage without changing the persisted raw provider fields.
  *
- * Claude reports uncached input, cache writes, and cache reads as disjoint
- * categories. Codex reports cached input as a subset of input, so it must be
- * subtracted from input when producing mutually exclusive canonical buckets.
+ * The driver declares whether its cache counts are disjoint from input
+ * (Claude) or a subset of it (Codex); a subset must be subtracted from input
+ * when producing mutually exclusive canonical buckets.
  */
 export function normalizeTokenUsage(
   agent: CodingAgent,
@@ -46,6 +48,7 @@ export function normalizeTokenUsage(
   onDiagnostic?: (diagnostic: TokenUsageDiagnostic) => void,
 ): CanonicalTokenUsage | null {
   const provider = canonicalUsageProvider(agent);
+  const cacheIncludedInInput = getAgentServiceDriver(agent)?.tokenUsage.cacheIncludedInInput ?? false;
   if (!usage) {
     onDiagnostic?.({ provider, reason: "missing_token_usage" });
     return null;
@@ -70,27 +73,27 @@ export function normalizeTokenUsage(
     return null;
   }
 
-  if (provider === "codex") {
-    const codexCachedInput = cacheRead ?? 0;
-    const codexCacheWrite = cacheWrite ?? 0;
-    if (input === null || codexCachedInput + codexCacheWrite > input) {
+  if (cacheIncludedInInput) {
+    const includedCacheRead = cacheRead ?? 0;
+    const includedCacheWrite = cacheWrite ?? 0;
+    if (input === null || includedCacheRead + includedCacheWrite > input) {
       onDiagnostic?.({
         provider,
-        reason: input !== null && codexCachedInput + codexCacheWrite > input
+        reason: input !== null && includedCacheRead + includedCacheWrite > input
           ? "overlapping_codex_cache"
           : "missing_token_usage",
       });
       return null;
     }
-    const uncachedInputTokens = input - codexCachedInput - codexCacheWrite;
-    const cachedInputTokens = codexCachedInput;
+    const uncachedInputTokens = input - includedCacheRead - includedCacheWrite;
+    const cachedInputTokens = includedCacheRead;
     const outputTokens = output ?? 0;
     return {
       semanticsVersion: TOKEN_USAGE_SEMANTICS_VERSION,
       provider,
       uncachedInputTokens,
       cachedInputTokens,
-      cacheWriteInputTokens: codexCacheWrite,
+      cacheWriteInputTokens: includedCacheWrite,
       outputTokens,
       processedTokens: input + outputTokens,
     };

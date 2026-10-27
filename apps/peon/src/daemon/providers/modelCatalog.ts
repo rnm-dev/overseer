@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import {
   getAgentDriver,
+  LEGACY_DEFAULT_AGENT,
   listAgentDrivers,
   REASONING_EFFORTS,
   type CodingAgent,
@@ -231,10 +232,10 @@ export function listConfiguredAgents(options: { visible?: boolean; available?: b
 }
 
 export function isValidModel(value: unknown): value is string {
-  return canonicalModel("claude-code", value) !== undefined;
+  return canonicalModel(LEGACY_DEFAULT_AGENT, value) !== undefined;
 }
 
-export function narrowModel(value: unknown, agent: CodingAgent = "claude-code"): string | undefined {
+export function narrowModel(value: unknown, agent: CodingAgent = LEGACY_DEFAULT_AGENT): string | undefined {
   return canonicalModel(agent, value);
 }
 
@@ -270,7 +271,7 @@ export function reasoningEffortsForModel(agent: CodingAgent, model: unknown): Re
 
 export function narrowReasoningEffort(
   value: unknown,
-  agent: CodingAgent = "claude-code",
+  agent: CodingAgent = LEGACY_DEFAULT_AGENT,
   model?: unknown,
 ): ReasoningEffort | undefined {
   return effortForModels(modelsFor(agent), value, model);
