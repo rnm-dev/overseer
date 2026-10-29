@@ -53,7 +53,7 @@ interface AuthState {
     code: string | null,
     state: string,
     error: string | null,
-  ) => Promise<"web" | "native">;
+  ) => Promise<{ flow: "web"; joinedWorkspaceId: string | null } | { flow: "native" }>;
   logout: () => Promise<void>;
 }
 
@@ -165,19 +165,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async completeOauthCallback(provider, code, state, error) {
       const saved = sessionStorage.getItem(STATE_KEY);
       const r = await api<
-        | { flow: "web"; user: User }
+        | { flow: "web"; user: User; joinedWorkspaceId?: string }
         | { flow: "native"; redirectUrl: string }
       >(`/auth/${provider}`, json({ code, state, error }));
       if (r.flow === "native") {
         window.location.assign(serverApprovedNativeRedirect(r.redirectUrl));
-        return "native";
+        return { flow: "native" };
       }
       sessionStorage.removeItem(STATE_KEY);
       forgetNativeCallback(sessionStorage); // a finished web sign-in ⇒ not a webview
       if (!saved || saved !== state) throw new Error("sign-in state mismatch — please try again");
       clearTranscriptSnapshotCache();
       setUser(r.user);
-      return "web";
+      return { flow: "web", joinedWorkspaceId: r.joinedWorkspaceId ?? null };
     },
     async logout() {
       try {

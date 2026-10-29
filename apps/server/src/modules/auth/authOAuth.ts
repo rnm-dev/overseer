@@ -145,8 +145,11 @@ export async function completeGithubSignIn(
   const user = await ensureUserFromGithub(profile, await mayCreateAccount(attempt.inviteToken));
   // Spent on the account it admitted, so an invited person lands in the
   // workspace they were invited to rather than a personal one.
-  if (attempt.inviteToken) await acceptInvite(attempt.inviteToken, user.id);
-  return finishSignIn(attempt, state, user, client, now);
+  // The browser is told which workspace that was: the invite is spent, so the
+  // client must not send it to /join a second time.
+  const joined = attempt.inviteToken ? await acceptInvite(attempt.inviteToken, user.id) : null;
+  const result = await finishSignIn(attempt, state, user, client, now);
+  return result.flow === "web" && joined?.ok ? { ...result, joinedWorkspaceId: joined.workspace.id } : result;
 }
 
 export async function startOidcAuthFlow(params: {

@@ -33,6 +33,8 @@ export interface WebSignInResult {
   token: string;
   user: UserRecord;
   device: DeviceView;
+  /** The workspace an invitation carried through sign-in admitted the user to. */
+  joinedWorkspaceId?: string;
 }
 
 export interface NativeSignInResult {

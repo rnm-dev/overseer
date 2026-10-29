@@ -109,6 +109,7 @@ function webSignIn(res: express.Response, result: Extract<OAuthSignInCompletion,
     flow: "web",
     user: { email: result.user.email, githubLogin: result.user.githubLogin, avatarUrl: result.user.avatarUrl },
     device: result.device,
+    ...(result.joinedWorkspaceId ? { joinedWorkspaceId: result.joinedWorkspaceId } : {}),
   });
 }
 

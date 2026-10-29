@@ -130,6 +130,8 @@ test("web OAuth uses the shared frontend callback and completes through the API"
   assert.equal(exchanged.body.flow, "web");
   assert.equal((exchanged.body.user as { githubLogin: string }).githubLogin, "web-user");
   assert.equal(exchanged.body.token, undefined);
+  // The invite was spent by sign-in; the client is told where it landed.
+  assert.equal(typeof exchanged.body.joinedWorkspaceId, "string");
   assert.equal(exchanged.setCookie.length, 1);
   assert.match(exchanged.setCookie[0], /^__Host-overseer_session=[^;]+;/);
   assert.match(exchanged.setCookie[0], /;\s*Path=\//i);
