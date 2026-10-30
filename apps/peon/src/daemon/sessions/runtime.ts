@@ -95,6 +95,43 @@ export const AGENT_SILENCE_LIMIT_MS = 15 * 60_000;
 export const INTERRUPT_EXIT_GRACE_MS = 30_000;
 
 const MAX_QUEUE_RECEIPTS = 128;
+// A queued turn that could not start is retried on this schedule before the
+// operator is told. Without it the message sat in the queue until someone
+// happened to send another one.
+const QUEUE_RETRY_DELAYS_MS = [5_000, 30_000, 120_000];
+const queueRetryAttempts = new Map<string, number>();
+
+// A stop the harness decided on is otherwise only in the summary; the
+// transcript would end mid-thought with nothing saying the turn is over.
+function appendHarnessNotice(record: SessionRecord, reason: string): void {
+  const entry = appendTranscriptEvent(record.id, {
+    type: "result", subtype: "harness_failure", is_error: true, errors: [reason],
+  });
+  record.lastActivityAt = entry.event.createdAt!;
+  record.eventCount += 1;
+  sessionState.emitter.emit("event", { sessionId: record.id, event: entry.event, eventId: entry.id });
+}
+
+function retryQueuedDispatch(record: SessionRecord, reason: string): void {
+  if (record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0) {
+    queueRetryAttempts.delete(record.id);
+    return;
+  }
+  const attempt = queueRetryAttempts.get(record.id) ?? 0;
+  const delayMs = QUEUE_RETRY_DELAYS_MS[attempt];
+  if (delayMs === undefined) {
+    queueRetryAttempts.delete(record.id);
+    appendHarnessNotice(record, `Queued messages could not start: ${reason}. Send a message to try again.`);
+    persistSummary(record);
+    sessionState.emitter.emit("change", record);
+    return;
+  }
+  queueRetryAttempts.set(record.id, attempt + 1);
+  setTimeout(() => {
+    if (sessionState.records.get(record.id) !== record || record.status !== "completed") return;
+    scheduleQueuedDispatch(record);
+  }, delayMs).unref();
+}
 
 export function rememberReceipt(receipts: string[], id: string): void {
   if (receipts.includes(id)) return;
@@ -191,9 +228,9 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
       record.endedAt = Date.now();
       persistSummary(record);
       sessionState.emitter.emit("change", record);
-      console.error(
-        `failed to dispatch ${item ? `queued follow-up ${item.id}` : "system triggers"}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`failed to dispatch ${item ? `queued follow-up ${item.id}` : "system triggers"}: ${reason}`);
+      retryQueuedDispatch(record, reason);
     }
   });
 }
@@ -253,13 +290,24 @@ export function finalizeSession(
   if (usage) {
     accumulateUsage(record, usage, model);
   }
+  // Provider-classified endings always pass a turn-count base; its absence
+  // marks a stop the harness decided on.
+  const harnessFailure = turnCountBase === undefined && outcome?.result === "failure";
+  if (harnessFailure) appendHarnessNotice(record, outcome.summary);
   persistSummary(record);
   // Remove the live process before publishing the terminal summary so
   // activeCount() and status:"completed" describe the same boundary.
   sessionState.activeRuns.delete(record.id);
   sessionState.emitter.emit("change", record);
   sessionState.emitter.emit("complete", record);
-  if (dispatchQueued) scheduleQueuedDispatch(record);
+  if (dispatchQueued) {
+    queueRetryAttempts.delete(record.id);
+    scheduleQueuedDispatch(record);
+  } else {
+    // A turn that never reached its provider keeps its triggers pending; the
+    // queue behind it is retried on a schedule instead of waiting forever.
+    retryQueuedDispatch(record, outcome?.summary ?? "the agent did not start");
+  }
 }
 
 // AgentEvent is an untyped Record<string, unknown> (the CLI's stream-json

@@ -97,4 +97,8 @@ process.exit(1);
   }
   assert.equal(sessions.get(record.id)?.status, "completed");
   assert.match(sessions.get(record.id)?.outcome?.summary ?? "", /without a result event/);
+  // The transcript says the turn is over, not just the summary.
+  assert.ok(readTranscript(record.id, "claude-code").some((event) =>
+    event.type === "result" && event.subtype === "harness_failure" && event.is_error === true
+    && Array.isArray(event.errors) && /without a result event/.test(String(event.errors[0]))));
 });

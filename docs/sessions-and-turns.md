@@ -217,6 +217,16 @@ a prompt that nothing answers. Three guards back the limits above:
   stdout. After the CLI exits, Peon waits 2 seconds for buffered output and then
   stops reading, so a crash without a `result` event still finalizes as
   "exited without a result event" instead of waiting on a dev server's EOF.
+- **Visible stops.** A stop the harness decides on — timeout, silence, crash,
+  failure to start, unavailable driver — is appended to the transcript as a
+  `result` event with `subtype: "harness_failure"`, `is_error: true` and the
+  reason in `errors[0]`, so the chat renders it as an error notice. Before,
+  the reason lived only in the session summary and the chat just stopped.
+- **The queue keeps moving.** A turn that never reached its provider used to
+  finalize without dispatching the queue, and a queued turn whose spawn threw
+  was put back with nothing to retry it. Both now retry the queue after 5 s,
+  30 s and 2 min, then post a harness notice telling the operator to send a
+  message to try again.
 
 ## A failed turn explains itself, and a transient one is replayed
 
