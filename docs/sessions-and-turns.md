@@ -199,6 +199,43 @@ the same code and `action: "continue"` before interrupting the provider. A
 follow-up clears the old terminal reason as soon as the session starts running
 again.
 
+## Every turn ends
+
+A running turn always reaches a terminal state, so the operator never stares at
+a prompt that nothing answers. Three guards back the limits above:
+
+- **Silence.** A provider that emits nothing for 15 minutes is stopped with the
+  same `task_timeout` reason and `continue` warning as the wall clock. Tool calls
+  are silent while they run, so the limit sits above the agents' own 10-minute
+  command ceiling; operator inquiries expire after 10 minutes, below it.
+- **Interrupt deadline.** After any harness stop the driver has 30 seconds to
+  report an exit. A CLI that ignores the signal is sent `SIGKILL` (process
+  drivers escalate from `SIGTERM` after 10 seconds on their own), and if no exit
+  arrives the runtime synthesizes one. A Codex turn whose `turn/interrupt` is
+  acknowledged but never completed used to stay `running` forever here.
+- **Held stdout.** A background process the agent started inherits the CLI's
+  stdout. After the CLI exits, Peon waits 2 seconds for buffered output and then
+  stops reading, so a crash without a `result` event still finalizes as
+  "exited without a result event" instead of waiting on a dev server's EOF.
+- **Visible stops.** A stop the harness decides on — timeout, silence, crash,
+  failure to start, unavailable driver — is appended to the transcript as a
+  `result` event with `subtype: "harness_failure"`, `is_error: true` and the
+  reason in `errors[0]`, so the chat renders it as an error notice. Before,
+  the reason lived only in the session summary and the chat just stopped.
+- **The next turn waits for the last process.** Claude emits its `result`
+  before its process exits. The session finalizes on the result, but the queue
+  is held until that process is gone, and a direct follow-up sent in that gap
+  is queued rather than started. Previously the queued `--resume` raced the
+  still-running CLI on the same conversation, produced no events at all, and
+  the message sat in the chat unanswered until the operator wrote again. A
+  process that reports its result but does not exit within 10 seconds is
+  stopped through the interrupt deadline.
+- **The queue keeps moving.** A turn that never reached its provider used to
+  finalize without dispatching the queue, and a queued turn whose spawn threw
+  was put back with nothing to retry it. Both now retry the queue after 5 s,
+  30 s and 2 min, then post a harness notice telling the operator to send a
+  message to try again.
+
 ## A failed turn explains itself, and a transient one is replayed
 
 Claude Code receives Peon's appended system prompt through a private temporary

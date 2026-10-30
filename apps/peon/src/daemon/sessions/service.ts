@@ -43,6 +43,7 @@ import {
   appendPreviewEvent,
   appendUserTurn,
   finalizeSession as finalize,
+  isRunDraining,
   runProcess,
   scheduleQueuedDispatch,
   rememberReceipt,
@@ -574,6 +575,13 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       }
       // "running" with no active run shouldn't happen, but if it does the
       // resume below is the safe recovery rather than throwing.
+    }
+
+    // The finished turn's process is still exiting. A `--resume` now races it
+    // onto the same conversation, so the message waits in the queue, which
+    // dispatches the moment that process is gone.
+    if (record.status === "completed" && isRunDraining(id) && !notifyParentOnComplete) {
+      return sessions.enqueue(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, false, replyTo, attribution);
     }
 
     spawnResume();

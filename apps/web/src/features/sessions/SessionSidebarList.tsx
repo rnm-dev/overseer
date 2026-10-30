@@ -84,6 +84,7 @@ export function SessionSidebarList({
   onPin,
   isPinned,
   appearance = "sidebar",
+  flush = false,
 }: {
   sessions: SessionLite[];
   to: (session: SessionLite) => string;
@@ -96,6 +97,8 @@ export function SessionSidebarList({
   onPin?: (session: SessionLite) => Promise<void>;
   isPinned?: (session: SessionLite) => boolean;
   appearance?: "sidebar" | "panel";
+  // Drop the top padding when the list sits directly under another row.
+  flush?: boolean;
 }) {
   const t = useT();
   const { locale } = useI18n();
@@ -230,7 +233,7 @@ export function SessionSidebarList({
   }, [sessions]);
 
   return (
-    <ul className="py-1">
+    <ul className={flush ? "pb-1" : "py-1"}>
       {sessions.map((session) => {
         const key = sessionIdentity(session);
         const flash = flashes.get(key);
@@ -257,7 +260,7 @@ export function SessionSidebarList({
                 if (isNavigatePrefetchKey(event.key)) onNavigateIntent?.(session);
               }}
               title={session.catalogStale ? t("session.catalogStaleTitle") : undefined}
-              className={({ isActive }) => `relative block py-1.5 pl-3 pr-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-accent/10" : appearance === "panel" ? "hover:bg-surface-hover/70" : "hover:bg-surface-raised"}`}
+              className={({ isActive }) => `relative block py-1.5 pl-3 pr-2 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 ${session.catalogStale ? "opacity-70" : ""} ${isActive ? "bg-accent/10" : appearance === "panel" ? "hover-wash" : "hover-wash"}`}
             >
               <span
                 key={`edge-${flash ?? 0}`}
@@ -300,14 +303,14 @@ export function SessionSidebarList({
           className="fixed z-[110] w-40 overflow-hidden rounded-lg border border-edge bg-surface py-1 shadow-xl"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          {onPin && <button type="button" role="menuitem" disabled={pinning} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-muted hover:bg-surface-hover" onClick={() => void togglePin(contextMenu.session)}>
+          {onPin && <button type="button" role="menuitem" disabled={pinning} className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink-muted hover-wash" onClick={() => void togglePin(contextMenu.session)}>
             {isPinned?.(contextMenu.session) ? <PinOff size={13} /> : <Pin size={13} />}{t(isPinned?.(contextMenu.session) ? "session.unpin" : "session.pin")}
           </button>}
           <button
             type="button"
             role="menuitem"
             autoFocus
-            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover-wash hover:text-ink"
             onClick={() => beginRename(contextMenu.session)}
           >
             <Pencil size={13} aria-hidden />

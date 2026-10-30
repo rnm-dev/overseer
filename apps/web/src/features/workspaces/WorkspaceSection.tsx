@@ -46,8 +46,8 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
     : uniquePresenceUsers(remotePresence.filter((entry) => entry.peonId === peonId));
 
   return (
-    <section className="surface mb-5 overflow-hidden" aria-labelledby={`workspace-${wsId}`}>
-      <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 border-b border-edge bg-surface/35 px-5 py-4">
+    <section className="glass-panel mb-5 overflow-hidden" aria-labelledby={`workspace-${wsId}`}>
+      <div className="flex flex-wrap items-start justify-between gap-x-5 gap-y-3 border-b border-edge px-5 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 id={`workspace-${wsId}`} className="truncate font-display text-base font-semibold tracking-wide text-ink">
@@ -99,7 +99,7 @@ export function WorkspaceSection({ workspace }: { workspace: Workspace }) {
             const active = st?.status?.activeSessionCount ?? 0;
             return (
               <li key={p.peonId}>
-                <div className="surface surface--subtle surface--interactive flex h-full flex-col">
+                <div className="on-surface on-surface--interactive flex h-full flex-col rounded-lg">
                   <Link to={`/peons/${p.peonId}`} className="flex flex-1 flex-col justify-between gap-3 px-4 py-3.5">
                     <div className="flex items-start justify-between gap-2">
                       <PeonConnectionStatusDot {...p} />

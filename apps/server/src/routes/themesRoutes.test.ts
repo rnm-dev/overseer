@@ -14,7 +14,7 @@ test("public theme catalog and generated CSS share one source", async () => {
     assert.equal(catalogResponse.status, 200);
     const catalog = await catalogResponse.json() as { defaultThemeId: string; themes: Array<{ id: string; tokens: Record<string, string> }> };
     assert.equal(catalog.defaultThemeId, "org.overseer.ironwood");
-    assert.equal(catalog.themes.length, 6);
+    assert.equal(catalog.themes.length, 8);
 
     const cssResponse = await fetch(`${origin}/api/v1/themes.css`);
     assert.equal(cssResponse.status, 200);

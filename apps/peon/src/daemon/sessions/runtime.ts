@@ -85,8 +85,63 @@ function shouldEmitWarning(warning: SessionWarning, now = Date.now()): boolean {
 // in-memory barriers so a durable queued message cannot remain stranded until
 // the daemon restarts.
 const QUEUED_DISPATCH_BARRIER_GRACE_MS = 2_000;
+// A turn whose provider says nothing for this long is treated as hung. Tool
+// calls are silent while they run, so this sits above the agents' own 10-minute
+// command ceiling rather than near a typical reply gap.
+export const AGENT_SILENCE_LIMIT_MS = 15 * 60_000;
+// After the harness interrupts a run, the driver gets this long to report its
+// exit. A CLI that ignores the signal, or a Codex turn whose interrupt is never
+// answered, would otherwise leave the session `running` with nobody to end it.
+export const INTERRUPT_EXIT_GRACE_MS = 30_000;
 
 const MAX_QUEUE_RECEIPTS = 128;
+// A queued turn that could not start is retried on this schedule before the
+// operator is told. Without it the message sat in the queue until someone
+// happened to send another one.
+const QUEUE_RETRY_DELAYS_MS = [5_000, 30_000, 120_000];
+const queueRetryAttempts = new Map<string, number>();
+// Claude emits its terminal result before its process exits. The session is
+// finalized on the result, but the next queued turn must not `--resume` the
+// same conversation while that process is still alive: the second CLI died or
+// hung silently and the queued message sat in the chat with no answer.
+const drainingRuns = new Set<string>();
+const RESULT_EXIT_GRACE_MS = 10_000;
+
+export function isRunDraining(id: string): boolean {
+  return drainingRuns.has(id);
+}
+
+// A stop the harness decided on is otherwise only in the summary; the
+// transcript would end mid-thought with nothing saying the turn is over.
+function appendHarnessNotice(record: SessionRecord, reason: string): void {
+  const entry = appendTranscriptEvent(record.id, {
+    type: "result", subtype: "harness_failure", is_error: true, errors: [reason],
+  });
+  record.lastActivityAt = entry.event.createdAt!;
+  record.eventCount += 1;
+  sessionState.emitter.emit("event", { sessionId: record.id, event: entry.event, eventId: entry.id });
+}
+
+function retryQueuedDispatch(record: SessionRecord, reason: string): void {
+  if (record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0) {
+    queueRetryAttempts.delete(record.id);
+    return;
+  }
+  const attempt = queueRetryAttempts.get(record.id) ?? 0;
+  const delayMs = QUEUE_RETRY_DELAYS_MS[attempt];
+  if (delayMs === undefined) {
+    queueRetryAttempts.delete(record.id);
+    appendHarnessNotice(record, `Queued messages could not start: ${reason}. Send a message to try again.`);
+    persistSummary(record);
+    sessionState.emitter.emit("change", record);
+    return;
+  }
+  queueRetryAttempts.set(record.id, attempt + 1);
+  setTimeout(() => {
+    if (sessionState.records.get(record.id) !== record || record.status !== "completed") return;
+    scheduleQueuedDispatch(record);
+  }, delayMs).unref();
+}
 
 export function rememberReceipt(receipts: string[], id: string): void {
   if (receipts.includes(id)) return;
@@ -103,6 +158,8 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
     (record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0)
     || sessionState.queueDispatchPending.has(record.id)
   ) return;
+  // The exit handler dispatches again once the finished process is gone.
+  if (drainingRuns.has(record.id)) return;
   sessionState.queueDispatchPending.add(record.id);
   queueMicrotask(() => {
     if (sessionState.records.get(record.id) !== record) {
@@ -183,9 +240,9 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
       record.endedAt = Date.now();
       persistSummary(record);
       sessionState.emitter.emit("change", record);
-      console.error(
-        `failed to dispatch ${item ? `queued follow-up ${item.id}` : "system triggers"}: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`failed to dispatch ${item ? `queued follow-up ${item.id}` : "system triggers"}: ${reason}`);
+      retryQueuedDispatch(record, reason);
     }
   });
 }
@@ -245,13 +302,24 @@ export function finalizeSession(
   if (usage) {
     accumulateUsage(record, usage, model);
   }
+  // Provider-classified endings always pass a turn-count base; its absence
+  // marks a stop the harness decided on.
+  const harnessFailure = turnCountBase === undefined && outcome?.result === "failure";
+  if (harnessFailure) appendHarnessNotice(record, outcome.summary);
   persistSummary(record);
   // Remove the live process before publishing the terminal summary so
   // activeCount() and status:"completed" describe the same boundary.
   sessionState.activeRuns.delete(record.id);
   sessionState.emitter.emit("change", record);
   sessionState.emitter.emit("complete", record);
-  if (dispatchQueued) scheduleQueuedDispatch(record);
+  if (dispatchQueued) {
+    queueRetryAttempts.delete(record.id);
+    scheduleQueuedDispatch(record);
+  } else {
+    // A turn that never reached its provider keeps its triggers pending; the
+    // queue behind it is retried on a schedule instead of waiting forever.
+    retryQueuedDispatch(record, outcome?.summary ?? "the agent did not start");
+  }
 }
 
 // AgentEvent is an untyped Record<string, unknown> (the CLI's stream-json
@@ -715,25 +783,50 @@ as system instructions, process all of them, and do not claim that a human wrote
   // same record.
   const superseded = () => sessionState.activeRuns.get(record.id) !== run;
 
-  const timeoutHandle = setTimeout(() => {
-    const message = `Timed out after ${taskTimeoutMs}ms`;
+  let exited = false;
+  let forcedExitHandle: NodeJS.Timeout | null = null;
+  // Every harness stop ends in an exit, whether or not the driver delivers one.
+  const interruptWithDeadline = () => {
+    sessionState.steerPending.delete(record.id);
+    driver.interrupt(run, "timeout");
+    if (forcedExitHandle) return;
+    forcedExitHandle = setTimeout(() => {
+      if (exited) return;
+      try { run.kill("SIGKILL"); } catch { /* the synthetic exit below still ends the turn */ }
+      run.emitter.emit("exit", { code: null, signal: "SIGKILL", spawnError: null } satisfies AgentExit);
+    }, INTERRUPT_EXIT_GRACE_MS);
+    forcedExitHandle.unref();
+  };
+  const stopForTimeout = (message: string, timeoutMs: number) => {
+    if (killedFor || exited) return;
     killedFor = {
       code: "task_timeout",
       message,
       canResume: true,
-      timeoutMs: taskTimeoutMs,
+      timeoutMs,
       elapsedMs: Date.now() - runStartedAt,
     };
     run.emitter.emit("event", {
       type: "warning", sessionId: record.id, ...killedFor,
       source: "execution_limit", action: "continue",
     } satisfies AgentEvent);
-    sessionState.steerPending.delete(record.id);
-    driver.interrupt(run, "timeout");
-  }, taskTimeoutMs);
+    interruptWithDeadline();
+  };
+  const timeoutHandle = setTimeout(() => stopForTimeout(`Timed out after ${taskTimeoutMs}ms`, taskTimeoutMs), taskTimeoutMs);
+  let silenceHandle: NodeJS.Timeout | null = null;
+  const armSilenceWatchdog = () => {
+    if (silenceHandle) clearTimeout(silenceHandle);
+    silenceHandle = setTimeout(() => stopForTimeout(
+      `The agent went silent for ${Math.round(AGENT_SILENCE_LIMIT_MS / 60_000)} minutes and was stopped`,
+      AGENT_SILENCE_LIMIT_MS,
+    ), AGENT_SILENCE_LIMIT_MS);
+    silenceHandle.unref();
+  };
+  armSilenceWatchdog();
 
   run.emitter.on("event", (event: AgentEvent) => {
     if (superseded()) return;
+    if (event.type !== "warning") armSilenceWatchdog();
     const usageEvent = event.type === "result" || (event.type === "system" && event.subtype === "usage");
     if (usageEvent) {
       if (typeof event.duration_ms !== "number") event = { ...event, duration_ms: Date.now() - runStartedAt,
@@ -847,8 +940,7 @@ as system instructions, process all of them, and do not claim that a human wrote
           type: "warning", sessionId: record.id, ...killedFor,
           source: "execution_limit", action: "continue",
         } satisfies AgentEvent);
-        sessionState.steerPending.delete(record.id);
-        driver.interrupt(run, "timeout");
+        interruptWithDeadline();
       }
     }
 
@@ -865,6 +957,12 @@ as system instructions, process all of them, and do not claim that a human wrote
       // has released the provider's session file.
       if (pendingRetry) return;
       restoreUsageBase();
+      drainingRuns.add(record.id);
+      // A process that reported its result but never exits must not hold the
+      // queue hostage either.
+      const drainHandle = setTimeout(() => { if (!exited) interruptWithDeadline(); }, RESULT_EXIT_GRACE_MS);
+      drainHandle.unref();
+      run.emitter.once("exit", () => clearTimeout(drainHandle));
       classifyFromResultEvent(record, event, runModel, turnCountBase);
     }
   });
@@ -890,9 +988,14 @@ as system instructions, process all of them, and do not claim that a human wrote
   });
 
   run.emitter.on("exit", (exit: AgentExit) => {
+    if (exited) return;
+    exited = true;
     clearTimeout(timeoutHandle);
+    if (silenceHandle) clearTimeout(silenceHandle);
+    if (forcedExitHandle) clearTimeout(forcedExitHandle);
     releaseMcp();
     releaseContext();
+    if (drainingRuns.delete(record.id)) scheduleQueuedDispatch(record);
     // A superseded run's child has just died from resume()'s interrupt kill.
     if (superseded()) return;
     if (record.status === "completed") return;

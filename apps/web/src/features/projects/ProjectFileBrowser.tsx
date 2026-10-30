@@ -18,7 +18,7 @@ const SPLIT_BOUNDS = { min: 200, max: 560, minTrailing: 320 };
 
 // The controls are segments of the header bar rather than buttons floating in
 // it: full height, square, divided from each other by the same rule.
-const HEADER_SEGMENT = "flex h-full flex-none items-center gap-1.5 border-l border-edge px-3 font-display text-[0.68rem] font-semibold text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink disabled:cursor-default disabled:text-ink-faint/60 disabled:hover:bg-transparent";
+const HEADER_SEGMENT = "flex h-full flex-none items-center gap-1.5 border-l border-edge px-3 font-display text-[0.68rem] font-semibold text-ink-muted transition-colors hover-wash hover:text-ink disabled:cursor-default disabled:text-ink-faint/60 disabled:hover:bg-transparent";
 
 export function ProjectFileBrowser() {
   const t = useT();

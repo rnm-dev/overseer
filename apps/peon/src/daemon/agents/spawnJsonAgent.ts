@@ -4,6 +4,9 @@ import type { AgentEvent, AgentExit, AgentRun } from "./executor.js";
 
 type RawAgentEvent = Record<string, unknown>;
 
+const STDOUT_DRAIN_GRACE_MS = 2_000;
+const KILL_ESCALATION_MS = 10_000;
+
 export function spawnJsonAgent(
   command: string,
   args: string[],
@@ -81,12 +84,30 @@ export function spawnJsonAgent(
   child.on("exit", (code, signal) => {
     pendingExit = { code, signal, spawnError: null } satisfies AgentExit;
     emitExitWhenDrained();
+    // A background process the agent started (a dev server, a watcher)
+    // inherits stdout and can hold it open long after the CLI is gone. Waiting
+    // for that EOF left the session `running` forever, so give buffered output
+    // a moment and then stop listening.
+    if (!stdoutEnded) {
+      setTimeout(() => {
+        if (stdoutEnded) return;
+        child.stdout?.destroy();
+        stdoutEnded = true;
+        emitExitWhenDrained();
+      }, STDOUT_DRAIN_GRACE_MS).unref();
+    }
   });
 
   return {
     emitter,
     kill(signal: NodeJS.Signals = "SIGTERM") {
       child.kill(signal);
+      // A CLI wedged in a syscall can ignore SIGTERM; escalate rather than wait.
+      if (signal !== "SIGKILL") {
+        setTimeout(() => {
+          if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+        }, KILL_ESCALATION_MS).unref();
+      }
     },
   };
 }

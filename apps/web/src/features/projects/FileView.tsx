@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Code2, Download, Eye, Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 import { HighlightedCode, Markdown, languageForPath } from "../../shared/RichText";
 import { useT, type Translate } from "../../shared/i18n";
+import { toolbarItemClass } from "../../shared/ui";
 import { fileDownloadUrl, fileKind, fileName, fileUrl, formatFileSize, isUnviewableFile, rendersHtmlInline, type FileKind, type FileSource } from "./fileLinks";
 import { canZoom, fitScale, nextZoom, zoomLabel, type Size } from "./imageZoom";
 
@@ -136,8 +137,8 @@ export function FileDownloadButton({ source, variant = "icon", className = "" }:
       title={t("file.download")}
       aria-label={t("file.download")}
       className={`${variant === "segment"
-        ? "grid h-full flex-none place-items-center border-l border-edge px-3 text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
-        : "grid h-8 w-8 flex-none place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink"} ${className}`}
+        ? "grid h-full flex-none place-items-center border-l border-edge px-3 text-ink-faint transition-colors hover-wash hover:text-ink"
+        : toolbarItemClass(false, true)} ${className}`}
     >
       <Download size={variant === "segment" ? 14 : 16} aria-hidden />
     </a>
@@ -203,7 +204,7 @@ export function ImageView({ src, name, className = "" }: { src?: string; name: s
                 is not currently in use, so it toggles fit and actual size. */}
             <button
               type="button"
-              className="min-w-[3.25rem] rounded-md px-1.5 py-1 font-mono text-[0.68rem] text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink"
+              className="min-w-[3.25rem] rounded-md px-1.5 py-1 font-mono text-[0.68rem] text-ink-muted transition-colors hover-wash hover:text-ink"
               onClick={() => setScale(scale === null ? 1 : null)}
               title={t(scale === null ? "file.zoomActual" : "file.zoomFit")}
             >
@@ -224,7 +225,7 @@ export function ImageView({ src, name, className = "" }: { src?: string; name: s
 
 // The pane's padding is not image room, so the fit ratio must not count it.
 const IMAGE_PADDING = 40;
-const ZOOM_BUTTON_CLASS = "grid size-7 place-items-center rounded-md text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-ink-faint";
+const ZOOM_BUTTON_CLASS = "grid size-7 place-items-center rounded-md text-ink-faint transition-colors hover-wash hover:text-ink disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-ink-faint";
 
 // A page is shown as a page. The frame fetches the file itself over the same
 // authenticated origin, so relative assets beside it resolve through the same
@@ -271,7 +272,7 @@ export function HtmlView({ src, path, source, className = "" }: {
 }
 
 const FRAME_TOGGLE_CLASS = (active: boolean) =>
-  `flex items-center gap-1.5 rounded-md px-2 py-1 font-display text-[0.68rem] font-semibold transition-colors ${active ? "bg-surface-active text-ink" : "text-ink-faint hover:bg-surface-hover hover:text-ink"}`;
+  `flex items-center gap-1.5 rounded-md px-2 py-1 font-display text-[0.68rem] font-semibold transition-colors ${active ? "bg-surface-active text-ink" : "text-ink-faint hover-wash hover:text-ink"}`;
 
 export function FileView({ content, className = "" }: { content: FileContent; className?: string }) {
   const t = useT();

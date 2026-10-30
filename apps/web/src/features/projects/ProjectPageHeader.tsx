@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link, useParams } from "react-router";
 import { ContentHeaderIdentitySkeleton, ContentHeaderLayout, ContentHeaderTitle, FixedPaneHeader } from "../../shared/ui";
@@ -7,6 +7,7 @@ import type { ProjectSettings } from "../fleet/peonApi";
 import { useApiResource } from "../../shared/useApiResource";
 import { usePeon } from "../fleet/context";
 import { MOBILE_CONTENT_HEADER_ID } from "../sessions/mobileHeader";
+import { ProjectTabs } from "./ProjectTabs";
 
 export function ProjectMobileHeader({
   title,
@@ -30,11 +31,13 @@ export function ProjectHeaderLayout({
   newSessionTo,
   loading = false,
   showNewSession = true,
+  tabs,
 }: {
   title: string;
   newSessionTo: string;
   loading?: boolean;
   showNewSession?: boolean;
+  tabs?: ReactNode;
 }) {
   const t = useT();
   return (
@@ -42,9 +45,10 @@ export function ProjectHeaderLayout({
       identity={loading ? <ContentHeaderIdentitySkeleton label={t("app.loading")} /> : (
         <ContentHeaderTitle title={title}>{title}</ContentHeaderTitle>
       )}
-      actions={showNewSession
-        ? <Link to={newSessionTo} className="btn btn-accent btn-sm h-7">{t("newSession.new")}</Link>
-        : undefined}
+      actions={tabs || showNewSession ? <>
+        {tabs}
+        {showNewSession && <Link to={newSessionTo} className="btn btn-accent btn-sm h-7">{t("newSession.new")}</Link>}
+      </> : undefined}
     />
   );
 }
@@ -67,6 +71,7 @@ export function ProjectDesktopHeader({
         newSessionTo={newSessionTo}
         loading={loading}
         showNewSession={showNewSession}
+        tabs={<ProjectTabs variant="header" />}
       />
     </FixedPaneHeader>
   );

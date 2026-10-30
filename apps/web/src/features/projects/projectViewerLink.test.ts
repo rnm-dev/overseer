@@ -66,6 +66,11 @@ test("a path named the way the project names it resolves against the project roo
     projectViewerHref(".claude/settings.json", context),
     "/view/peon%2Fid/project%20id/.claude/settings.json",
   );
+  // Written straight after a bare name, a position looks to a URL parser like a scheme.
+  assert.equal(
+    projectViewerHref("report.md:12", context),
+    "/view/peon%2Fid/project%20id/report.md",
+  );
   assert.equal(projectViewerHref("docs/../secret.html", context), null);
 });
 

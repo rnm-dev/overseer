@@ -1,3 +1,5 @@
+import { isRelativeFilePath } from "../../shared/localFileLinks";
+
 export interface ProjectViewerContext {
   peonId: string;
   projectId: string;
@@ -8,18 +10,6 @@ export interface ProjectViewerContext {
 function splitSuffix(value: string): { path: string; suffix: string } {
   const index = value.search(/[?#]/);
   return index < 0 ? { path: value, suffix: "" } : { path: value.slice(0, index), suffix: value.slice(index) };
-}
-
-// A scheme-less path that is really a web address: example.com/pricing. Agents
-// write bare domains often enough that resolving them against the project root
-// would turn ordinary links into missing files.
-const BARE_HOST = /^[^/]+\.(?:com|org|net|io|dev|app|ai|co|me|sh|ru|kz)$/i;
-
-function projectRelativeCandidate(path: string): boolean {
-  if (!path || path.startsWith("/")) return false;
-  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(path)) return false;
-  const segments = path.replace(/^\.\//, "").split("/");
-  return segments.length > 1 ? !BARE_HOST.test(segments[0]!) : true;
 }
 
 function decodedPath(href: string, currentOrigin?: string): { path: string; suffix: string; relative: boolean } | null {
@@ -45,7 +35,7 @@ function decodedPath(href: string, currentOrigin?: string): { path: string; suff
   }
   const split = splitSuffix(href);
   const absolute = /^[a-zA-Z]:[\\/]/.test(split.path) || (split.path.startsWith("/") && !split.path.startsWith("//"));
-  if (!absolute && !projectRelativeCandidate(split.path)) return null;
+  if (!absolute && !isRelativeFilePath(split.path)) return null;
   try {
     return { path: decodeURIComponent(split.path), suffix: split.suffix, relative: !absolute };
   } catch {

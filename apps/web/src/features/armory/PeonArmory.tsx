@@ -73,7 +73,7 @@ function RegistryRefresh({ registry, state, checkedAt, onRefresh }: { registry: 
       <span className={`whitespace-nowrap font-mono text-[0.68rem] ${registry.source === "cached" ? "text-warning-strong" : "text-ink-faint"}`} title="Catalog refresh status">
         {status}
       </span>
-      <button type="button" disabled={state === "refreshing"} onClick={onRefresh} className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 font-display text-xs font-bold transition-colors hover:bg-surface-hover disabled:cursor-wait ${tone}`} aria-live="polite">
+      <button type="button" disabled={state === "refreshing"} onClick={onRefresh} className={`inline-flex h-9 items-center gap-1.5 rounded px-2.5 font-display text-xs font-bold transition-colors hover-wash disabled:cursor-wait ${tone}`} aria-live="polite">
         <RefreshCw size={14} className={state === "refreshing" ? "animate-spin" : ""} aria-hidden />
         {label}
       </button>
@@ -256,14 +256,14 @@ function MarketplaceList() {
       </header>
 
       {!peon.online && <p className="border-l-2 border-danger bg-danger/5 px-4 py-3 font-mono text-sm text-danger">This Peon is offline — Armory data is unavailable.</p>}
-      <div className="surface flex flex-col gap-2.5 p-2.5 lg:flex-row">
+      <div className="glass-panel flex flex-col gap-2.5 p-2.5 lg:flex-row">
         <label className="group relative min-w-0 flex-1">
           <span className="sr-only">Search packages</span>
           <Search className="pointer-events-none absolute left-3.5 top-1/2 z-10 -translate-y-1/2 text-ink-faint transition-colors group-focus-within:text-accent-strong" size={17} aria-hidden />
           <input className="field !h-11 !rounded-md !border-edge-strong !bg-surface/80 !py-0 !pl-11 !pr-4 text-sm" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search packages" type="search" />
         </label>
         <div className="inline-flex h-11 shrink-0 rounded-md border border-edge-strong bg-surface/80 p-1" role="group" aria-label="Package view">
-          {(["available", "installed"] as const).map((option) => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`rounded px-4 font-display text-xs font-bold capitalize transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${view === option ? "bg-accent text-on-accent shadow-sm" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`}>{option}</button>)}
+          {(["available", "installed"] as const).map((option) => <button key={option} type="button" aria-pressed={view === option} onClick={() => setView(option)} className={`rounded px-4 font-display text-xs font-bold capitalize transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent ${view === option ? "bg-accent text-on-accent shadow-sm" : "text-ink-muted hover-wash hover:text-ink"}`}>{option}</button>)}
         </div>
         {inventory && <RegistryRefresh registry={inventory.registry} state={refreshState} checkedAt={lastCheckedAt} onRefresh={() => void refreshCatalog()} />}
       </div>

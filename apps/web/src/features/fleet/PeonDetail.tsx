@@ -1,25 +1,23 @@
 import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, Menu, Pickaxe, Settings, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BarChart3, FolderGit2, MessagesSquare, Plus, Menu, Pickaxe, Settings, type LucideIcon } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { api, ApiError } from "../../shared/api";
 import { useWorkspace } from "../workspaces/workspace";
 import { usePeonPresence } from "./usePeonPresence";
 import { useMobileDrawer } from "../../shared/useMobileDrawer";
 import { useT } from "../../shared/i18n";
+import { TOOLBAR_GROUP, toolbarItemClass } from "../../shared/ui";
 import { usePresence, useLiveSocket, type SessionLiveEvent } from "../../realtime/liveSocket";
 import { PeonScopeSwitcher } from "../workspaces/PeonScopeSwitcher";
-import { ProjectGroupedSessionList } from "../sessions/ProjectGroupedSessionList";
+import { ProjectGroupedSessionList, SIDEBAR_CREATE_PLUS_CLASS, sidebarCreateRowClass } from "../sessions/ProjectGroupedSessionList";
 import { FadingTitle, SessionSidebarList } from "../sessions/SessionSidebarList";
 import {
   loadSessionListDisplayMode,
   loadSessionListProjectLimit,
   saveSessionListDisplayMode,
-  saveSessionListProjectLimit,
-  SessionListDisplayControl,
+  type SessionListDisplayMode,
 } from "../sessions/SessionListDisplayControl";
-import { ProjectSidebarSection } from "../projects/ProjectSidebarSection";
-import { SIDEBAR_SECTION_ACTION_CLASS, SidebarSectionHeader } from "../../shared/SidebarSectionHeader";
 import { PeonConnectionStatusDot } from "./PeonConnectionStatusDot";
 import type { PeonContext, PeonView } from "./context";
 import { NewProjectDialog } from "../projects/NewProjectDialog";
@@ -48,8 +46,7 @@ export const PEON_NAV_ITEMS: readonly PeonNavItem[] = [
   { to: "stats", key: "peon.tab.stats", icon: BarChart3 },
 ];
 
-const iconNavClass = (active: boolean) =>
-  `rounded p-1.5 transition-colors ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover:bg-surface-hover hover:text-ink"}`;
+const iconNavClass = (active: boolean) => toolbarItemClass(active, true);
 
 export function PeonDetail() {
   const t = useT();
@@ -82,7 +79,7 @@ export function PeonDetail() {
   const [projectError, setProjectError] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [sessionListMode, setSessionListMode] = useState(loadSessionListDisplayMode);
-  const [sessionsPerProject, setSessionsPerProject] = useState(loadSessionListProjectLimit);
+  const [sessionsPerProject] = useState(loadSessionListProjectLimit);
   const { drawerOpen, setDrawerOpen } = useMobileDrawer();
   const sidebar = useResizableSidebar();
   const sessionScrollNode = useRef<HTMLDivElement>(null);
@@ -315,16 +312,21 @@ export function PeonDetail() {
       <aside
         id="peon-navigation"
         data-open={drawerOpen}
-        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-edge bg-surface shadow-2xl md:visible md:sticky md:top-0 md:z-auto md:h-screen md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:bg-surface/50 md:shadow-none"
+        className="mobile-drawer-panel fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(20rem,86vw)] shrink-0 flex-col border-r border-edge bg-surface shadow-2xl md:visible md:sticky md:top-1 md:z-auto md:my-1 md:mx-1 md:h-[calc(100vh-0.5rem)] md:w-[var(--peon-sidebar-width)] md:translate-x-0 md:overflow-hidden glass-panel-md"
       >
         {/* header: back + workspace-wide Peon scope switcher */}
-        <div className="border-b border-edge px-3 pb-3 pt-3.5">
-          <Link to="/" className="mb-2 inline-block font-body text-xs text-ink-muted transition-colors hover:text-accent-strong">
-            {t("peon.back")}
-          </Link>
-          <div className="flex items-center justify-between gap-2">
+        <div className="px-2 py-2">
+          <div className="flex items-center gap-1">
+            <Link
+              to="/"
+              title={t("peon.back")}
+              aria-label={t("peon.back")}
+              className="flex-none rounded p-1.5 text-ink-muted transition-colors hover-wash hover:text-accent-strong"
+            >
+              <ArrowLeft size={16} />
+            </Link>
             <PeonScopeSwitcher workspaceId={wsId!} peonId={peonId} />
-            <div className="flex flex-none items-center gap-1">
+            <div className={TOOLBAR_GROUP}>
               {PEON_NAV_ITEMS.map((item) => {
                 const Icon = item.icon;
                 return (
@@ -351,19 +353,57 @@ export function PeonDetail() {
           </div>
         </div>
 
-        <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24">
-          <SessionListDisplayControl
-            mode={sessionListMode}
-            projectLimit={sessionsPerProject}
-            onModeChange={(mode) => {
+        <div className="bg-ink/[0.035]">
+          <div
+            role="tablist"
+            aria-label={t("sidebar.tabs")}
+            className="grid grid-cols-2"
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+              event.preventDefault();
+              const mode: SessionListDisplayMode = sessionListMode === "flat" ? "grouped" : "flat";
               setSessionListMode(mode);
               saveSessionListDisplayMode(mode);
+              requestAnimationFrame(() => event.currentTarget.querySelector<HTMLElement>('[aria-selected="true"]')?.focus());
             }}
-            onProjectLimitChange={(limit) => {
-              setSessionsPerProject(limit);
-              saveSessionListProjectLimit(limit);
-            }}
-          />
+          >
+            {([
+              { mode: "flat", key: "peon.tab.sessions", icon: MessagesSquare },
+              { mode: "grouped", key: "sidebar.tab.projects", icon: FolderGit2 },
+            ] as const).map(({ mode, key, icon: Icon }) => {
+              const active = sessionListMode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  tabIndex={active ? 0 : -1}
+                  className={`flex h-8 items-center justify-center gap-1.5 font-display text-[0.68rem] uppercase tracking-[0.14em] outline-none focus-visible:text-accent-strong ${active ? "font-semibold text-ink" : "font-medium text-ink-faint hover:text-ink-muted"}`}
+                  onClick={() => {
+                    setSessionListMode(mode);
+                    saveSessionListDisplayMode(mode);
+                  }}
+                >
+                  <Icon size={13} aria-hidden className={active ? "text-accent-strong" : undefined} />
+                  <span>{t(key)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {sessionListMode === "flat" ? (
+          <NavLink to={newSessionTo} end className={({ isActive }) => sidebarCreateRowClass(isActive)}>
+            <span className="min-w-0 flex-1 truncate">{t("sidebar.newSession")}</span>
+            <span className={SIDEBAR_CREATE_PLUS_CLASS}><Plus size={16} aria-hidden /></span>
+          </NavLink>
+        ) : (
+          <button type="button" className={sidebarCreateRowClass(showNewProject)} onClick={() => setShowNewProject(true)}>
+            <span className="min-w-0 flex-1 truncate">{t("newProject.title")}</span>
+            <span className={SIDEBAR_CREATE_PLUS_CLASS}><Plus size={16} aria-hidden /></span>
+          </button>
+        )}
+        <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24 [scrollbar-gutter:stable]">
           {sessionListMode === "grouped" ? (
             <section>
               {projects === null && !projectError ? (
@@ -384,7 +424,6 @@ export function PeonDetail() {
                   projectTo={(project) => `projects/${encodeURIComponent(project.key)}`}
                   sessionTo={(session) => `sessions/${session.id}`}
                   newSessionTo={(project) => project ? `sessions/new?project=${encodeURIComponent(project.key)}` : "sessions/new"}
-                  onNewProject={() => setShowNewProject(true)}
                   onNavigateIntent={prefetchSession}
                   onRename={renameSession}
                   onDelete={deleteSession}
@@ -400,29 +439,14 @@ export function PeonDetail() {
             </section>
           ) : (
             <>
-              <ProjectSidebarSection
-                projects={sidebarProjects}
-                error={projectError}
-                to={(project) => `projects/${encodeURIComponent(project.key)}`}
-                onNew={() => setShowNewProject(true)}
-              />
-
-              {/* The original flat session list remains available as a display mode. */}
               <section>
-                <SidebarSectionHeader
-                  label={t("peon.tab.sessions")}
-                  action={(
-                    <Link to={newSessionTo} className={SIDEBAR_SECTION_ACTION_CLASS}>
-                      {t("newSession.new")}
-                    </Link>
-                  )}
-                />
                 <div>
                   {ordered.length === 0 && !sessionsLoading && !sessionPageError ? (
                     <p className="px-3 py-2 font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
                   ) : (
                     <>
                       <SessionSidebarList
+                        flush
                         onPin={sessionPins.toggle}
                         isPinned={sessionPins.isPinned}
                         sessions={ordered}
@@ -460,7 +484,7 @@ export function PeonDetail() {
           aria-valuemax={sidebar.maxWidth}
           aria-valuenow={Math.round(sidebar.sidebarWidth)}
           tabIndex={0}
-          className="absolute -right-1 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none after:absolute after:inset-y-0 after:left-[3px] after:w-px after:bg-transparent hover:after:bg-accent/70 focus-visible:after:bg-accent md:block"
+          className="absolute right-0 top-0 hidden h-full w-2 cursor-col-resize touch-none outline-none panel-resize-handle md:block"
           onPointerDown={(event) => {
             event.preventDefault();
             sidebar.startResize();
@@ -478,7 +502,7 @@ export function PeonDetail() {
         <div className="sticky top-0 z-30 flex h-12 items-center gap-3 border-b border-edge bg-canvas/95 px-3 backdrop-blur md:hidden">
           <button
             type="button"
-            className="-ml-1 rounded p-2 text-ink-muted transition-colors hover:bg-surface-raised hover:text-ink"
+            className="-ml-1 rounded p-2 text-ink-muted transition-colors hover-wash hover:text-ink"
             aria-label={t("peon.tab.sessions")}
             aria-expanded={drawerOpen}
             aria-controls="peon-navigation"

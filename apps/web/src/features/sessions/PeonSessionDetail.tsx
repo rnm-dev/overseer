@@ -1,7 +1,7 @@
 import { refreshSessionPins } from "./useSessionPins";
 import { ProviderLogin } from "../stats/ProviderLoginPanel";
 import { signedOut } from "../stats/providerLogin";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MouseEvent, type SetStateAction } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type MouseEvent, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate, useParams } from "react-router";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
@@ -54,7 +54,8 @@ import { deleteSession, renameSession, sessionPath } from "./sessionApi";
 import { useSessionRunState } from "./useSessionRunState";
 import { useSessionMetadata } from "./useSessionMetadata";
 import { useComposerMentions, useMentionPicker } from "./useComposerMentions";
-import { readStoredJson, writeStoredValue } from "../../shared/storedValue";
+import { readStoredJson, readStoredValue, writeStoredValue } from "../../shared/storedValue";
+import type { SessionPaneTab } from "./SessionHeader";
 import { clearComposerSelectionIfUnchanged, composerDraftKey, selectionAfterAcceptance, type ComposerSelectionDraft, useComposerSelectionDraft } from "./drafts";
 import { createContinuationSession, lastUnexecutedUserPrompt, sessionContinuationFailure, type SessionContinuationFailure } from "./sessionContinuationRecovery";
 
@@ -74,7 +75,7 @@ type VirtualTranscriptRow =
   | { key: string; kind: "footer"; height: number };
 
 function TranscriptListHeader() {
-  return <div className="h-12" aria-hidden="true" />;
+  return <div className="h-12 md:h-[calc(var(--fixed-pane-header-height,3.25rem)+0.75rem)]" aria-hidden="true" />;
 }
 
 function BranchMessageMenu({ branching, disabled, error, onBranch, t }: {
@@ -88,7 +89,7 @@ function BranchMessageMenu({ branching, disabled, error, onBranch, t }: {
     <div className="mt-1 flex items-center gap-2 pl-0.5">
       <DropdownMenu
         label={t("session.branch.menu")}
-        buttonClassName="grid h-6 w-6 place-items-center rounded text-ink-faint transition-colors hover:bg-surface-raised hover:text-ink disabled:opacity-40"
+        buttonClassName="grid h-6 w-6 place-items-center rounded text-ink-faint transition-colors hover-wash hover:text-ink disabled:opacity-40"
         menuAlignClassName="left-0"
         menuWidthClassName="w-36"
         trigger={<MoreHorizontal size={15} aria-hidden />}
@@ -102,6 +103,8 @@ function BranchMessageMenu({ branching, disabled, error, onBranch, t }: {
     </div>
   );
 }
+
+const PANE_TAB_STORAGE_KEY = "overseer:session-pane:tab";
 
 function storedOpenFilePanes(): Set<string> {
   const value = readStoredJson(FILE_PANES_STORAGE_KEY);
@@ -294,6 +297,18 @@ function PeonSessionDetailPage() {
     setFilesOpen(open);
     storeFilePaneState(filePanePageKey, open);
   }, [filePanePageKey]);
+  // The side pane is one surface with tabs; which tab it shows is remembered
+  // across sessions, while whether it is open stays per page.
+  const [paneTab, setPaneTab] = useState<SessionPaneTab>(() => readStoredValue(PANE_TAB_STORAGE_KEY) === "docs" ? "docs" : "files");
+  const selectPaneTab = useCallback((tab: SessionPaneTab) => {
+    if (filesOpen && paneTab === tab) {
+      changeFilesOpen(false);
+      return;
+    }
+    setPaneTab(tab);
+    writeStoredValue(PANE_TAB_STORAGE_KEY, tab);
+    changeFilesOpen(true);
+  }, [changeFilesOpen, filesOpen, paneTab]);
   const previewPinnedRef = useRef(false);
   useEffect(() => { previewPinnedRef.current = previewPinned; }, [previewPinned]);
   const [composerNode, setComposerNode] = useState<HTMLDivElement | null>(null);
@@ -769,7 +784,7 @@ function PeonSessionDetailPage() {
   );
 
   return (
-    <div className="session-transcript-pane fixed bottom-0 left-0 right-0 top-12 z-10 min-w-0 overflow-hidden md:left-[var(--peon-sidebar-width)] md:top-[var(--fixed-pane-header-height,3.25rem)]">
+    <div className="session-transcript-pane fixed bottom-0 left-0 right-0 top-12 z-10 min-w-0 overflow-hidden md:left-[calc(var(--peon-sidebar-width)+0.5rem)] md:top-0" style={{ "--transcript-composer-height": `${composerHeight}px` } as CSSProperties}>
       <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
         <SessionHeader
           peonId={peon.peonId}
@@ -786,8 +801,9 @@ function PeonSessionDetailPage() {
           openingMessage={headerIdentity.openingMessage}
           turnTotal={turnTotal}
           usageSummary={usageSummary}
-          filesOpen={filesOpen}
-          changeFilesOpen={changeFilesOpen}
+          paneOpen={filesOpen}
+          paneTab={paneTab}
+          selectPaneTab={selectPaneTab}
           confirmDelete={confirmDelete}
           setConfirmDelete={setConfirmDelete}
           deleting={deleting}
@@ -802,7 +818,7 @@ function PeonSessionDetailPage() {
         />
       </div>
       <div
-        className="pointer-events-none absolute left-0 right-0 top-2 z-20 grid h-8 place-items-center"
+        className="pointer-events-none absolute left-0 right-0 top-2 z-20 grid h-8 md:top-[calc(var(--fixed-pane-header-height,3.25rem)+0.5rem)] place-items-center"
         aria-live="polite"
       >
         {(historyLoadError || loadingOlder || olderLoadError) && (
@@ -827,7 +843,7 @@ function PeonSessionDetailPage() {
             key={sessionKey}
             ref={virtuosoRef}
             scrollerRef={handleScrollerRef}
-            className="h-full overflow-x-hidden"
+            className="session-transcript-scroller h-full overflow-x-hidden"
             data={displayedVirtualWindow.rows}
             firstItemIndex={displayedVirtualWindow.firstItemIndex}
             initialTopMostItemIndex={displayedVirtualWindow.rows.length - 1}
@@ -938,13 +954,13 @@ function PeonSessionDetailPage() {
       {showScrollToBottom &&
         createPortal(
           <div
-            className="session-scroll-control pointer-events-none fixed left-0 right-0 z-[41] flex justify-center md:left-[var(--peon-sidebar-width)]"
+            className="session-scroll-control pointer-events-none fixed left-0 right-0 z-[41] flex justify-center md:left-[calc(var(--peon-sidebar-width)+0.5rem)]"
             style={{ bottom: composerHeight + 12 }}
           >
             <button
               type="button"
               onClick={scrollToBottom}
-              className="pointer-events-auto grid size-10 place-items-center rounded-full border border-edge-strong bg-surface/95 text-ink shadow-lg backdrop-blur transition-colors hover:border-warning-strong/60 hover:bg-surface-raised hover:text-warning-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning-strong/70"
+              className="pointer-events-auto grid size-10 place-items-center rounded-full border border-edge-strong bg-surface/95 text-ink shadow-lg backdrop-blur transition-colors hover:border-warning-strong/60 hover-wash hover:text-warning-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning-strong/70"
               title={t("session.scrollToBottom")}
               aria-label={t("session.scrollToBottom")}
             >
@@ -1023,6 +1039,7 @@ function PeonSessionDetailPage() {
         projectKey={headerIdentity.projectKey}
         projectKeyKnown={loadedMetadataKey === sessionKey || Boolean(selectedSession)}
         filesOpen={filesOpen}
+        paneTab={paneTab}
         fileRefreshRevision={fileRefreshRevision}
         projectFilePreview={projectFilePreview}
         setProjectFilePreview={setProjectFilePreview}

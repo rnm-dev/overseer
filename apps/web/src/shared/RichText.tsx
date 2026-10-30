@@ -1,6 +1,7 @@
-import { isValidElement, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
+import { isValidElement, useCallback, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { gutterWidthCh, lineNumberText } from "./lineNumbers";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
+import { localFilePath, relativeFilePath } from "./localFileLinks";
 import remarkGfm from "remark-gfm";
 import { MermaidDiagram } from "./MermaidDiagram";
 import hljs from "highlight.js/lib/core";
@@ -96,32 +97,6 @@ const baseMarkdownComponents: Components = {
   pre: MarkdownPre,
 };
 
-export function localFilePath(href: string | undefined): string | null {
-  if (!href) return null;
-  let path = href;
-  try {
-    path = decodeURIComponent(path);
-  } catch {
-    // Keep the original path when it contains a malformed escape sequence.
-  }
-  if (path.startsWith("file://")) {
-    try {
-      // A URL pathname always opens with a slash, which is part of a POSIX
-      // path and never part of a Windows one: file:///C:/work/a.html reads
-      // back as /C:/work/a.html, and a Peon asked for that answers NOT_FOUND.
-      // Decoded after parsing, not before: `new URL` re-encodes the space in
-      // a name the first decode had already opened up, and the Peon is then
-      // asked for a file called `a%20file.html`.
-      path = decodeURIComponent(new URL(path).pathname).replace(/^\/(?=[a-zA-Z]:[\\/])/, "");
-    } catch {
-      return null;
-    }
-  }
-  if (!(path.startsWith("/") && !path.startsWith("//")) && !/^[a-zA-Z]:[\\/]/.test(path)) return null;
-  // Codex file links can carry a source position as /path/file.ts:12:4 or #L12.
-  return path.replace(/#L\d+(?:-L?\d+)?$/, "").replace(/:\d+(?::\d+)?$/, "");
-}
-
 export function Markdown({ source, className = "", onOpenFile, onOpenLink, transformLink }: {
   source: string;
   className?: string;
@@ -138,21 +113,35 @@ export function Markdown({ source, className = "", onOpenFile, onOpenLink, trans
           if (onOpenLink?.(transformed)) event.preventDefault();
         }}>{children}</a>;
       }
-      const path = localFilePath(href);
+      const path = localFilePath(href) ?? relativeFilePath(href);
       if (path && onOpenFile) {
         return <a href={href} onClick={(event) => { event.preventDefault(); onOpenFile(path); }}>{children}</a>;
       }
-      return <a href={href} target="_blank" rel="noopener noreferrer" onClick={(event) => {
-        if (href && onOpenLink?.(href)) event.preventDefault();
+      // An address the sanitizer emptied is no page at all: opened in a new
+      // tab, an empty href is this chat again.
+      if (!href) return <span>{children}</span>;
+      // A fragment — a footnote, a heading — is a place on this page.
+      const newTab = href.startsWith("#") ? {} : { target: "_blank", rel: "noopener noreferrer" };
+      return <a href={href} {...newTab} onClick={(event) => {
+        if (onOpenLink?.(href)) event.preventDefault();
       }}>{children}</a>;
     },
   }), [onOpenFile, onOpenLink, transformLink]);
+  // react-markdown empties every href whose scheme is not a web one, before
+  // any component sees it — file:///C:/work/a.html, C:\work\a.html and
+  // report.md:12 included. Whatever this renderer resolves itself keeps its
+  // href; everything else still goes through the library's sanitizer.
+  const urlTransform = useCallback(
+    (url: string) => localFilePath(url) || relativeFilePath(url) || transformLink?.(url) ? url : defaultUrlTransform(url),
+    [transformLink],
+  );
 
   return (
     <div className={`markdown-body ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={components}
+        urlTransform={urlTransform}
         skipHtml
       >
         {source}

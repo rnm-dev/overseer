@@ -79,7 +79,7 @@ export function ProjectMembers() {
           {regularMembers.length === 0 ? <p className="p-8 text-center font-mono text-sm text-ink-faint">{t("proj.members.empty")}</p> : <ul className={PROJECT_MEMBER_LIST_CLASS}>
             {regularMembers.map((member) => {
               const checked = member.access;
-              return <li key={member.userId} className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover:bg-surface-hover/20">
+              return <li key={member.userId} className="flex items-center justify-between gap-4 px-5 py-4 transition-colors hover-wash">
                 <div className="flex min-w-0 items-center gap-3">
                   <Avatar src={member.avatarUrl} label={member.githubLogin || member.email} size="lg" className="border-edge-strong" />
                   <div className="min-w-0"><p className="truncate font-display text-sm font-semibold text-ink">{member.githubLogin ? `@${member.githubLogin}` : member.email}</p>{member.githubLogin && <p className="truncate font-mono text-[0.68rem] text-ink-faint">{member.email}</p>}{member.administrator && <p className="font-mono text-[0.68rem] text-accent">{t("proj.members.administrator")}</p>}</div>

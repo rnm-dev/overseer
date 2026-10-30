@@ -88,7 +88,7 @@ function ErrorToast({ toast, dismiss }: { toast: Toast; dismiss: (id: string) =>
         <button
           type="button"
           onClick={() => dismiss(toast.id)}
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-lg leading-none text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-lg leading-none text-ink-faint transition-colors hover-wash hover:text-ink"
           aria-label={t("toast.dismiss")}
         >
           ×

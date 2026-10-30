@@ -56,10 +56,10 @@ interface Props {
   caretRequest: { position: number; seq: number } | null;
 }
 
-const SESSION_COMPOSER_DOCK_CLASS = "session-composer fixed bottom-0 left-0 z-40 md:left-[var(--peon-sidebar-width)]";
+const SESSION_COMPOSER_DOCK_CLASS = "session-composer fixed bottom-0 left-0 z-40 md:left-[calc(var(--peon-sidebar-width)+0.5rem)]";
 // The fade belongs to the composer alone: queued messages stack above it on
 // their own bubbles, so adding one never drags the shade up the transcript.
-const SESSION_COMPOSER_FADE_CLASS = "theme-transcript-composer-fade pt-4";
+const SESSION_COMPOSER_FADE_CLASS = "pt-4";
 const SESSION_COMPOSER_WIDTH_CLASS = "mx-auto max-w-[76rem] px-2 sm:px-6";
 export const COMPOSER_FOOTER_PADDING = 100;
 
@@ -162,7 +162,7 @@ export function SessionComposerDock(props: Props) {
     <div className="relative">
       {mentionPickerOpen && (
         <div id={mentionListboxId} className="mention-picker absolute bottom-[calc(100%+0.5rem)] left-0 z-50 w-72 max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl border border-edge-strong bg-surface-raised py-1 shadow-xl" role="listbox" aria-label={t("session.compose.mentionPicker")}>
-          {mentionSuggestions.map((principal, index) => <button id={`${mentionListboxId}-${index}`} key={`${principal.kind}:${principal.id}`} type="button" role="option" aria-selected={activeMentionIndex === index} className={`block w-full truncate px-3 py-2 text-left font-body text-sm ${activeMentionIndex === index ? "bg-accent/15 text-accent-strong" : "text-ink hover:bg-surface-hover"}`} onMouseEnter={() => setActiveMentionIndex(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => onSelectMention(principal)}>@{principal.label}</button>)}
+          {mentionSuggestions.map((principal, index) => <button id={`${mentionListboxId}-${index}`} key={`${principal.kind}:${principal.id}`} type="button" role="option" aria-selected={activeMentionIndex === index} className={`block w-full truncate px-3 py-2 text-left font-body text-sm ${activeMentionIndex === index ? "bg-accent/15 text-accent-strong" : "text-ink hover-wash"}`} onMouseEnter={() => setActiveMentionIndex(index)} onMouseDown={(event) => event.preventDefault()} onClick={() => onSelectMention(principal)}>@{principal.label}</button>)}
         </div>
       )}
     <Composer

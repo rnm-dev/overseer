@@ -79,3 +79,26 @@ test("task timeout uses the same structured terminal contract", async () => {
   assert.ok(readTranscript(record.id, "claude-code").some((event) =>
     event.type === "warning" && event.code === "task_timeout" && event.action === "continue"));
 });
+
+test("a crashed CLI whose background process holds stdout still ends the turn", async () => {
+  const leakyClaude = path.join(fakeDir, "leaky-claude.mjs");
+  writeFileSync(leakyClaude, `#!/usr/bin/env node
+import { spawn } from "node:child_process";
+spawn(process.execPath, ["-e", "setTimeout(() => {}, 20000)"], { stdio: ["ignore", "inherit", "ignore"], detached: true }).unref();
+console.log(JSON.stringify({ type: "system", subtype: "init", session_id: "leaky-test", model: "claude-test" }));
+process.exit(1);
+`);
+  chmodSync(leakyClaude, 0o755);
+  settings.update({ agentCommand: leakyClaude, maxTurns: 1_000, taskTimeoutMs: 60_000 });
+
+  const record = sessions.start({ id: "leaky-session", prompt: "start a server", dir: fakeDir, agent: "claude-code" });
+  for (let attempt = 0; attempt < 600 && sessions.get(record.id)?.status !== "completed"; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  assert.equal(sessions.get(record.id)?.status, "completed");
+  assert.match(sessions.get(record.id)?.outcome?.summary ?? "", /without a result event/);
+  // The transcript says the turn is over, not just the summary.
+  assert.ok(readTranscript(record.id, "claude-code").some((event) =>
+    event.type === "result" && event.subtype === "harness_failure" && event.is_error === true
+    && Array.isArray(event.errors) && /without a result event/.test(String(event.errors[0]))));
+});

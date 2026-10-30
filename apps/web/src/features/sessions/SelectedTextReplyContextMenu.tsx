@@ -222,7 +222,7 @@ export function SelectedTextReplyContextMenu({ replyTo, row, selection, x, y, li
         type="button"
         role="menuitem"
         ref={(node) => { itemRefs.current[1] = node; }}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:bg-surface-hover focus-visible:outline-none"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover-wash hover:text-ink focus-visible:bg-surface-hover focus-visible:outline-none"
         onClick={() => runCopy(replyTo.selectedText)}
       >
         <Copy size={14} aria-hidden />
@@ -235,7 +235,7 @@ export function SelectedTextReplyContextMenu({ replyTo, row, selection, x, y, li
             type="button"
             role="menuitem"
             ref={(node) => { itemRefs.current[2] = node; }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:bg-surface-hover focus-visible:outline-none"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover-wash hover:text-ink focus-visible:bg-surface-hover focus-visible:outline-none"
             onClick={openLink}
           >
             <ExternalLink size={14} aria-hidden />
@@ -245,7 +245,7 @@ export function SelectedTextReplyContextMenu({ replyTo, row, selection, x, y, li
             type="button"
             role="menuitem"
             ref={(node) => { itemRefs.current[3] = node; }}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink focus-visible:bg-surface-hover focus-visible:outline-none"
+            className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-xs text-ink-muted transition-colors hover-wash hover:text-ink focus-visible:bg-surface-hover focus-visible:outline-none"
             onClick={() => runCopy(linkHref)}
           >
             <Link2 size={14} aria-hidden />

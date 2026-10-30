@@ -3,7 +3,7 @@ import { BookOpen, ChevronRight, Folder, RefreshCw, TriangleAlert } from "lucide
 import { api, ApiError } from "../../shared/api";
 import { Markdown } from "../../shared/RichText";
 import { useT } from "../../shared/i18n";
-import { Card } from "../../shared/ui";
+import { toolbarItemClass } from "../../shared/ui";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { fileApiPath } from "./fileLinks";
 
@@ -124,7 +124,7 @@ function errorCopy(code: string, t: ReturnType<typeof useT>): string {
   return t("proj.docs.failed");
 }
 
-export function ProjectDocumentation({ base, projectId }: { base: string; projectId: string | null }) {
+export function ProjectDocumentation({ base, projectId, compact = false }: { base: string; projectId: string | null; compact?: boolean }) {
   const t = useT();
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<DocumentationState>({ kind: "loading" });
@@ -190,8 +190,8 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
   const refresh = () => activePath && activePath !== "docs/index.md" ? openDocument(activePath) : goHome();
 
   return (
-    <Card className="overflow-hidden">
-      <header className="relative flex min-h-12 items-center gap-3 border-b border-edge/90 bg-gradient-to-r from-accent/[0.07] via-transparent to-transparent px-5 py-2 sm:px-6">
+    <section className="min-w-0">
+      <header className={`relative flex h-8 flex-none items-center gap-3 border-b border-edge ${compact ? "sticky top-0 z-10 app-backdrop px-3" : "px-4 sm:px-5"}`}>
         <nav aria-label={t("proj.docs.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-1 font-display text-sm font-bold tracking-wide">
           <button type="button" onClick={goHome} className="shrink-0 text-ink-muted transition-colors hover:text-accent-strong">{t("proj.docs.project")}</button>
           {breadcrumbs.map((part, index) => {
@@ -209,11 +209,11 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
           type="button"
           onClick={refresh}
           disabled={state.kind === "loading"}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-transparent text-ink-faint transition-colors hover:border-edge-strong hover:bg-surface-hover hover:text-ink disabled:opacity-40"
+          className={toolbarItemClass(false, true)}
           aria-label={t("proj.docs.refresh")}
           title={t("proj.docs.refresh")}
         >
-          <RefreshCw size={15} className={state.kind === "loading" ? "animate-spin" : ""} aria-hidden />
+          <RefreshCw size={16} className={state.kind === "loading" ? "animate-spin" : ""} aria-hidden />
         </button>
       </header>
 
@@ -226,7 +226,7 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
               <button type="button" className="mt-4 font-mono text-xs text-accent-strong hover:underline" onClick={refresh}>{t("proj.docs.retry")}</button>
             </div>
           ) : state.kind === "document" ? (
-            <article className="mx-auto max-w-4xl px-5 py-6 text-sm leading-relaxed text-ink sm:px-8 sm:py-8">
+            <article className={`mx-auto max-w-4xl text-sm leading-relaxed text-ink ${compact ? "px-4 py-4" : "px-5 py-6 sm:px-8 sm:py-8"}`}>
               <Markdown source={state.source} onOpenLink={(href) => {
                 const path = resolveDocumentationLink(state.path, href);
                 if (!path) return false;
@@ -235,7 +235,7 @@ export function ProjectDocumentation({ base, projectId }: { base: string; projec
               }} />
             </article>
           ) : <DocumentationFileList entries={state.entries} emptyLabel={t("proj.docs.folderEmpty")} />}
-    </Card>
+    </section>
   );
 }
 

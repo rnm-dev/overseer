@@ -4,6 +4,8 @@ import ironwoodSource from "./manifests/ironwood.json" with { type: "json" };
 import neonNocturneSource from "./manifests/neon-nocturne.json" with { type: "json" };
 import parchmentSource from "./manifests/parchment.json" with { type: "json" };
 import sterlingSource from "./manifests/sterling.json" with { type: "json" };
+import tidepoolSource from "./manifests/tidepool.json" with { type: "json" };
+import blueprintSource from "./manifests/blueprint.json" with { type: "json" };
 
 export const THEME_PACKAGE_FORMAT = "overseer-theme-v1" as const;
 export const DEFAULT_THEME_ID = "org.overseer.ironwood";
@@ -63,6 +65,8 @@ export const THEME_CATALOG: readonly ThemeManifest[] = Object.freeze([
   validateThemeManifest(neonNocturneSource),
   validateThemeManifest(amberTerminalSource),
   validateThemeManifest(candyStaticSource),
+  validateThemeManifest(tidepoolSource),
+  validateThemeManifest(blueprintSource),
 ]);
 
 export function renderThemeCss(catalog: readonly ThemeManifest[] = THEME_CATALOG): string {

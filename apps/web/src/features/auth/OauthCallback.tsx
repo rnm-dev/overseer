@@ -9,6 +9,7 @@ import { useT } from "../../shared/i18n";
 // open the native app. One component serves both because the difference between
 // them is a path segment the router already knows.
 const PENDING_INVITE_KEY = "overseer_pending_invite";
+const CURRENT_WS_KEY = "overseer_ws"; // matches workspace.tsx
 
 export function OauthCallback({ provider }: { provider: OauthProvider }) {
   const { completeOauthCallback } = useAuth();
@@ -29,11 +30,16 @@ export function OauthCallback({ provider }: { provider: OauthProvider }) {
       return;
     }
     completeOauthCallback(provider, code, state, providerError)
-      .then((flow) => {
-        if (flow === "native") return;
+      .then((result) => {
+        if (result.flow === "native") return;
         const pending = sessionStorage.getItem(PENDING_INVITE_KEY);
-        if (pending) {
-          sessionStorage.removeItem(PENDING_INVITE_KEY);
+        sessionStorage.removeItem(PENDING_INVITE_KEY);
+        if (result.joinedWorkspaceId) {
+          // Sign-in already spent the invite; /join would redeem it twice and
+          // report it as expired.
+          localStorage.setItem(CURRENT_WS_KEY, result.joinedWorkspaceId);
+          navigate("/", { replace: true });
+        } else if (pending) {
           navigate(`/join/${pending}`, { replace: true });
         } else {
           navigate("/", { replace: true });

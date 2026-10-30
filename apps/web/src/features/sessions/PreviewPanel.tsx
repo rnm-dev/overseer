@@ -227,7 +227,7 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
           <div className="truncate font-display text-sm font-semibold text-ink" title={target.path}>{displayName(target.path)}</div>
           <div className="truncate font-mono text-[0.68rem] text-ink-faint" title={target.path}>{target.path}</div>
         </div>
-        <button type="button" aria-pressed={pinned} title={pinned ? t("session.preview.unpin") : t("session.preview.pin")} onClick={() => onPinnedChange(!pinned)} className={`rounded px-2 py-1 font-mono text-xs transition-colors hover:bg-surface-hover ${pinned ? "text-accent-strong" : "text-ink-muted"}`}>
+        <button type="button" aria-pressed={pinned} title={pinned ? t("session.preview.unpin") : t("session.preview.pin")} onClick={() => onPinnedChange(!pinned)} className={`rounded px-2 py-1 font-mono text-xs transition-colors hover-wash ${pinned ? "text-accent-strong" : "text-ink-muted"}`}>
           {pinned ? "◆" : "◇"}
         </button>
         {canCopy && (
@@ -236,13 +236,13 @@ export function PreviewPanel({ base, sessionId, target, pinned, onPinnedChange, 
             title={t(`session.preview.${copyStatus === "idle" ? "copy" : copyStatus}`)}
             aria-label={t(`session.preview.${copyStatus === "idle" ? "copy" : copyStatus}`)}
             onClick={() => void copyContent()}
-            className={`rounded px-2 py-1 transition-colors hover:bg-surface-hover ${copyStatus === "copied" ? "text-accent-strong" : copyStatus === "failed" ? "text-danger" : "text-ink-muted hover:text-ink"}`}
+            className={`rounded px-2 py-1 transition-colors hover-wash ${copyStatus === "copied" ? "text-accent-strong" : copyStatus === "failed" ? "text-danger" : "text-ink-muted hover:text-ink"}`}
           >
             {copyStatus === "copied" ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
           </button>
         )}
-        <button type="button" title={t("session.preview.download")} onClick={download} className="rounded px-2 py-1 font-mono text-xs text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">↓</button>
-        <button type="button" title={t("session.preview.close")} onClick={onClose} className="rounded px-2 py-1 font-mono text-lg leading-none text-ink-muted transition-colors hover:bg-surface-hover hover:text-ink">×</button>
+        <button type="button" title={t("session.preview.download")} onClick={download} className="rounded px-2 py-1 font-mono text-xs text-ink-muted transition-colors hover-wash hover:text-ink">↓</button>
+        <button type="button" title={t("session.preview.close")} onClick={onClose} className="rounded px-2 py-1 font-mono text-lg leading-none text-ink-muted transition-colors hover-wash hover:text-ink">×</button>
       </header>
       {file && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-edge px-3 py-1.5 font-mono text-[0.68rem] text-ink-faint">
