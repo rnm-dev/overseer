@@ -222,6 +222,14 @@ a prompt that nothing answers. Three guards back the limits above:
   `result` event with `subtype: "harness_failure"`, `is_error: true` and the
   reason in `errors[0]`, so the chat renders it as an error notice. Before,
   the reason lived only in the session summary and the chat just stopped.
+- **The next turn waits for the last process.** Claude emits its `result`
+  before its process exits. The session finalizes on the result, but the queue
+  is held until that process is gone, and a direct follow-up sent in that gap
+  is queued rather than started. Previously the queued `--resume` raced the
+  still-running CLI on the same conversation, produced no events at all, and
+  the message sat in the chat unanswered until the operator wrote again. A
+  process that reports its result but does not exit within 10 seconds is
+  stopped through the interrupt deadline.
 - **The queue keeps moving.** A turn that never reached its provider used to
   finalize without dispatching the queue, and a queued turn whose spawn threw
   was put back with nothing to retry it. Both now retry the queue after 5 s,

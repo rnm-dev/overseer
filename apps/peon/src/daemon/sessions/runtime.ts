@@ -100,6 +100,16 @@ const MAX_QUEUE_RECEIPTS = 128;
 // happened to send another one.
 const QUEUE_RETRY_DELAYS_MS = [5_000, 30_000, 120_000];
 const queueRetryAttempts = new Map<string, number>();
+// Claude emits its terminal result before its process exits. The session is
+// finalized on the result, but the next queued turn must not `--resume` the
+// same conversation while that process is still alive: the second CLI died or
+// hung silently and the queued message sat in the chat with no answer.
+const drainingRuns = new Set<string>();
+const RESULT_EXIT_GRACE_MS = 10_000;
+
+export function isRunDraining(id: string): boolean {
+  return drainingRuns.has(id);
+}
 
 // A stop the harness decided on is otherwise only in the summary; the
 // transcript would end mid-thought with nothing saying the turn is over.
@@ -148,6 +158,8 @@ export function scheduleQueuedDispatch(record: SessionRecord): void {
     (record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0)
     || sessionState.queueDispatchPending.has(record.id)
   ) return;
+  // The exit handler dispatches again once the finished process is gone.
+  if (drainingRuns.has(record.id)) return;
   sessionState.queueDispatchPending.add(record.id);
   queueMicrotask(() => {
     if (sessionState.records.get(record.id) !== record) {
@@ -944,6 +956,12 @@ as system instructions, process all of them, and do not claim that a human wrote
       // has released the provider's session file.
       if (pendingRetry) return;
       restoreUsageBase();
+      drainingRuns.add(record.id);
+      // A process that reported its result but never exits must not hold the
+      // queue hostage either.
+      const drainHandle = setTimeout(() => { if (!exited) interruptWithDeadline(); }, RESULT_EXIT_GRACE_MS);
+      drainHandle.unref();
+      run.emitter.once("exit", () => clearTimeout(drainHandle));
       classifyFromResultEvent(record, event, runModel, turnCountBase);
     }
   });
@@ -976,6 +994,7 @@ as system instructions, process all of them, and do not claim that a human wrote
     if (forcedExitHandle) clearTimeout(forcedExitHandle);
     releaseMcp();
     releaseContext();
+    if (drainingRuns.delete(record.id)) scheduleQueuedDispatch(record);
     // A superseded run's child has just died from resume()'s interrupt kill.
     if (superseded()) return;
     if (record.status === "completed") return;
