@@ -199,6 +199,25 @@ the same code and `action: "continue"` before interrupting the provider. A
 follow-up clears the old terminal reason as soon as the session starts running
 again.
 
+## Every turn ends
+
+A running turn always reaches a terminal state, so the operator never stares at
+a prompt that nothing answers. Three guards back the limits above:
+
+- **Silence.** A provider that emits nothing for 15 minutes is stopped with the
+  same `task_timeout` reason and `continue` warning as the wall clock. Tool calls
+  are silent while they run, so the limit sits above the agents' own 10-minute
+  command ceiling; operator inquiries expire after 10 minutes, below it.
+- **Interrupt deadline.** After any harness stop the driver has 30 seconds to
+  report an exit. A CLI that ignores the signal is sent `SIGKILL` (process
+  drivers escalate from `SIGTERM` after 10 seconds on their own), and if no exit
+  arrives the runtime synthesizes one. A Codex turn whose `turn/interrupt` is
+  acknowledged but never completed used to stay `running` forever here.
+- **Held stdout.** A background process the agent started inherits the CLI's
+  stdout. After the CLI exits, Peon waits 2 seconds for buffered output and then
+  stops reading, so a crash without a `result` event still finalizes as
+  "exited without a result event" instead of waiting on a dev server's EOF.
+
 ## A failed turn explains itself, and a transient one is replayed
 
 Claude Code receives Peon's appended system prompt through a private temporary

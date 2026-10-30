@@ -85,6 +85,14 @@ function shouldEmitWarning(warning: SessionWarning, now = Date.now()): boolean {
 // in-memory barriers so a durable queued message cannot remain stranded until
 // the daemon restarts.
 const QUEUED_DISPATCH_BARRIER_GRACE_MS = 2_000;
+// A turn whose provider says nothing for this long is treated as hung. Tool
+// calls are silent while they run, so this sits above the agents' own 10-minute
+// command ceiling rather than near a typical reply gap.
+export const AGENT_SILENCE_LIMIT_MS = 15 * 60_000;
+// After the harness interrupts a run, the driver gets this long to report its
+// exit. A CLI that ignores the signal, or a Codex turn whose interrupt is never
+// answered, would otherwise leave the session `running` with nobody to end it.
+export const INTERRUPT_EXIT_GRACE_MS = 30_000;
 
 const MAX_QUEUE_RECEIPTS = 128;
 
@@ -716,25 +724,50 @@ as system instructions, process all of them, and do not claim that a human wrote
   // same record.
   const superseded = () => sessionState.activeRuns.get(record.id) !== run;
 
-  const timeoutHandle = setTimeout(() => {
-    const message = `Timed out after ${taskTimeoutMs}ms`;
+  let exited = false;
+  let forcedExitHandle: NodeJS.Timeout | null = null;
+  // Every harness stop ends in an exit, whether or not the driver delivers one.
+  const interruptWithDeadline = () => {
+    sessionState.steerPending.delete(record.id);
+    driver.interrupt(run, "timeout");
+    if (forcedExitHandle) return;
+    forcedExitHandle = setTimeout(() => {
+      if (exited) return;
+      try { run.kill("SIGKILL"); } catch { /* the synthetic exit below still ends the turn */ }
+      run.emitter.emit("exit", { code: null, signal: "SIGKILL", spawnError: null } satisfies AgentExit);
+    }, INTERRUPT_EXIT_GRACE_MS);
+    forcedExitHandle.unref();
+  };
+  const stopForTimeout = (message: string, timeoutMs: number) => {
+    if (killedFor || exited) return;
     killedFor = {
       code: "task_timeout",
       message,
       canResume: true,
-      timeoutMs: taskTimeoutMs,
+      timeoutMs,
       elapsedMs: Date.now() - runStartedAt,
     };
     run.emitter.emit("event", {
       type: "warning", sessionId: record.id, ...killedFor,
       source: "execution_limit", action: "continue",
     } satisfies AgentEvent);
-    sessionState.steerPending.delete(record.id);
-    driver.interrupt(run, "timeout");
-  }, taskTimeoutMs);
+    interruptWithDeadline();
+  };
+  const timeoutHandle = setTimeout(() => stopForTimeout(`Timed out after ${taskTimeoutMs}ms`, taskTimeoutMs), taskTimeoutMs);
+  let silenceHandle: NodeJS.Timeout | null = null;
+  const armSilenceWatchdog = () => {
+    if (silenceHandle) clearTimeout(silenceHandle);
+    silenceHandle = setTimeout(() => stopForTimeout(
+      `The agent went silent for ${Math.round(AGENT_SILENCE_LIMIT_MS / 60_000)} minutes and was stopped`,
+      AGENT_SILENCE_LIMIT_MS,
+    ), AGENT_SILENCE_LIMIT_MS);
+    silenceHandle.unref();
+  };
+  armSilenceWatchdog();
 
   run.emitter.on("event", (event: AgentEvent) => {
     if (superseded()) return;
+    if (event.type !== "warning") armSilenceWatchdog();
     const usageEvent = event.type === "result" || (event.type === "system" && event.subtype === "usage");
     if (usageEvent) {
       if (typeof event.duration_ms !== "number") event = { ...event, duration_ms: Date.now() - runStartedAt,
@@ -846,8 +879,7 @@ as system instructions, process all of them, and do not claim that a human wrote
           type: "warning", sessionId: record.id, ...killedFor,
           source: "execution_limit", action: "continue",
         } satisfies AgentEvent);
-        sessionState.steerPending.delete(record.id);
-        driver.interrupt(run, "timeout");
+        interruptWithDeadline();
       }
     }
 
@@ -889,7 +921,11 @@ as system instructions, process all of them, and do not claim that a human wrote
   });
 
   run.emitter.on("exit", (exit: AgentExit) => {
+    if (exited) return;
+    exited = true;
     clearTimeout(timeoutHandle);
+    if (silenceHandle) clearTimeout(silenceHandle);
+    if (forcedExitHandle) clearTimeout(forcedExitHandle);
     releaseMcp();
     releaseContext();
     // A superseded run's child has just died from resume()'s interrupt kill.
