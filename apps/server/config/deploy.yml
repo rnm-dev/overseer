@@ -97,28 +97,13 @@ env:
     # the voice key there is no shared budget to split here.
     - OVERSEER_PUSH_FCM_CREDENTIALS
 
-
-accessories:
-  postgres:
-    service: overseer-postgres
-    image: postgres:16-alpine
-    host: 94.247.128.103
-    env:
-      clear:
-        POSTGRES_USER: overseer
-        POSTGRES_DB: overseer
-      secret:
-        - POSTGRES_PASSWORD
-    volumes:
-      - overseer-postgres-data:/var/lib/postgresql/data
-      - overseer-postgres-backups:/backups
-    options:
-      health-cmd: "pg_isready -U overseer -d overseer"
-      health-interval: 5s
-      health-timeout: 5s
-      health-retries: 12
+# No accessories. Since 2026-11-03 Postgres runs on the data host ps-data01
+# (Tailscale 100.64.0.2) as the Compose project /rnm/data/overseer, published
+# only on 100.64.0.2:5439, so DATABASE_URL in .kamal/secrets names
+# 100.64.0.2:5439. Kamal no longer manages the database: never re-add the
+# accessory or run `kamal accessory boot postgres`, which would start an empty
+# cluster on the app host. See docs/deploy-runbook.md.
 
 aliases:
   logs: app logs -f
   shell: app exec --interactive --reuse "sh"
-  dbconsole: accessory exec postgres --interactive "psql -U overseer -d overseer"

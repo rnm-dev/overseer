@@ -11,7 +11,10 @@ traffic or migrating production data until those steps are explicitly approved.
   database during preparation.
 - Never delete or reuse `overseer-postgres-data`,
   `overseer-postgres-backups`, or `overseer-releases` during deploy/rollback.
-- Postgres is an accessory. `kamal deploy` does not recreate or upgrade it.
+- Since 2026-11-03 Postgres is **not** a Kamal accessory: it runs on the data
+  host ps-data01 (see [The database on ps-data01](#the-database-on-ps-data01)).
+  Never run `kamal accessory boot postgres` — the accessory was removed from
+  `deploy.yml`, and re-adding it would start an empty cluster on the app host.
 - Preserve the validated proxy chain in [trusted client IPs](proxy-trust.md):
   the app/container port is not public, the shared Kamal ports must reach the
   target loopback-only binding, nginx canonicalizes Cloudflare identity, and
@@ -35,12 +38,14 @@ traffic or migrating production data until those steps are explicitly approved.
 
 ## Persistent state
 
-| Docker volume | Mount | Contents |
-| --- | --- | --- |
-| `overseer-postgres-data` | `/var/lib/postgresql/data` | PostgreSQL cluster |
-| `overseer-postgres-backups` | `/backups` | On-host database dumps |
-| `overseer-releases` | `/data/releases` | Legacy release data retained for rollback/audit; current Peon updates use public npm |
+| Docker volume | Host | Mount | Contents |
+| --- | --- | --- | --- |
+| `overseer-postgres-data` | ps-data01 | `/var/lib/postgresql/data` | PostgreSQL cluster |
+| `overseer-postgres-backups` | ps-data01 | `/backups` | On-host database dumps |
+| `overseer-releases` | ps-web01 | `/data/releases` | Legacy release data retained for rollback/audit; current Peon updates use public npm |
 
+Until the rollback window closes, ps-web01 also keeps the pre-move copies of
+both Postgres volumes under the same names, frozen at 2026-11-03 18:38 UTC.
 The backup volume is only the first recovery layer. Copy every cutover dump off
 the production host before restoring or switching traffic.
 
@@ -54,10 +59,11 @@ chmod 600 .kamal/secrets
 ```
 
 Provide all six variables without committing their values. `DATABASE_URL` must
-use the accessory DNS name:
+name the database on ps-data01 over Tailscale (`POSTGRES_PASSWORD` is no longer
+read by Kamal; it stays only as a record of the password):
 
 ```text
-postgresql://overseer:<password>@overseer-postgres:5432/overseer
+postgresql://overseer:<password>@100.64.0.2:5439/overseer
 ```
 
 Validate locally before touching the server:
@@ -72,7 +78,9 @@ kamal config
 
 ## Preparation on nid-01 — no data migration, no DNS switch
 
-Boot the empty Postgres accessory once:
+Historical: this is how the database was first prepared in July 2026, when it
+was still an accessory on nid-01. Do not repeat it; the database now lives on
+ps-data01. Boot the empty Postgres accessory once:
 
 ```sh
 kamal accessory boot postgres
@@ -495,9 +503,11 @@ remain the authority for *how* to change them.
   containers created after the next `dockerd` restart, and anything started by
   hand today still needs its own `--log-opt`. Kamal already passes
   `--log-opt max-size=10m` itself.
-- **Database** — accessory container `overseer-postgres`, PostgreSQL 16,
-  internal DNS `overseer-postgres:5432/overseer`. Schema migrations self-apply
-  on app boot under an advisory lock.
+- **Database** — on the data host ps-data01 since 2026-11-03: container
+  `overseer-postgres`, PostgreSQL 16, reached at `100.64.0.2:5439/overseer`
+  over Tailscale. Schema migrations self-apply on app boot under an advisory
+  lock. Details, backups and rollback are in [The database on
+  ps-data01](#the-database-on-ps-data01).
 
 Deployed images:
 
@@ -601,7 +611,7 @@ kamal deploy
 
 Then verify app health, proxy routes, the DB migration count and the persistent
 volume mounts. Never put secrets into metadata or commits, and keep
-`DATABASE_URL` pointed at `overseer-postgres`.
+`DATABASE_URL` pointed at `100.64.0.2:5439` on ps-data01.
 
 Rollback has three independent levers: `kamal rollback <version>` for the
 application; the Cloudflare A record back to 94.247.128.101 for traffic; and a
@@ -609,6 +619,55 @@ application; the Cloudflare A record back to 94.247.128.101 for traffic; and a
 first, never overwrite the source, and never delete either host's volumes. The
 shared-proxy loopback rollback is separate and is described in [its own
 section](#shared-proxy-rollback).
+
+## The database on ps-data01
+
+Since 2026-11-03 the production database runs on the data host ps-data01
+(`root@100.64.0.2`, hostname `nid-db`), not on the app host.
+
+| | |
+| --- | --- |
+| Compose project | `/rnm/data/overseer/compose.yaml` (project `overseer-data`), directory 0700 |
+| Credentials | `/rnm/data/overseer/.env`, mode 0600 — `POSTGRES_*`, never print it |
+| Container | `overseer-postgres`, `postgres:16-alpine`, `restart: unless-stopped` |
+| Port | `100.64.0.2:5439` → 5432, published on the Tailscale address only (the host firewall is off) |
+| Volumes | external `overseer-postgres-data` and `overseer-postgres-backups`, copied at file level from ps-web01 |
+| S3 backup | `/etc/cron.d/pg-backup-overseer` on ps-data01 (02:25 daily) runs `/usr/local/sbin/pg-backup-s3.sh overseer-postgres` into `s3://rnm-pg-backups/overseer-postgres/`; retention manifests in `/var/lib/pg-backup/overseer-postgres/` |
+
+Kamal does not manage it: `deploy.yml` has no accessory, and `DATABASE_URL` in
+the gitignored `/rnm/overseer/apps/server/.kamal/secrets` names
+`100.64.0.2:5439`. The app container on ps-web01 reaches it over Tailscale
+through the host. A `psql` console:
+
+```sh
+ssh root@100.64.0.2 'docker exec -it overseer-postgres psql -U overseer -d overseer'
+```
+
+Restart or upgrade it on ps-data01 with
+`cd /rnm/data/overseer && docker compose up -d --wait`. Same major version only;
+a major upgrade needs a dump and restore.
+
+### The 2026-11-03 move
+
+The move was a single detached script run on nid-dev as `peon` (log:
+`/home/peon/overseer-db-move-20261103.log`). It stopped the app, then stopped
+the old database and renamed it `overseer-postgres-old` with `restart=no`. It
+ran a final rsync of both volumes (`/root/sync-volumes.sh overseer` on
+ps-web01), brought up Compose on ps-data01 and switched `DATABASE_URL`. Last,
+it ran `kamal app boot --version ef15c65f248239a03f1974646297537c4cc4d0a9`.
+Outage: 18:38:07–18:38:32 UTC, about 25 s. Migrations stayed at 46, the app
+came back healthy with zero restarts, and Peons resynced within seconds. A
+manual S3 backup from ps-data01 succeeded right after.
+
+Rollback, while the old copies are kept, loses every write made after
+18:38 UTC. To roll back: stop the app, `docker compose stop` on ps-data01, then
+on ps-web01 `docker rename overseer-postgres-old overseer-postgres && docker
+update --restart unless-stopped overseer-postgres && docker start
+overseer-postgres`. Restore the old `DATABASE_URL` from
+`/home/peon/overseer-kamal-secrets.pre-data01-20261103` on nid-dev, then run
+`kamal app boot --version <current>`. Move the cron back from
+`/root/disabled-cron/pg-backup-overseer` on ps-web01, and remove the one on
+ps-data01.
 
 ## The App Review demo instance
 
@@ -644,7 +703,8 @@ docker run -d --name overseer-demo-postgres \
 
 The cluster lives in the named volume `overseer-demo-postgres-data`; the
 container itself is disposable, the volume is not. This instance has no backup
-of any kind.
+of any kind. Unlike production, its database was deliberately left on ps-web01
+during the 2026-11-03 move to ps-data01.
 
 The doors are `github:false, password:true, oidc:false`, and that is achieved by
 those variables simply being **absent**: only `OVERSEER_PUBLIC_URL`,
