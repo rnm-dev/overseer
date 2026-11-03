@@ -671,77 +671,20 @@ ps-data01.
 
 ## The App Review demo instance
 
-`https://demo.ovrseer.org` is a second, separate Overseer on the same host. It
-is **not** Kamal and **not** compose — a plain `docker run`, so `kamal deploy`
-does not touch it and it does not appear in the shared proxy's route table.
+**Decommissioned on 2026-11-03** at the owner's request; it is no longer needed.
+`https://demo.ovrseer.org` was a separate hand-run Overseer on nid-01 with its
+own database. Everything was removed, data included, with no backup kept:
 
-| | |
-| --- | --- |
-| Container | `overseer-demo-app`, Docker network `overseer-demo` |
-| Port | `127.0.0.1:5010` → container `5000` |
-| Database | `overseer-demo-postgres`, its own cluster, separate from production |
-| Environment | `/root/overseer-demo.env` on nid-01, mode 0600 — it holds `DATABASE_URL`, so never print it into a task or a commit |
+- the containers `overseer-demo-app`, `overseer-demo-app-prev` and
+  `overseer-demo-postgres`;
+- the volume `overseer-demo-postgres-data` and the network `overseer-demo`;
+- `/root/overseer-demo.env`, `/root/overseer-demo-postgres.env` and the nginx
+  vhost `demo.ovrseer.org`, with nginx reloaded;
+- its two `rnmdev/overseer` images.
 
-`DATABASE_URL` names the host **`postgres`**, not the container name, so the
-database container must carry `--network-alias postgres`. Recreating it without
-that alias leaves the app in a restart loop on `getaddrinfo EAI_AGAIN postgres`.
-Its own credentials live in `/root/overseer-demo-postgres.env`, mode 0600, and
-its healthcheck is passed on the command line because `postgres:16-alpine` has
-none of its own:
-
-```sh
-. /root/overseer-demo-postgres.env
-docker run -d --name overseer-demo-postgres \
-  --network overseer-demo --network-alias postgres --restart unless-stopped \
-  --env-file /root/overseer-demo-postgres.env \
-  --log-opt max-size=10m --log-opt max-file=3 \
-  --health-cmd "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB" \
-  --health-interval 5s --health-timeout 5s --health-retries 12 \
-  -v overseer-demo-postgres-data:/var/lib/postgresql/data \
-  postgres:16-alpine
-```
-
-The cluster lives in the named volume `overseer-demo-postgres-data`; the
-container itself is disposable, the volume is not. This instance has no backup
-of any kind. Unlike production, its database was deliberately left on ps-web01
-during the 2026-11-03 move to ps-data01.
-
-The doors are `github:false, password:true, oidc:false`, and that is achieved by
-those variables simply being **absent**: only `OVERSEER_PUBLIC_URL`,
-`OVERSEER_PASSWORD_AUTH=1`, `OVERSEER_APP_REVIEW_DEMO=1`,
-`OVERSEER_TRUSTED_PROXIES`, `OVERSEER_HOST`, `OVERSEER_PORT`, `NODE_ENV` and
-`DATABASE_URL` are set. Adding a GitHub or OIDC credential here would open a door
-App Review is not expecting.
-
-To deploy a commit to it, build and push the image, then replace the container —
-renaming the old one rather than removing it, so rollback is one command:
-
-```sh
-docker pull rnmdev/overseer:<sha>
-docker stop overseer-demo-app
-docker rename overseer-demo-app overseer-demo-app-prev
-docker run -d --name overseer-demo-app \
-  --network overseer-demo --restart unless-stopped \
-  --env-file /root/overseer-demo.env \
-  --log-opt max-size=10m --log-opt max-file=3 \
-  -p 127.0.0.1:5010:5000 rnmdev/overseer:<sha>
-```
-
-Keep the `--log-opt` pair. A hand-run container inherits no rotation until the
-daemon default in `/etc/docker/daemon.json` takes effect at the next `dockerd`
-restart, and an unrotated `json-file` on a long-lived instance grows until the
-disk does.
-
-Then confirm `/api/auth/methods` still answers `github:false, password:true,
-oidc:false`, and that a request carrying the deep link the shipped app opens —
-`overseer://oauth/github` — is refused with `401 INVALID_CREDENTIALS` rather than
-`400 INVALID_CALLBACK`. The second check is the one that proves the native
-password door is reachable by the production build; see
-[email and password sign-in](password-auth.md#inside-the-apps-webview).
-
-Roll back with `docker stop overseer-demo-app && docker rm overseer-demo-app &&
-docker rename overseer-demo-app-prev overseer-demo-app && docker start
-overseer-demo-app`.
+The Cloudflare DNS record for `demo.ovrseer.org` was left in place. The
+production `OVERSEER_APP_REVIEW_DEMO=1` workspace on overseer.rnm.dev is a
+different thing and was not touched.
 
 ## Cutover state (2026-07-20)
 
