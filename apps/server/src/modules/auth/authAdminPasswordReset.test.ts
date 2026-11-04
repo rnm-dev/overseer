@@ -37,12 +37,21 @@ test("sets a fresh temporary password, signs the member out and records who did 
 
   const result = await adminResetMemberPassword({ workspaceId: WS, actorUserId: admin, targetUserId: member });
 
-  assert.ok(result.temporaryPassword.length >= 20);
+  assert.ok((result.temporaryPassword ?? "").length >= 20);
   assert.equal(result.revokedDevices, 1);
-  assert.equal(await verifyPassword(result.temporaryPassword, await hashOf(member)), true);
+  assert.equal(await verifyPassword(result.temporaryPassword ?? "", await hashOf(member)), true);
   assert.equal(await verifyPassword("old-password-1", await hashOf(member)), false);
   const audit = await query<{ actor_user_id: string; target_user_id: string }>(`SELECT actor_user_id, target_user_id FROM password_reset_audit`);
   assert.deepEqual(audit.rows, [{ actor_user_id: admin, target_user_id: member }]);
+});
+
+test("an administrator may choose the new password instead", async () => {
+  const admin = await account("chooser@example.com", "owner");
+  const member = await account("chosen@example.com", "member");
+  await assert.rejects(adminResetMemberPassword({ workspaceId: WS, actorUserId: admin, targetUserId: member, password: "short" }), { code: "WEAK_PASSWORD" });
+  const result = await adminResetMemberPassword({ workspaceId: WS, actorUserId: admin, targetUserId: member, password: "picked-by-admin-1" });
+  assert.equal(result.temporaryPassword, null);
+  assert.equal(await verifyPassword("picked-by-admin-1", await hashOf(member)), true);
 });
 
 test("refuses owners, oneself, outsiders and accounts without a password", async () => {

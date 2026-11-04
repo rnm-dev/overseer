@@ -122,7 +122,7 @@ export function workspacesRouter(): express.Router {
     "/workspaces/:wsId/members/:userId/password-reset",
     withWorkspace(async (req, res, ctx) => {
       if (!ownerOnly(res, ctx.role)) return;
-      await answerMemberPasswordReset(res, ctx.workspaceId, ctx.userId, String(req.params.userId));
+      await answerMemberPasswordReset(req, res, ctx.workspaceId, ctx.userId, String(req.params.userId));
     }),
   );
   router.get(

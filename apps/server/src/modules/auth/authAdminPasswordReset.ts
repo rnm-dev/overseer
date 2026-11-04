@@ -1,10 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { transaction } from "../../infrastructure/db/index.js";
-import { hashPassword, PasswordAuthError } from "./authPassword.js";
+import { hashPassword, passwordComplaint, PasswordAuthError } from "./authPassword.js";
 
 // A workspace owner or project administrator replaces a member's forgotten
-// password from the members screen. The server picks the password, so nobody
-// chooses one for somebody else, and it is answered once and never stored.
+// password from the members screen. The administrator either types the new
+// password or leaves it to the server, which then answers its pick once; it
+// is never stored or logged.
 //
 // Owners are out of reach — of this workspace or any other that holds someone
 // else or a Peon, because the account is global and an owner elsewhere must
@@ -15,13 +16,20 @@ export async function adminResetMemberPassword(input: {
   workspaceId: string;
   actorUserId: string;
   targetUserId: string;
-}): Promise<{ temporaryPassword: string; revokedDevices: number }> {
+  // Absent or empty: the server generates one and returns it.
+  password?: unknown;
+}): Promise<{ temporaryPassword: string | null; revokedDevices: number }> {
   if (input.actorUserId === input.targetUserId) {
     throw new PasswordAuthError(409, "CANNOT_RESET_SELF", "change your own password instead of resetting it");
   }
+  const chosen = input.password !== undefined && input.password !== null && input.password !== "";
+  if (chosen) {
+    const complaint = passwordComplaint(input.password);
+    if (complaint) throw new PasswordAuthError(400, "WEAK_PASSWORD", complaint);
+  }
   // 15 random bytes → 20 base64url characters, comfortably over the minimum.
-  const temporaryPassword = randomBytes(15).toString("base64url");
-  const hash = await hashPassword(temporaryPassword);
+  const password = chosen ? (input.password as string) : randomBytes(15).toString("base64url");
+  const hash = await hashPassword(password);
   const revokedDevices = await transaction(async (tx) => {
     const { rows } = await tx.query<{ role: string; has_password: boolean }>(
       `SELECT m.role, (u.password_hash IS NOT NULL) AS has_password
@@ -53,5 +61,5 @@ export async function adminResetMemberPassword(input: {
     );
     return revoked;
   });
-  return { temporaryPassword, revokedDevices };
+  return { temporaryPassword: chosen ? null : password, revokedDevices };
 }

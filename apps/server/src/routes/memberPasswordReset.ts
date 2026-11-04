@@ -5,13 +5,14 @@ import { PasswordAuthError, adminResetMemberPassword } from "../modules/auth/ind
 // screen (project administrators). The temporary password is in this one
 // response only, so it must never be cached on the way back.
 export async function answerMemberPasswordReset(
+  req: express.Request,
   res: express.Response,
   workspaceId: string,
   actorUserId: string,
   targetUserId: string,
 ): Promise<void> {
   try {
-    const result = await adminResetMemberPassword({ workspaceId, actorUserId, targetUserId });
+    const result = await adminResetMemberPassword({ workspaceId, actorUserId, targetUserId, password: req.body?.password });
     res.set("Cache-Control", "no-store").json(result);
   } catch (err) {
     if (err instanceof PasswordAuthError) {

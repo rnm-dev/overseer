@@ -288,7 +288,7 @@ export function registerProjectRoutes(router: express.Router): void {
     if (!(await canManageProject(c.workspaceId, c.userId, c.role, c.record.peonId, key, indexed?.projectId))) {
       return res.status(403).json({ error: "project administrator access required", code: "FORBIDDEN" });
     }
-    await answerMemberPasswordReset(res, c.workspaceId, c.userId, String(req.params.userId));
+    await answerMemberPasswordReset(req, res, c.workspaceId, c.userId, String(req.params.userId));
   }));
   router.put(`${wp}/projects/:key/members/:userId`, withWorkspaceProject(async (req, res, c) => {
     const key = String(req.params.key);

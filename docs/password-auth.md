@@ -134,11 +134,13 @@ account has a password. It calls
 - `POST /api/workspaces/:wsId/peons/:peonId/projects/:key/members/:userId/password-reset`
   — anyone who `canManageProject`, which includes owners.
 
-The server picks a 20-character temporary password, answers it once with
-`Cache-Control: no-store`, and keeps only its hash. Every device of the account
+The body may carry `{ "password": "…" }`: the administrator's choice, under
+the same length rules (`400 WEAK_PASSWORD`), and the answer's
+`temporaryPassword` is then `null`. Without it the server picks a 20-character
+temporary password and answers it once with `Cache-Control: no-store`. Either
+way only the hash is kept. Every device of the account
 is revoked in the same transaction, and a `password_reset_audit` row records
-the workspace, who reset whom and how many devices were signed out. Nobody gets
-to choose another person's password.
+the workspace, who reset whom and how many devices were signed out.
 
 The refusals, all `409` unless noted:
 
