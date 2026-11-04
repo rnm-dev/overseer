@@ -24,6 +24,8 @@ export interface MemberRecord {
   avatarUrl: string | null;
   role: Role;
   addedAt: number;
+  // The account can sign in with a password, so an administrator may reset it.
+  hasPassword: boolean;
 }
 
 export interface InviteRecord {

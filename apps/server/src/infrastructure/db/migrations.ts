@@ -1212,4 +1212,13 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       )`,
     ],
   },
+  {
+    // Who reset whose password through the members screens. The temporary
+    // password itself is never stored; this row is the only trace of it.
+    id: "047_password_reset_audit",
+    statements: [`CREATE TABLE IF NOT EXISTS password_reset_audit (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, actor_user_id TEXT NOT NULL,
+      target_user_id TEXT NOT NULL, revoked_devices INTEGER NOT NULL, created_at BIGINT NOT NULL
+    )`],
+  },
 ];

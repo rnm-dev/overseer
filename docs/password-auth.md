@@ -122,8 +122,41 @@ NFKC before hashing, so a password typed on a different keyboard still matches.
 ## A forgotten password
 
 There is no self-service reset yet — that needs a mail transport and is tracked
-as OVSR-177. Until then an operator with a shell on the server replaces the
-password from inside the running container:
+as OVSR-177. Until then there are two ways back in.
+
+### From the members screens
+
+A workspace owner (on **Members**) and a project administrator (on the
+project's **Members** tab) see a key button beside every regular member whose
+account has a password. It calls
+
+- `POST /api/workspaces/:wsId/members/:userId/password-reset` — owners only;
+- `POST /api/workspaces/:wsId/peons/:peonId/projects/:key/members/:userId/password-reset`
+  — anyone who `canManageProject`, which includes owners.
+
+The server picks a 20-character temporary password, answers it once with
+`Cache-Control: no-store`, and keeps only its hash. Every device of the account
+is revoked in the same transaction, and a `password_reset_audit` row records
+the workspace, who reset whom and how many devices were signed out. Nobody gets
+to choose another person's password.
+
+The refusals, all `409` unless noted:
+
+| Code | Why |
+| --- | --- |
+| `CANNOT_RESET_SELF` | resetting yourself is not recovery |
+| `CANNOT_RESET_OWNER` | the target owns a workspace that holds another member or a Peon — this one or any other, because the account is global. A personal workspace with nobody else and no Peon does not count; open sign-up gives one to everybody |
+| `NO_PASSWORD` | the account signs in only through GitHub or OIDC; giving it a password stays a shell operation |
+| `UNKNOWN_MEMBER` (`404`) | the target is not in this workspace |
+
+So owners and project administrators can reset members and other project
+administrators, never an owner. The member is not forced to change the
+temporary password on next sign-in yet; there is no change-password screen.
+
+### From the server's shell
+
+An operator with a shell on the server replaces the password from inside the
+running container:
 
 ```bash
 docker compose exec app node dist/cli/setPassword.js user@example.com

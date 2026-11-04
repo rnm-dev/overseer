@@ -78,13 +78,13 @@ export async function membership(workspaceId: string, userId: string): Promise<R
 }
 
 export async function listMembers(workspaceId: string): Promise<MemberRecord[]> {
-  const { rows } = await query<{ user_id: string; email: string; github_login: string | null; avatar_url: string | null; role: Role; added_at: number }>(
-    `SELECT m.user_id, u.email, u.github_login, u.avatar_url, m.role, m.added_at
+  const { rows } = await query<{ user_id: string; email: string; github_login: string | null; avatar_url: string | null; role: Role; added_at: number; has_password: boolean }>(
+    `SELECT m.user_id, u.email, u.github_login, u.avatar_url, m.role, m.added_at, (u.password_hash IS NOT NULL) AS has_password
        FROM workspace_members m JOIN users u ON u.id = m.user_id
       WHERE m.workspace_id = $1 ORDER BY m.added_at ASC`,
     [workspaceId],
   );
-  return rows.map((r) => ({ userId: r.user_id, email: r.email, githubLogin: r.github_login, avatarUrl: r.avatar_url, role: r.role, addedAt: r.added_at }));
+  return rows.map((r) => ({ userId: r.user_id, email: r.email, githubLogin: r.github_login, avatarUrl: r.avatar_url, role: r.role, addedAt: r.added_at, hasPassword: r.has_password }));
 }
 
 export async function updateMemberRole(workspaceId: string, userId: string, role: Role): Promise<UpdateRoleResult> {

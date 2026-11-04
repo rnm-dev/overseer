@@ -4,3 +4,4 @@ export * from "./authDevices.js";
 export * from "./authOAuth.js";
 export * from "./authPassword.js";
 export * from "./authWebSession.js";
+export * from "./authAdminPasswordReset.js";

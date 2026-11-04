@@ -15,6 +15,7 @@ import {
   type Role,
 } from "../modules/workspaces/index.js";
 import { ownerOnly, userOf, withWorkspace } from "./requestContext.js";
+import { answerMemberPasswordReset } from "./memberPasswordReset.js";
 import { canAccessPeon, canAccessProject, listMemberAccess, replaceMemberAccess, type MemberAccess } from "../modules/access/index.js";
 import { registry } from "../modules/fleet/index.js";
 import { getIndexedSession } from "../modules/sessions/index.js";
@@ -115,6 +116,13 @@ export function workspacesRouter(): express.Router {
       if (result === "not_found") return res.status(404).json({ error: "not a member", code: "UNKNOWN_MEMBER" });
       if (result === "last_owner") return res.status(409).json({ error: "assign another owner before changing this role", code: "LAST_OWNER" });
       res.json({ ok: true, role });
+    }),
+  );
+  router.post(
+    "/workspaces/:wsId/members/:userId/password-reset",
+    withWorkspace(async (req, res, ctx) => {
+      if (!ownerOnly(res, ctx.role)) return;
+      await answerMemberPasswordReset(res, ctx.workspaceId, ctx.userId, String(req.params.userId));
     }),
   );
   router.get(

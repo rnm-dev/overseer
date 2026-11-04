@@ -14,6 +14,7 @@ import {
 } from "../../modules/access/index.js";
 import { listMembers, membership } from "../../modules/workspaces/index.js";
 import { ownerOnly, relay, restSegments, withWorkspacePeon } from "../requestContext.js";
+import { answerMemberPasswordReset } from "../memberPasswordReset.js";
 import {
   folderBrowseSelector,
   forgetIndexedProject,
@@ -278,6 +279,16 @@ export function registerProjectRoutes(router: express.Router): void {
       access: byUser.get(member.userId)?.access ?? member.role === "owner",
       administrator: byUser.get(member.userId)?.administrator ?? false,
     })) });
+  }));
+  // A project administrator may reset the password of a regular member; the
+  // owner and self refusals live in adminResetMemberPassword.
+  router.post(`${wp}/projects/:key/members/:userId/password-reset`, withWorkspaceProject(async (req, res, c) => {
+    const key = String(req.params.key);
+    const indexed = await getIndexedProject(c.record.peonId, key);
+    if (!(await canManageProject(c.workspaceId, c.userId, c.role, c.record.peonId, key, indexed?.projectId))) {
+      return res.status(403).json({ error: "project administrator access required", code: "FORBIDDEN" });
+    }
+    await answerMemberPasswordReset(res, c.workspaceId, c.userId, String(req.params.userId));
   }));
   router.put(`${wp}/projects/:key/members/:userId`, withWorkspaceProject(async (req, res, c) => {
     const key = String(req.params.key);

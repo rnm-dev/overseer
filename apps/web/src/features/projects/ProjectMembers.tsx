@@ -8,6 +8,8 @@ import { usePeon } from "../fleet/context";
 import { Avatar } from "../../shared/Avatar";
 import { ProjectTabs } from "./ProjectTabs";
 import { ProjectPageHeader } from "./ProjectPageHeader";
+import { MemberPasswordReset } from "../workspaces/MemberPasswordReset";
+import { useAuth } from "../auth/auth";
 
 interface Member {
   userId: string;
@@ -17,6 +19,7 @@ interface Member {
   role: "owner" | "member";
   access: boolean;
   administrator: boolean;
+  hasPassword: boolean;
 }
 
 export const PROJECT_MEMBER_LIST_CLASS = "divide-y divide-edge/60";
@@ -25,6 +28,7 @@ export function ProjectMembers() {
   const t = useT();
   const { key = "" } = useParams();
   const { peon, wsId } = usePeon();
+  const { user } = useAuth();
   const [members, setMembers] = useState<Member[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -84,11 +88,14 @@ export function ProjectMembers() {
                   <Avatar src={member.avatarUrl} label={member.githubLogin || member.email} size="lg" className="border-edge-strong" />
                   <div className="min-w-0"><p className="truncate font-display text-sm font-semibold text-ink">{member.githubLogin ? `@${member.githubLogin}` : member.email}</p>{member.githubLogin && <p className="truncate font-mono text-[0.68rem] text-ink-faint">{member.email}</p>}{member.administrator && <p className="font-mono text-[0.68rem] text-accent">{t("proj.members.administrator")}</p>}</div>
                 </div>
+                <div className="flex items-center gap-1.5">
+                {member.hasPassword && member.email !== user?.email && <MemberPasswordReset endpoint={`/workspaces/${wsId}/peons/${encodeURIComponent(peon.peonId)}/projects/${encodeURIComponent(key)}/members/${encodeURIComponent(member.userId)}/password-reset`} name={member.githubLogin || member.email} onError={setError} />}
                 <label className="flex cursor-pointer items-center gap-2.5">
                   {saved === member.userId && <Badge tone="green"><Check size={11} aria-hidden />{t("peon.settings.saved")}</Badge>}
                   <span className="font-display text-xs text-ink-muted">{checked ? t("proj.members.canAccess") : t("proj.members.noAccess")}</span>
                   <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" disabled={member.administrator || busy === member.userId} checked={checked} onChange={(event) => void setProjectAccess(member, event.target.checked)} />
                 </label>
+                </div>
               </li>;
             })}
           </ul>}

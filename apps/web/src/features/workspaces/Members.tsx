@@ -6,6 +6,7 @@ import { useT } from "../../shared/i18n";
 import { Avatar } from "../../shared/Avatar";
 import { Badge, Button, Card, ConfirmationDialog, Input, OverseerWordmark } from "../../shared/ui";
 import { useWorkspace } from "./workspace";
+import { MemberPasswordReset } from "./MemberPasswordReset";
 
 type Role = "owner" | "member";
 
@@ -16,6 +17,7 @@ interface Member {
   avatarUrl: string | null;
   role: Role;
   addedAt: number;
+  hasPassword: boolean;
 }
 
 interface Invite {
@@ -271,6 +273,7 @@ export function Members() {
                           <option value="member">{t("role.member")}</option>
                           <option value="owner">{t("role.owner")}</option>
                         </select>
+                        {member.role === "member" && member.hasPassword && <MemberPasswordReset endpoint={`/workspaces/${workspaceId}/members/${encodeURIComponent(member.userId)}/password-reset`} name={member.githubLogin || member.email} onError={setError} />}
                         {member.role === "member" && <button type="button" title={t("action.remove")} aria-label={t("members.removeConfirm", { name: member.githubLogin || member.email })} className="grid h-9 w-9 place-items-center rounded-md text-ink-faint transition-colors hover:bg-danger/10 hover:text-danger disabled:opacity-40" disabled={busy === member.userId} onClick={() => setMemberToRemove(member)}><Trash2 size={15} aria-hidden /></button>}
                       </div>
                     </div>
