@@ -181,3 +181,5 @@ export {
   sourceTimestampMetadata,
   storedTimestampMetadata,
 } from "./agentEventMetadata.js";
+export { setTurnSettledHook } from "./runtime.js";
+export type { SessionOrigin, SessionTrigger } from "./sessionTypes.js";

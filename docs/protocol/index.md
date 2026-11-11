@@ -28,3 +28,6 @@ separately published package.
   participant messages, structured stable-identity mentions, next-turn
   delivery and separate human attention; product details are in
   [Context-only participant messages](../context-only-participant-messages.md).
+- [`session-signoffs-v1`](session-signoffs-v1/schema.json) — session origin,
+  the sign-off record, operator decision intake and the `signoff-catalog-v1`
+  projection; product rules are in [Session sign-offs](../signoffs.md).

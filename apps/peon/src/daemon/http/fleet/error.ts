@@ -52,6 +52,11 @@ export type ErrorCode =
   | "UNKNOWN_ATTACHMENT_PATH"
   | "ATTACHMENT_TOO_LARGE"
   | "UNSUPPORTED_MEDIA_TYPE"
+  | "UNKNOWN_SIGNOFF"
+  | "SIGNOFF_CHANGED"
+  | "SIGNOFF_STATE"
+  | "SIGNOFF_SESSION_GONE"
+  | "SIGNOFF_NOT_ALLOWED"
   | "INTERNAL";
 
 export function fail(res: Response, status: number, code: ErrorCode, error: string): void {

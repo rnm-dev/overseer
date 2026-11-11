@@ -20,6 +20,9 @@ export interface SessionSummary {
   startedAt: number | null;
   endedAt: number | null;
   lastActivityAt: number | null;
+  origin: "operator" | "trigger";
+  trigger: SessionRecord["trigger"];
+  settledState: "awaiting_signoff" | null;
 }
 
 export function toSessionSummary(record: SessionRecord): SessionSummary {
@@ -49,5 +52,8 @@ export function toSessionSummary(record: SessionRecord): SessionSummary {
     startedAt: record.startedAt,
     endedAt: record.endedAt,
     lastActivityAt: record.lastActivityAt,
+    origin: record.origin ?? "operator",
+    trigger: record.origin === "trigger" ? record.trigger ?? null : null,
+    settledState: record.status === "completed" ? record.settledState ?? null : null,
   };
 }

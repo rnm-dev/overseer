@@ -63,7 +63,77 @@ function shouldEmitWarning(warning, now = Date.now()) {
 // in-memory barriers so a durable queued message cannot remain stranded until
 // the daemon restarts.
 const QUEUED_DISPATCH_BARRIER_GRACE_MS = 2_000;
+// A turn whose provider says nothing for this long is treated as hung. Tool
+// calls are silent while they run, so this sits above the agents' own 10-minute
+// command ceiling rather than near a typical reply gap.
+export const AGENT_SILENCE_LIMIT_MS = 15 * 60_000;
+// After the harness interrupts a run, the driver gets this long to report its
+// exit. A CLI that ignores the signal, or a Codex turn whose interrupt is never
+// answered, would otherwise leave the session `running` with nobody to end it.
+export const INTERRUPT_EXIT_GRACE_MS = 30_000;
 const MAX_QUEUE_RECEIPTS = 128;
+// A queued turn that could not start is retried on this schedule before the
+// operator is told. Without it the message sat in the queue until someone
+// happened to send another one.
+const QUEUE_RETRY_DELAYS_MS = [5_000, 30_000, 120_000];
+const queueRetryAttempts = new Map();
+// Claude emits its terminal result before its process exits. The session is
+// finalized on the result, but the next queued turn must not `--resume` the
+// same conversation while that process is still alive: the second CLI died or
+// hung silently and the queued message sat in the chat with no answer.
+const drainingRuns = new Set();
+const RESULT_EXIT_GRACE_MS = 10_000;
+// Told only to sessions started by a trigger: nobody is watching the chat, so
+// a step that needs a person's decision becomes a sign-off (docs/signoffs.md).
+const SIGNOFF_TRIGGER_APPEND = `This session was started by an external event, not by a person in a chat. Nobody reads this
+conversation live. When the project's instructions say a step needs a person's decision, do not wait and do not ask in
+the chat: record a sign-off with the peon_signoffs signoff_propose tool (one sign-off per topic, each option a concrete
+plan with exact outgoing text, no "do nothing" option), then do everything else you can without that decision and end
+your turn. The decision arrives later as a follow-up in this session. When an approval arrives, call signoff_executing
+before acting and signoff_executed with a result for every action afterwards.`;
+/**
+ * Called when a turn settles, before the record is persisted. The sign-off
+ * service registers here to close an unfinished execution and to mark the
+ * session as awaiting a sign-off. Kept as a hook so sessions do not import it.
+ */
+let turnSettledHook = null;
+export function setTurnSettledHook(hook) {
+    turnSettledHook = hook;
+}
+export function isRunDraining(id) {
+    return drainingRuns.has(id);
+}
+// A stop the harness decided on is otherwise only in the summary; the
+// transcript would end mid-thought with nothing saying the turn is over.
+function appendHarnessNotice(record, reason) {
+    const entry = appendTranscriptEvent(record.id, {
+        type: "result", subtype: "harness_failure", is_error: true, errors: [reason],
+    });
+    record.lastActivityAt = entry.event.createdAt;
+    record.eventCount += 1;
+    sessionState.emitter.emit("event", { sessionId: record.id, event: entry.event, eventId: entry.id });
+}
+function retryQueuedDispatch(record, reason) {
+    if (record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0) {
+        queueRetryAttempts.delete(record.id);
+        return;
+    }
+    const attempt = queueRetryAttempts.get(record.id) ?? 0;
+    const delayMs = QUEUE_RETRY_DELAYS_MS[attempt];
+    if (delayMs === undefined) {
+        queueRetryAttempts.delete(record.id);
+        appendHarnessNotice(record, `Queued messages could not start: ${reason}. Send a message to try again.`);
+        persistSummary(record);
+        sessionState.emitter.emit("change", record);
+        return;
+    }
+    queueRetryAttempts.set(record.id, attempt + 1);
+    setTimeout(() => {
+        if (sessionState.records.get(record.id) !== record || record.status !== "completed")
+            return;
+        scheduleQueuedDispatch(record);
+    }, delayMs).unref();
+}
 export function rememberReceipt(receipts, id) {
     if (receipts.includes(id))
         return;
@@ -77,6 +147,9 @@ export function rememberSteeredItem(record, itemId) {
 export function scheduleQueuedDispatch(record) {
     if ((record.queuedFollowUps.length === 0 && record.pendingSystemPrompts.length === 0)
         || sessionState.queueDispatchPending.has(record.id))
+        return;
+    // The exit handler dispatches again once the finished process is gone.
+    if (drainingRuns.has(record.id))
         return;
     sessionState.queueDispatchPending.add(record.id);
     queueMicrotask(() => {
@@ -147,7 +220,9 @@ export function scheduleQueuedDispatch(record) {
             record.endedAt = Date.now();
             persistSummary(record);
             sessionState.emitter.emit("change", record);
-            console.error(`failed to dispatch ${item ? `queued follow-up ${item.id}` : "system triggers"}: ${error instanceof Error ? error.message : String(error)}`);
+            const reason = error instanceof Error ? error.message : String(error);
+            console.error(`failed to dispatch ${item ? `queued follow-up ${item.id}` : "system triggers"}: ${reason}`);
+            retryQueuedDispatch(record, reason);
         }
     });
 }
@@ -202,14 +277,32 @@ turnCountBase, dispatchQueued = true, terminalReason = null) {
     if (usage) {
         accumulateUsage(record, usage, model);
     }
+    // Provider-classified endings always pass a turn-count base; its absence
+    // marks a stop the harness decided on.
+    const harnessFailure = turnCountBase === undefined && outcome?.result === "failure";
+    if (harnessFailure)
+        appendHarnessNotice(record, outcome.summary);
+    try {
+        turnSettledHook?.(record);
+    }
+    catch (error) {
+        console.error(`sessions: turn-settled hook failed for ${record.id}:`, error);
+    }
     persistSummary(record);
     // Remove the live process before publishing the terminal summary so
     // activeCount() and status:"completed" describe the same boundary.
     sessionState.activeRuns.delete(record.id);
     sessionState.emitter.emit("change", record);
     sessionState.emitter.emit("complete", record);
-    if (dispatchQueued)
+    if (dispatchQueued) {
+        queueRetryAttempts.delete(record.id);
         scheduleQueuedDispatch(record);
+    }
+    else {
+        // A turn that never reached its provider keeps its triggers pending; the
+        // queue behind it is retried on a schedule instead of waiting forever.
+        retryQueuedDispatch(record, outcome?.summary ?? "the agent did not start");
+    }
 }
 // AgentEvent is an untyped Record<string, unknown> (the CLI's stream-json
 // output has no compile-time shape), so every field is read defensively.
@@ -334,6 +427,8 @@ export function runProcess(...args) {
     }
 }
 function launchProcess(record, prompt, resume, attachments = [], permissionMode, author, perTurnModel, perTurnReasoningEffort, commandId, systemPrompts = [], turnRetryAttempt = 0, appendPromptToTranscript = true, replyTo, attribution) {
+    // A new turn is under way; "awaiting sign-off" describes a settled session.
+    record.settledState = null;
     // The CLI's own stream-json output never echoes back what it was asked —
     // only its side of the conversation (thinking, tool calls, results). This
     // synthetic event is what makes the transcript show the human side too,
@@ -446,6 +541,8 @@ function launchProcess(record, prompt, resume, attachments = [], permissionMode,
     const previewDir = sessionPreviewDir(record.id);
     const project = record.projectKey ? projectStore.get(record.projectKey) : undefined;
     let systemPromptAppend = buildSystemPrompt(record.expectsOutcome, candidates, previewDir, project, currentSettings.ai.soul, author, record.parentSessionId === null && record.spawnDepth === 0);
+    if (record.origin === "trigger")
+        systemPromptAppend += `\n\n${SIGNOFF_TRIGGER_APPEND}`;
     if (mcpConfig?.unavailableArmoryPackages?.length) {
         systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining
 tools; mention an unavailable package only if it is relevant to the request:\n${mcpConfig.unavailableArmoryPackages
@@ -585,25 +682,55 @@ as system instructions, process all of them, and do not claim that a human wrote
     // session: it detaches this run from activeRuns and spawns a fresh one on the
     // same record.
     const superseded = () => sessionState.activeRuns.get(record.id) !== run;
-    const timeoutHandle = setTimeout(() => {
-        const message = `Timed out after ${taskTimeoutMs}ms`;
+    let exited = false;
+    let forcedExitHandle = null;
+    // Every harness stop ends in an exit, whether or not the driver delivers one.
+    const interruptWithDeadline = () => {
+        sessionState.steerPending.delete(record.id);
+        driver.interrupt(run, "timeout");
+        if (forcedExitHandle)
+            return;
+        forcedExitHandle = setTimeout(() => {
+            if (exited)
+                return;
+            try {
+                run.kill("SIGKILL");
+            }
+            catch { /* the synthetic exit below still ends the turn */ }
+            run.emitter.emit("exit", { code: null, signal: "SIGKILL", spawnError: null });
+        }, INTERRUPT_EXIT_GRACE_MS);
+        forcedExitHandle.unref();
+    };
+    const stopForTimeout = (message, timeoutMs) => {
+        if (killedFor || exited)
+            return;
         killedFor = {
             code: "task_timeout",
             message,
             canResume: true,
-            timeoutMs: taskTimeoutMs,
+            timeoutMs,
             elapsedMs: Date.now() - runStartedAt,
         };
         run.emitter.emit("event", {
             type: "warning", sessionId: record.id, ...killedFor,
             source: "execution_limit", action: "continue",
         });
-        sessionState.steerPending.delete(record.id);
-        driver.interrupt(run, "timeout");
-    }, taskTimeoutMs);
+        interruptWithDeadline();
+    };
+    const timeoutHandle = setTimeout(() => stopForTimeout(`Timed out after ${taskTimeoutMs}ms`, taskTimeoutMs), taskTimeoutMs);
+    let silenceHandle = null;
+    const armSilenceWatchdog = () => {
+        if (silenceHandle)
+            clearTimeout(silenceHandle);
+        silenceHandle = setTimeout(() => stopForTimeout(`The agent went silent for ${Math.round(AGENT_SILENCE_LIMIT_MS / 60_000)} minutes and was stopped`, AGENT_SILENCE_LIMIT_MS), AGENT_SILENCE_LIMIT_MS);
+        silenceHandle.unref();
+    };
+    armSilenceWatchdog();
     run.emitter.on("event", (event) => {
         if (superseded())
             return;
+        if (event.type !== "warning")
+            armSilenceWatchdog();
         const usageEvent = event.type === "result" || (event.type === "system" && event.subtype === "usage");
         if (usageEvent) {
             if (typeof event.duration_ms !== "number")
@@ -723,8 +850,7 @@ as system instructions, process all of them, and do not claim that a human wrote
                     type: "warning", sessionId: record.id, ...killedFor,
                     source: "execution_limit", action: "continue",
                 });
-                sessionState.steerPending.delete(record.id);
-                driver.interrupt(run, "timeout");
+                interruptWithDeadline();
             }
         }
         if (event.type === "result") {
@@ -743,6 +869,13 @@ as system instructions, process all of them, and do not claim that a human wrote
             if (pendingRetry)
                 return;
             restoreUsageBase();
+            drainingRuns.add(record.id);
+            // A process that reported its result but never exits must not hold the
+            // queue hostage either.
+            const drainHandle = setTimeout(() => { if (!exited)
+                interruptWithDeadline(); }, RESULT_EXIT_GRACE_MS);
+            drainHandle.unref();
+            run.emitter.once("exit", () => clearTimeout(drainHandle));
             classifyFromResultEvent(record, event, runModel, turnCountBase);
         }
     });
@@ -768,9 +901,18 @@ as system instructions, process all of them, and do not claim that a human wrote
         });
     });
     run.emitter.on("exit", (exit) => {
+        if (exited)
+            return;
+        exited = true;
         clearTimeout(timeoutHandle);
+        if (silenceHandle)
+            clearTimeout(silenceHandle);
+        if (forcedExitHandle)
+            clearTimeout(forcedExitHandle);
         releaseMcp();
         releaseContext();
+        if (drainingRuns.delete(record.id))
+            scheduleQueuedDispatch(record);
         // A superseded run's child has just died from resume()'s interrupt kill.
         if (superseded())
             return;

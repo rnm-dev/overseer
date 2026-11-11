@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ovrseer:protocol:session-signoffs-v1",
+  "title": "Session sign-offs v1",
+  "description": "Peon-owned sign-offs on trigger-origin sessions: session origin, the sign-off record, operator decision intake over Fleet HTTP and the signoff-catalog-v1 projection. Product rules are in docs/signoffs.md.",
+  "$defs": {
+    "nullableText200": {
+      "type": ["string", "null"],
+      "maxLength": 200
+    },
+    "localId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "sessionOrigin": {
+      "enum": ["operator", "trigger"]
+    },
+    "sessionTrigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "correlationId"],
+      "properties": {
+        "id": { "$ref": "#/$defs/nullableText200" },
+        "source": { "$ref": "#/$defs/nullableText200" },
+        "correlationId": { "$ref": "#/$defs/nullableText200" }
+      }
+    },
+    "createSessionOriginFields": {
+      "description": "Optional fields on POST /api/v1/sessions. Absent origin means operator; trigger is only accepted with origin trigger.",
+      "type": "object",
+      "properties": {
+        "origin": { "$ref": "#/$defs/sessionOrigin" },
+        "trigger": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/nullableText200" },
+            "source": { "$ref": "#/$defs/nullableText200" },
+            "correlationId": { "$ref": "#/$defs/nullableText200" }
+          }
+        }
+      }
+    },
+    "sessionOriginView": {
+      "description": "Fields added to the session record and to session-catalog-v1 rows.",
+      "type": "object",
+      "required": ["origin", "trigger", "settledState"],
+      "properties": {
+        "origin": { "$ref": "#/$defs/sessionOrigin" },
+        "trigger": { "oneOf": [{ "$ref": "#/$defs/sessionTrigger" }, { "type": "null" }] },
+        "settledState": { "enum": ["awaiting_signoff", null] }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "summary", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "detail": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "type": { "const": "freeform" }
+      }
+    },
+    "option": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "actions"],
+      "properties": {
+        "id": { "$ref": "#/$defs/localId" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "recommended": { "const": true },
+        "rationale": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "actions": { "type": "array", "minItems": 1, "maxItems": 10, "items": { "$ref": "#/$defs/action" } }
+      }
+    },
+    "snapshot": {
+      "description": "At most 64 KiB serialized.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "summary", "options", "assignees", "context"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "options": { "type": "array", "minItems": 1, "maxItems": 6, "items": { "$ref": "#/$defs/option" } },
+        "assignees": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1, "maxLength": 200 } },
+        "context": { "type": "array", "maxItems": 5, "items": { "type": "string", "minLength": 1, "maxLength": 1000 } }
+      }
+    },
+    "author": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["type", "sessionId"], "properties": { "type": { "const": "agent" }, "sessionId": { "type": "string", "minLength": 1 } } },
+        { "type": "object", "additionalProperties": false, "required": ["type", "id"], "properties": { "type": { "const": "operator" }, "id": { "type": "string", "minLength": 1 } } },
+        { "type": "object", "additionalProperties": false, "required": ["type"], "properties": { "type": { "enum": ["policy", "peon"] } } }
+      ]
+    },
+    "eventKind": {
+      "enum": ["proposed", "revised", "answered", "commented", "approved", "rejected", "reassigned", "withdrawn", "superseded", "executing", "executed", "interrupted"]
+    },
+    "actionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actionId", "outcome"],
+      "properties": {
+        "actionId": { "$ref": "#/$defs/localId" },
+        "outcome": { "enum": ["done", "failed", "skipped", "unknown"] },
+        "note": { "type": "string", "maxLength": 2000 }
+      }
+    },
+    "event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seq", "author", "kind", "baseSeq", "createdAt"],
+      "properties": {
+        "seq": { "type": "integer", "minimum": 1 },
+        "author": { "$ref": "#/$defs/author" },
+        "kind": { "$ref": "#/$defs/eventKind" },
+        "baseSeq": { "type": ["integer", "null"], "minimum": 1 },
+        "snapshot": { "$ref": "#/$defs/snapshot" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "optionId": { "$ref": "#/$defs/localId" },
+        "assigneeIds": { "type": "array", "maxItems": 10, "items": { "type": "string" } },
+        "supersededBy": { "type": "string" },
+        "results": { "type": "array", "items": { "$ref": "#/$defs/actionResult" } },
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "createdAt": { "type": "integer" }
+      }
+    },
+    "status": {
+      "enum": ["pending", "changes_requested", "approved", "executing", "done", "partly_done", "failed", "rejected", "withdrawn", "superseded", "interrupted"]
+    },
+    "summary": {
+      "description": "The head, as listed and as projected in signoff-catalog-v1.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "projectKey", "number", "displayNumber", "title", "sessionId", "source", "headSeq", "status", "assigneeIds", "orphaned", "createdAt", "updatedAt"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "projectKey": { "type": ["string", "null"] },
+        "number": { "type": "integer", "minimum": 1 },
+        "displayNumber": { "type": "string", "pattern": "^SO-[1-9][0-9]*$" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "sessionId": { "type": "string", "minLength": 1 },
+        "source": { "oneOf": [{ "$ref": "#/$defs/sessionTrigger" }, { "type": "null" }] },
+        "headSeq": { "type": "integer", "minimum": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "assigneeIds": { "type": "array", "items": { "type": "string" } },
+        "orphaned": { "type": "boolean" },
+        "createdAt": { "type": "integer" },
+        "updatedAt": { "type": "integer" }
+      }
+    },
+    "view": {
+      "description": "GET /api/v1/signoffs/:id, and the body of a decision response (plus replayed).",
+      "type": "object",
+      "required": ["signoff", "snapshot", "events"],
+      "properties": {
+        "signoff": { "$ref": "#/$defs/summary" },
+        "snapshot": { "$ref": "#/$defs/snapshot" },
+        "events": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/event" } },
+        "replayed": { "type": "boolean" }
+      }
+    },
+    "list": {
+      "description": "GET /api/v1/signoffs?status=a,b&projectKey=&sessionId=",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signoffs"],
+      "properties": { "signoffs": { "type": "array", "items": { "$ref": "#/$defs/summary" } } }
+    },
+    "operatorEventRequest": {
+      "description": "POST /api/v1/signoffs/:id/events. operatorId defaults to the Peon-Actor header.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestId", "kind", "baseSeq"],
+      "properties": {
+        "requestId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "kind": { "enum": ["commented", "approved", "rejected", "reassigned", "withdrawn"] },
+        "baseSeq": { "type": "integer", "minimum": 1 },
+        "operatorId": { "type": "string", "minLength": 1 },
+        "optionId": { "$ref": "#/$defs/localId" },
+        "message": { "type": "string", "minLength": 1, "maxLength": 8000 },
+        "assigneeIds": { "type": "array", "maxItems": 10, "items": { "type": "string", "minLength": 1, "maxLength": 200 } }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "approved" } } }, "then": { "properties": { "optionId": true }, "required": ["optionId"] } },
+        { "if": { "properties": { "kind": { "const": "commented" } } }, "then": { "properties": { "message": true }, "required": ["message"] } },
+        { "if": { "properties": { "kind": { "const": "reassigned" } } }, "then": { "properties": { "assigneeIds": true }, "required": ["assigneeIds"] } }
+      ]
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error", "code"],
+      "properties": {
+        "error": { "type": "string" },
+        "code": { "enum": ["BAD_REQUEST", "UNKNOWN_SIGNOFF", "SIGNOFF_CHANGED", "SIGNOFF_STATE", "SIGNOFF_SESSION_GONE", "SIGNOFF_NOT_ALLOWED", "IDEMPOTENCY_CONFLICT"] }
+      }
+    },
+    "catalogEventFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "epoch", "seq", "revision", "signoff"],
+      "properties": {
+        "type": { "const": "signoff_catalog_event" },
+        "epoch": { "type": "string" },
+        "seq": { "type": "integer", "minimum": 1 },
+        "revision": { "type": "integer", "minimum": 1 },
+        "signoff": { "$ref": "#/$defs/summary" }
+      }
+    },
+    "catalogSnapshotPageFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "requestId", "epoch", "revision", "barrierSeq", "signoffs", "nextCursor", "hasMore"],
+      "properties": {
+        "type": { "const": "signoff_catalog_snapshot_page" },
+        "requestId": { "type": "string" },
+        "epoch": { "type": "string" },
+        "revision": { "type": "integer", "minimum": 0 },
+        "barrierSeq": { "type": "integer", "minimum": 0 },
+        "signoffs": { "type": "array", "items": { "$ref": "#/$defs/summary" } },
+        "nextCursor": { "type": ["string", "null"] },
+        "hasMore": { "type": "boolean" }
+      }
+    }
+  }
+}

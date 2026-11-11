@@ -76,6 +76,40 @@ const IMAGE_EXT_BY_MIME = {
 };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COMMAND_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_TRIGGER_FIELD = 200;
+/**
+ * Session origin is explicit: an automation-API session is authored like a
+ * person's, so the author cannot tell a trigger apart. Absent means operator.
+ */
+export function parseSessionOrigin(rawOrigin, rawTrigger) {
+    if (rawOrigin === undefined || rawOrigin === null || rawOrigin === "operator") {
+        if (rawTrigger !== undefined && rawTrigger !== null)
+            return { error: "trigger is only allowed with origin \"trigger\"" };
+        return { origin: "operator", trigger: null };
+    }
+    if (rawOrigin !== "trigger")
+        return { error: "origin must be \"operator\" or \"trigger\"" };
+    if (rawTrigger === undefined || rawTrigger === null)
+        return { origin: "trigger", trigger: null };
+    if (typeof rawTrigger !== "object" || Array.isArray(rawTrigger))
+        return { error: "trigger must be an object" };
+    const trigger = rawTrigger;
+    const field = (key) => {
+        const value = trigger[key];
+        if (value === undefined || value === null || value === "")
+            return null;
+        if (typeof value !== "string" || value.length > MAX_TRIGGER_FIELD)
+            return { error: `trigger.${key} must be a string of at most ${MAX_TRIGGER_FIELD} characters` };
+        return value;
+    };
+    const id = field("id");
+    const source = field("source");
+    const correlationId = field("correlationId");
+    for (const value of [id, source, correlationId])
+        if (value && typeof value === "object")
+            return value;
+    return { origin: "trigger", trigger: { id: id, source: source, correlationId: correlationId } };
+}
 function narrowPermissionMode(value) {
     return value === "plan" ? "plan" : undefined;
 }
@@ -244,6 +278,9 @@ export function attachSessionRoutes(router, options) {
             if (existing)
                 return res.status(200).json(existing);
         }
+        const originInput = parseSessionOrigin(req.body?.origin, req.body?.trigger);
+        if ("error" in originInput)
+            return fail(res, 400, "BAD_REQUEST", originInput.error);
         let attachments;
         try {
             attachments = resolveAttachments(req.body?.attachments, getFileTransferRoot());
@@ -267,6 +304,8 @@ export function attachSessionRoutes(router, options) {
                 commandId,
                 attachments,
                 expectsOutcome: req.body?.expectsOutcome === true,
+                origin: originInput.origin,
+                trigger: originInput.trigger,
             });
             res.status(201).json(toPublicSessionRecord(record));
         }

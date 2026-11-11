@@ -19,6 +19,7 @@ import {
 } from "./peonSocketOutbox.js";
 import { SessionCatalogChannel } from "./channels/sessionCatalogChannel.js";
 import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
+import { SignoffCatalogChannel } from "./channels/signoffCatalogChannel.js";
 import { RuntimeStateChannel } from "./channels/runtimeStateChannel.js";
 import { settings, type PeonSocketSettings } from "../../settings/index.js";
 
@@ -164,7 +165,7 @@ export class PeonSocketSupervisor {
     const hasDurableOutbox = Boolean(options.outbox || options.outboxFactory);
     const defaultChannels = [
           new SessionCatalogChannel(),
-          ...(hasDurableOutbox ? [new ProjectCatalogChannel(), new RuntimeStateChannel()] : []),
+          ...(hasDurableOutbox ? [new ProjectCatalogChannel(), new RuntimeStateChannel(), new SignoffCatalogChannel()] : []),
         ];
     this.multiplexer = new PeonSocketMultiplexer(options.channels ?? defaultChannels);
     this.outbox = options.outbox ?? null;

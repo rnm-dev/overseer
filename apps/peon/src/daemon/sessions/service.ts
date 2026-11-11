@@ -17,6 +17,8 @@ import type {
   SessionStats,
   StatsPeriod,
   ReplyTo,
+  SessionOrigin,
+  SessionTrigger,
 } from "./sessionTypes.js";
 import {
   appendTranscriptEvent,
@@ -192,6 +194,8 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
     kind?: "agent" | "thread";
     threadState?: "discussion" | "active";
     deferStart?: boolean;
+    origin?: SessionOrigin;
+    trigger?: SessionTrigger | null;
   }): SessionRecord {
     // No implicit worktree-off-the-ACA-repo fallback — that's this daemon's
     // own source, not a target for arbitrary sessions to run in (and it has
@@ -215,6 +219,9 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       // Caller-supplied ids let external task systems link their own durable
       // records to the session before the process spawns.
       id,
+      origin: opts.origin ?? "operator",
+      trigger: opts.origin === "trigger" ? opts.trigger ?? null : null,
+      settledState: null,
       kind: opts.kind ?? "agent",
       threadState: opts.threadState ?? null,
       prompt: opts.prompt,
@@ -382,6 +389,10 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
         backendRuntimeGeneration: null,
         backendTurnStatus: null,
         initiator: opts.author ?? null,
+        // A branch is a person's act; the sign-offs stay with the source session.
+        origin: "operator",
+        trigger: null,
+        settledState: null,
         branchedFromSessionId: source.id,
         parentSessionId: null,
         spawnDepth: 0,
@@ -658,6 +669,17 @@ export const sessions: SessionCatalogReader & SessionLifecycleContract & Session
       persistSummary(record);
       sessionState.emitter.emit("change", record);
     }
+    return record;
+  },
+
+  setSettledState(id: string, state: "awaiting_signoff" | null): SessionRecord | undefined {
+    const record = sessionState.records.get(id);
+    if (!record) return undefined;
+    const next = record.status === "completed" ? state : null;
+    if ((record.settledState ?? null) === next) return record;
+    record.settledState = next;
+    persistSummary(record);
+    sessionState.emitter.emit("change", record);
     return record;
   },
 

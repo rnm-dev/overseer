@@ -62,7 +62,12 @@ test("canonical session summary includes only bounded collection fields", () => 
     "startedAt",
     "endedAt",
     "lastActivityAt",
+    "origin",
+    "trigger",
+    "settledState",
   ]);
+  assert.equal(summary.origin, "operator");
+  assert.equal(summary.settledState, null);
   assert.equal(summary.promptPreview?.length, 280);
   assert.equal("prompt" in summary, false);
   assert.equal("dir" in summary, false);

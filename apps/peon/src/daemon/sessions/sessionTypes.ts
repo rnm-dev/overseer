@@ -91,8 +91,25 @@ export interface SessionContextUsage {
   updatedAt: number;
 }
 
+export type SessionOrigin = "operator" | "trigger";
+
+/** Identity of the external event that started a trigger-origin session. */
+export interface SessionTrigger {
+  id: string | null;
+  source: string | null;
+  correlationId: string | null;
+}
+
 export interface SessionRecord {
   id: string;
+  /**
+   * Who started the session, fixed at creation. Missing on legacy records
+   * means operator. Only trigger-origin sessions may propose sign-offs.
+   */
+  origin?: SessionOrigin;
+  trigger?: SessionTrigger | null;
+  /** Non-failure settled state; only meaningful while status is "completed". */
+  settledState?: "awaiting_signoff" | null;
   /** First-class catalog identity. Missing on legacy records means agent. */
   kind?: "agent" | "thread";
   /** Threads begin as human-only discussion and become active on their first provider turn. */

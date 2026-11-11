@@ -26,5 +26,8 @@ export function toSessionSummary(record) {
         startedAt: record.startedAt,
         endedAt: record.endedAt,
         lastActivityAt: record.lastActivityAt,
+        origin: record.origin ?? "operator",
+        trigger: record.origin === "trigger" ? record.trigger ?? null : null,
+        settledState: record.status === "completed" ? record.settledState ?? null : null,
     };
 }

@@ -32,6 +32,7 @@ import {
   FileAccessService,
 } from "./files/index.js";
 import { toSessionSummary } from "./sessions/index.js";
+import { signoffs } from "./signoffs/index.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { cliUpdates, CliUpdateError, type CliUpdateProvider, type CliUpdateService } from "./updates/cliUpdates.js";
 
@@ -133,7 +134,19 @@ export function createControlServer(options: ControlServerOptions = {}) {
   app.use(
     "/mcp",
     mcpJsonBodyParser(),
-    createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration, requestManagedPluginInstall }),
+    createScopedMcpRouter({
+      armoryRuntime,
+      projectService,
+      sessionOrchestration,
+      requestManagedPluginInstall,
+      signoffs: {
+        service: signoffs,
+        origin: (sessionId) => {
+          const session = sessions.get(sessionId);
+          return session ? session.origin ?? "operator" : undefined;
+        },
+      },
+    }),
   );
   app.use(express.json());
 

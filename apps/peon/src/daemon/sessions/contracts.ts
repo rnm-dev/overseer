@@ -31,6 +31,8 @@ export interface StartSessionOptions {
   kind?: "agent" | "thread";
   threadState?: "discussion" | "active";
   deferStart?: boolean;
+  origin?: import("./sessionTypes.js").SessionOrigin;
+  trigger?: import("./sessionTypes.js").SessionTrigger | null;
 }
 
 export interface SessionRecordEntry {
@@ -85,6 +87,8 @@ export interface SessionLifecycleContract {
   cancel(id: string): boolean;
   delete(id: string): "deleted" | "not_found" | "running";
   markParentCompletionNotified(id: string, completedAt: number): SessionRecord;
+  /** Sets the non-failure settled state of a completed session; a no-op while it runs. */
+  setSettledState(id: string, state: "awaiting_signoff" | null): SessionRecord | undefined;
   notifyShuttingDown(): void;
   flushTranscripts(): Promise<void>;
   restoreFromDisk(): void;

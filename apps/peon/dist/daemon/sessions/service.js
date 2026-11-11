@@ -11,7 +11,7 @@ import { statsForPeriod as calculateStatsForPeriod } from "./sessionStats.js";
 import { appendTranscriptEvent, discardTranscript, flushTranscript, persistSummary, previewText, findTranscriptEntry, readTranscriptEntries, readTranscriptPage, sessionsDir, sessionsSizeBytes, summaryPath, } from "./sessionArtifacts.js";
 import { AUTO_RESUME_PROMPT, MAX_AUTO_RESUME_ATTEMPTS, ORPHANED_RUN_MARKER, RESTART_INTERRUPTION_MARKER, SYSTEM_AUTHOR, } from "./constants.js";
 import { sessionPreviewDir } from "./preview.js";
-import { appendPreviewEvent, appendUserTurn, finalizeSession as finalize, runProcess, scheduleQueuedDispatch, rememberReceipt, rememberSteeredItem, } from "./runtime.js";
+import { appendPreviewEvent, appendUserTurn, finalizeSession as finalize, isRunDraining, runProcess, scheduleQueuedDispatch, rememberReceipt, rememberSteeredItem, } from "./runtime.js";
 import { inferProjectKey, isRestartInterrupted, restoreFromDisk, } from "./recovery.js";
 import { sessionState } from "./state.js";
 import { ReplyToError, buildReplyPrompt, isReplyableEvent } from "./replyTo.js";
@@ -111,6 +111,9 @@ export const sessions = {
             // Caller-supplied ids let external task systems link their own durable
             // records to the session before the process spawns.
             id,
+            origin: opts.origin ?? "operator",
+            trigger: opts.origin === "trigger" ? opts.trigger ?? null : null,
+            settledState: null,
             kind: opts.kind ?? "agent",
             threadState: opts.threadState ?? null,
             prompt: opts.prompt,
@@ -285,6 +288,10 @@ export const sessions = {
                 backendRuntimeGeneration: null,
                 backendTurnStatus: null,
                 initiator: opts.author ?? null,
+                // A branch is a person's act; the sign-offs stay with the source session.
+                origin: "operator",
+                trigger: null,
+                settledState: null,
                 branchedFromSessionId: source.id,
                 parentSessionId: null,
                 spawnDepth: 0,
@@ -464,6 +471,12 @@ export const sessions = {
             // "running" with no active run shouldn't happen, but if it does the
             // resume below is the safe recovery rather than throwing.
         }
+        // The finished turn's process is still exiting. A `--resume` now races it
+        // onto the same conversation, so the message waits in the queue, which
+        // dispatches the moment that process is gone.
+        if (record.status === "completed" && isRunDraining(id) && !notifyParentOnComplete) {
+            return sessions.enqueue(id, prompt, attachments, permissionMode, author, model, reasoningEffort, commandId, false, replyTo, attribution);
+        }
         spawnResume();
         return record;
     },
@@ -531,6 +544,18 @@ export const sessions = {
             persistSummary(record);
             sessionState.emitter.emit("change", record);
         }
+        return record;
+    },
+    setSettledState(id, state) {
+        const record = sessionState.records.get(id);
+        if (!record)
+            return undefined;
+        const next = record.status === "completed" ? state : null;
+        if ((record.settledState ?? null) === next)
+            return record;
+        record.settledState = next;
+        persistSummary(record);
+        sessionState.emitter.emit("change", record);
         return record;
     },
     validateReplyTo(id, replyTo) {

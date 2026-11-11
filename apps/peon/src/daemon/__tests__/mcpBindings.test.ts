@@ -20,12 +20,13 @@ test("MCP assembler combines project quick links with scoped Armory bindings", (
   assert.deepEqual(result?.mcpServers, {
     peon_projects: { type: "http", url: "http://127.0.0.1:4570/mcp/projects", headers: {} },
     peon_plugins: { type: "http", url: "http://127.0.0.1:4570/mcp/plugins", headers: { [SESSION_MCP_HEADER]: result?.mcpServers.peon_plugins?.headers[SESSION_MCP_HEADER]! } },
+    peon_signoffs: { type: "http", url: "http://127.0.0.1:4570/mcp/signoffs", headers: { [SESSION_MCP_HEADER]: result?.mcpServers.peon_signoffs?.headers[SESSION_MCP_HEADER]! } },
     armory_aws: { type: "http", url: "http://127.0.0.1:4570/mcp/armory/binding-aws", headers: { [SESSION_MCP_HEADER]: result?.mcpServers.armory_aws?.headers[SESSION_MCP_HEADER]! } },
     armory_google_analytics: { type: "http", url: "http://127.0.0.1:4570/mcp/armory/binding-google", headers: { [SESSION_MCP_HEADER]: result?.mcpServers.armory_google_analytics?.headers[SESSION_MCP_HEADER]! } },
   });
   assert.equal(
     result?.allowedTools,
-    "mcp__peon_projects__*,mcp__peon_plugins__*,mcp__armory_google_analytics__*,mcp__armory_aws__*",
+    "mcp__peon_projects__*,mcp__peon_plugins__*,mcp__peon_signoffs__*,mcp__armory_google_analytics__*,mcp__armory_aws__*",
   );
   assert.deepEqual(result?.unavailableArmoryPackages, [
     { packageId: "google-play", code: "PACKAGE_NOT_READY", message: "Google Play is updating" },

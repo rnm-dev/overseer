@@ -44,6 +44,8 @@ import { attachFleetSessionFileRoutes } from "./http/fleet/sessionFiles.js";
 import { PROTOCOL_VERSION } from "./protocol.js";
 import { UnauthorizedRateLimiter } from "./runtime/unauthorizedRateLimit.js";
 import { attachResourceUsageRoutes } from "./http/fleet/resources.js";
+import { attachSignoffRoutes, type FleetSignoffService } from "./http/fleet/signoffs.js";
+import { SIGNOFFS_CAPABILITY, signoffs } from "./signoffs/index.js";
 
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
@@ -257,7 +259,7 @@ function agentStatusView() {
     activeSessionCount: sessions.activeCount(),
     sessionCount: sessions.list().length,
     filesEnabled: Boolean(settings.get().fileTransferRoot),
-    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY],
+    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY, SIGNOFFS_CAPABILITY],
     // `agentAuthByAgent` is the per-harness gate. `agentAuth` is the
     // single-harness field older Overseer servers still read; it describes
     // the harness sessions without an explicit agent historically used.
@@ -296,6 +298,7 @@ export interface AgentRouterOptions {
   openProjectUpload?: typeof AtomicFileUpload.open;
   moveProjectFile?: typeof moveProjectFile;
   unauthorizedRateLimiter?: UnauthorizedRateLimiter;
+  signoffService?: FleetSignoffService;
 }
 
 export function createAgentRouter(options: AgentRouterOptions = {}): express.Router {
@@ -677,6 +680,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
   // JSON-only session workflow routes moved to dedicated machine transport module.
   attachSessionRoutes(router, sessionRouterDeps);
   attachFleetSessionFileRoutes(router, { fileAccessService, sessionFiles });
+  attachSignoffRoutes(router, options.signoffService ?? signoffs);
 
   router.get("/sessions/:id/transcript", async (req, res) => {
     if (!sessions.get(req.params.id)) return fail(res, 404, "UNKNOWN_SESSION", "unknown session");

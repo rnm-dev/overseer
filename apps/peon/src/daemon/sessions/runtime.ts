@@ -107,6 +107,25 @@ const queueRetryAttempts = new Map<string, number>();
 const drainingRuns = new Set<string>();
 const RESULT_EXIT_GRACE_MS = 10_000;
 
+// Told only to sessions started by a trigger: nobody is watching the chat, so
+// a step that needs a person's decision becomes a sign-off (docs/signoffs.md).
+const SIGNOFF_TRIGGER_APPEND = `This session was started by an external event, not by a person in a chat. Nobody reads this
+conversation live. When the project's instructions say a step needs a person's decision, do not wait and do not ask in
+the chat: record a sign-off with the peon_signoffs signoff_propose tool (one sign-off per topic, each option a concrete
+plan with exact outgoing text, no "do nothing" option), then do everything else you can without that decision and end
+your turn. The decision arrives later as a follow-up in this session. When an approval arrives, call signoff_executing
+before acting and signoff_executed with a result for every action afterwards.`;
+
+/**
+ * Called when a turn settles, before the record is persisted. The sign-off
+ * service registers here to close an unfinished execution and to mark the
+ * session as awaiting a sign-off. Kept as a hook so sessions do not import it.
+ */
+let turnSettledHook: ((record: SessionRecord) => void) | null = null;
+export function setTurnSettledHook(hook: ((record: SessionRecord) => void) | null): void {
+  turnSettledHook = hook;
+}
+
 export function isRunDraining(id: string): boolean {
   return drainingRuns.has(id);
 }
@@ -306,6 +325,11 @@ export function finalizeSession(
   // marks a stop the harness decided on.
   const harnessFailure = turnCountBase === undefined && outcome?.result === "failure";
   if (harnessFailure) appendHarnessNotice(record, outcome.summary);
+  try {
+    turnSettledHook?.(record);
+  } catch (error) {
+    console.error(`sessions: turn-settled hook failed for ${record.id}:`, error);
+  }
   persistSummary(record);
   // Remove the live process before publishing the terminal summary so
   // activeCount() and status:"completed" describe the same boundary.
@@ -512,6 +536,8 @@ function launchProcess(
   replyTo?: ReplyTo,
   attribution?: MessageAttribution,
 ): boolean {
+  // A new turn is under way; "awaiting sign-off" describes a settled session.
+  record.settledState = null;
   // The CLI's own stream-json output never echoes back what it was asked —
   // only its side of the conversation (thinking, tool calls, results). This
   // synthetic event is what makes the transcript show the human side too,
@@ -640,6 +666,7 @@ function launchProcess(
     author,
     record.parentSessionId === null && record.spawnDepth === 0,
   );
+  if (record.origin === "trigger") systemPromptAppend += `\n\n${SIGNOFF_TRIGGER_APPEND}`;
   if (mcpConfig?.unavailableArmoryPackages?.length) {
     systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining
 tools; mention an unavailable package only if it is relevant to the request:\n${mcpConfig.unavailableArmoryPackages

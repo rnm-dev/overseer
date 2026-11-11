@@ -16,5 +16,10 @@ export function toPublicSessionRecord(record: SessionRecord): PublicSessionRecor
     parentCompletionNotificationPending: _parentCompletionNotificationPending,
     ...publicRecord
   } = record;
-  return publicRecord;
+  return {
+    ...publicRecord,
+    origin: record.origin ?? "operator",
+    trigger: record.origin === "trigger" ? record.trigger ?? null : null,
+    settledState: record.status === "completed" ? record.settledState ?? null : null,
+  };
 }

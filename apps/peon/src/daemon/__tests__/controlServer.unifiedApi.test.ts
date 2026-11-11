@@ -177,6 +177,7 @@ test("human API can re-point a project through its settings path", async () => {
   assert.deepEqual(Object.keys(summary ?? {}), [
     "id", "kind", "threadState", "threadSource", "status", "projectKey", "projectId", "title", "promptPreview",
     "lastMessagePreview", "initiator", "outcome", "terminalReason", "startedAt", "endedAt", "lastActivityAt",
+    "origin", "trigger", "settledState",
   ]);
   assert.equal(summary?.promptPreview, "keep running");
   assert.equal("prompt" in (summary ?? {}), false);

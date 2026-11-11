@@ -1,0 +1,64 @@
+{
+  "contractVersion": 1,
+  "capability": "session-signoffs-v1",
+  "projectionCapability": "signoff-catalog-v1",
+  "safeExamples": [
+    {
+      "schema": "createSessionOriginFields",
+      "value": { "origin": "trigger", "trigger": { "id": "wf-1", "source": "email", "correlationId": "msg-7" } }
+    },
+    {
+      "schema": "operatorEventRequest",
+      "value": { "requestId": "4f1c2e64-1d1b-4c4e-9f43-0d8f1a1b7e21", "kind": "approved", "baseSeq": 3, "optionId": "accept" }
+    },
+    {
+      "schema": "operatorEventRequest",
+      "value": { "requestId": "r-2", "kind": "commented", "baseSeq": 1, "message": "Say Saturday, not Friday.", "operatorId": "user-42" }
+    },
+    {
+      "schema": "error",
+      "value": { "error": "SO-12 changed, take another look", "code": "SIGNOFF_CHANGED" }
+    }
+  ],
+  "invalidExamples": [
+    {
+      "schema": "operatorEventRequest",
+      "value": { "requestId": "r-3", "kind": "approved", "baseSeq": 3 },
+      "error": "an approval names its option"
+    },
+    {
+      "schema": "operatorEventRequest",
+      "value": { "requestId": "r-4", "kind": "executed", "baseSeq": 3 },
+      "error": "operators cannot record agent events"
+    },
+    {
+      "schema": "createSessionOriginFields",
+      "value": { "origin": "automation" },
+      "error": "origin is operator or trigger"
+    },
+    {
+      "schema": "snapshot",
+      "value": { "title": "t", "summary": "s", "options": [{ "id": "noop", "label": "Do nothing", "actions": [] }], "assignees": [], "context": [] },
+      "error": "every option names at least one action"
+    }
+  ],
+  "routes": [
+    { "authority": "fleet", "method": "GET", "path": "/api/v1/signoffs", "response": "list" },
+    { "authority": "fleet", "method": "GET", "path": "/api/v1/signoffs/:id", "response": "view" },
+    { "authority": "fleet", "method": "POST", "path": "/api/v1/signoffs/:id/events", "request": "operatorEventRequest", "response": "view" }
+  ],
+  "stableErrors": {
+    "BAD_REQUEST": 400,
+    "SIGNOFF_NOT_ALLOWED": 403,
+    "UNKNOWN_SIGNOFF": 404,
+    "SIGNOFF_CHANGED": 409,
+    "SIGNOFF_STATE": 409,
+    "IDEMPOTENCY_CONFLICT": 409,
+    "SIGNOFF_SESSION_GONE": 410
+  },
+  "mcpTools": {
+    "binding": "peon_signoffs",
+    "triggerOnly": ["signoff_propose"],
+    "everySession": ["signoff_list", "signoff_get", "signoff_revise", "signoff_answer", "signoff_withdraw", "signoff_executing", "signoff_executed"]
+  }
+}

@@ -7,6 +7,7 @@ import { PeonSocketMultiplexer, PEON_SOCKET_MAX_FRAME_BYTES, } from "./peonSocke
 import { PEON_SOCKET_DURABLE_DELIVERY_CAPABILITY, PeonSocketOutbox, } from "./peonSocketOutbox.js";
 import { SessionCatalogChannel } from "./channels/sessionCatalogChannel.js";
 import { ProjectCatalogChannel } from "./channels/projectCatalogChannel.js";
+import { SignoffCatalogChannel } from "./channels/signoffCatalogChannel.js";
 import { RuntimeStateChannel } from "./channels/runtimeStateChannel.js";
 import { settings } from "../../settings/index.js";
 const DEFAULT_RETRY_BASE_MS = 250;
@@ -113,7 +114,7 @@ export class PeonSocketSupervisor {
         const hasDurableOutbox = Boolean(options.outbox || options.outboxFactory);
         const defaultChannels = [
             new SessionCatalogChannel(),
-            ...(hasDurableOutbox ? [new ProjectCatalogChannel(), new RuntimeStateChannel()] : []),
+            ...(hasDurableOutbox ? [new ProjectCatalogChannel(), new RuntimeStateChannel(), new SignoffCatalogChannel()] : []),
         ];
         this.multiplexer = new PeonSocketMultiplexer(options.channels ?? defaultChannels);
         this.outbox = options.outbox ?? null;

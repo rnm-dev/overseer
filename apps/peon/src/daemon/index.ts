@@ -12,6 +12,7 @@ import { controlListenerHosts, isLoopbackBindHost } from "./controlListeners.js"
 import { recoverUpdateOperation } from "./updates/updateOperations.js";
 import { parseListenAddress } from "../shared/listenAddress.js";
 import { refreshAgentModelCatalogs } from "./providers/modelCatalog.js";
+import { reconcileSignoffOrphans, startSignoffs } from "./signoffs/index.js";
 
 // Interface to bind. Defaults to all interfaces so enrolled Overseers can use
 // authenticated Fleet HTTP. `peon remote off` opts into loopback-only access.
@@ -116,7 +117,11 @@ const servers = listenerHosts.map((host, index) => app.listen(PORT, host, index 
   peonSocket.start();
   updateChecker.start();
   startAgentDriverRuntimes();
+  // Sign-offs load first: a restart closes any unfinished execution as
+  // interrupted, and turns settled during session recovery must see them.
+  startSignoffs();
   sessions.restoreFromDisk();
+  reconcileSignoffOrphans();
   // After reconciliation, auto-resume any eligible ad-hoc session this restart
   // (or a prior crash) killed mid-run.
   void sessions.resumeInterrupted().catch((error) => {

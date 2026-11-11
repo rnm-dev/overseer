@@ -22,6 +22,7 @@ import { peonRegistrar, peonSocket } from "./overseer/index.js";
 import { ArmoryMcpLifecycleService, ArmoryMcpRuntime, ArmoryUninstallService, createArmoryReadRouter, createArmoryStores } from "./armory/index.js";
 import { FileAccessService, } from "./files/index.js";
 import { toSessionSummary } from "./sessions/index.js";
+import { signoffs } from "./signoffs/index.js";
 import { analyticsForSessions, parseSessionAnalyticsQuery, SessionAnalyticsQueryError } from "./sessions/index.js";
 import { cliUpdates, CliUpdateError } from "./updates/cliUpdates.js";
 const startedAt = Date.now();
@@ -92,7 +93,19 @@ export function createControlServer(options = {}) {
     // default 100 KiB JSON limit (the legacy Google Play image upload accepts a
     // 20 MiB Base64 string). Parse this loopback-only namespace first with its
     // own bounded allowance; every other JSON route keeps the smaller default.
-    app.use("/mcp", mcpJsonBodyParser(), createScopedMcpRouter({ armoryRuntime, projectService, sessionOrchestration, requestManagedPluginInstall }));
+    app.use("/mcp", mcpJsonBodyParser(), createScopedMcpRouter({
+        armoryRuntime,
+        projectService,
+        sessionOrchestration,
+        requestManagedPluginInstall,
+        signoffs: {
+            service: signoffs,
+            origin: (sessionId) => {
+                const session = sessions.get(sessionId);
+                return session ? session.origin ?? "operator" : undefined;
+            },
+        },
+    }));
     app.use(express.json());
     app.use((req, res, next) => {
         res.header("Access-Control-Allow-Methods", "GET,PATCH,POST,DELETE");

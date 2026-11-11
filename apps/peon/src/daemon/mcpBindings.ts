@@ -76,6 +76,11 @@ export class McpConfigAssembler {
       bindings.push(this.localBinding("peon_plugins", "/mcp/plugins", {
         [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
       }));
+      // Every session can read and answer its own sign-offs; whether it may
+      // propose one is decided server-side from the session's origin.
+      bindings.push(this.localBinding("peon_signoffs", "/mcp/signoffs", {
+        [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
+      }));
     }
     if (context?.allowSessionSpawning) {
       bindings.push(this.localBinding("peon_sessions", "/mcp/sessions", {
