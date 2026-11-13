@@ -5,7 +5,9 @@ tiny filled pin at the right edge of the title row; there is no separate row but
 Pins belong to the signed-in operator within a workspace, not to the whole
 workspace. They persist across browsers and reloads in Overseer's database.
 
-Pinned sessions sort before ordinary sessions in flat lists. Grouped Peon
+Pinned sessions sort before ordinary sessions in flat lists, then unread ones,
+then by activity. A session seen unread keeps its unread rank after it is read
+until the page reloads, so opening it does not make the row jump. Grouped Peon
 sidebars show a separate pinned section above projects. The pins endpoint
 returns the accessible indexed session rows, so older pinned sessions remain
 visible even when they are outside the loaded history page. Current live rows

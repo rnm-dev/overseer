@@ -3,12 +3,17 @@ import { api } from "../../shared/api";
 import { sessionFromIndex, type IndexedSessionLite, type SessionLite } from "./sessionList";
 const changedEvent = "overseer:session-pins-changed";
 export function refreshSessionPins() { window.dispatchEvent(new Event(changedEvent)); }
+// Sessions seen unread during this page load keep their unread rank after being read,
+// so opening one does not make the row jump; a reload drops them back by activity.
+const unreadRanked = new Set<string>();
 export function orderPinnedSessions(sessions: SessionLite[], pins: SessionLite[], peonId?: string): SessionLite[] {
   const key = (s: SessionLite) => `${s.peonId || peonId}:${s.id}`;
   const pinned = new Set(pins.map(key));
   const map = new Map(pins.map((session) => [key(session), session]));
   for (const session of sessions) map.set(key(session), session);
-  return [...map.values()].sort((a,b) => Number(pinned.has(key(b))) - Number(pinned.has(key(a))) || (b.lastActivityAt ?? b.startedAt ?? 0) - (a.lastActivityAt ?? a.startedAt ?? 0));
+  for (const session of map.values()) if (session.attentionUnread) unreadRanked.add(key(session));
+  const unread = (s: SessionLite) => Number(unreadRanked.has(key(s)));
+  return [...map.values()].sort((a,b) => Number(pinned.has(key(b))) - Number(pinned.has(key(a))) || unread(b) - unread(a) || (b.lastActivityAt ?? b.startedAt ?? 0) - (a.lastActivityAt ?? a.startedAt ?? 0));
 }
 export function useSessionPins(workspaceId: string | undefined, peonId?: string) {
   const [pins, setPins] = useState<SessionLite[]>([]);
