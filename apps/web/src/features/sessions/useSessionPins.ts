@@ -11,7 +11,7 @@ export function orderPinnedSessions(sessions: SessionLite[], pins: SessionLite[]
   const key = (s: SessionLite) => `${s.peonId || peonId}:${s.id}`;
   const pinned = new Set(pins.map(key));
   for (const session of unread) unreadRanked.add(key(session));
-  const map = new Map([...unread, ...pins].map((session) => [key(session), session]));
+  const map = new Map([...pins, ...unread].map((session) => [key(session), session]));
   for (const session of sessions) map.set(key(session), session);
   for (const session of map.values()) if (session.attentionUnread) unreadRanked.add(key(session));
   const rank = (s: SessionLite) => Number(unreadRanked.has(key(s)));

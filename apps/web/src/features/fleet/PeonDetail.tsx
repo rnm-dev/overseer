@@ -357,7 +357,7 @@ export function PeonDetail() {
     viewersFor,
     renameSession,
     deleteSession,
-    selectedSession: sessions.find((session) => session.id === sid),
+    selectedSession: ordered.find((session) => session.id === sid),
     onSessionDeleted,
     onSessionRunningChange,
   };
