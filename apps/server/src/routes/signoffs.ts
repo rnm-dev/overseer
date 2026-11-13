@@ -4,6 +4,7 @@ import { canAccessPeon } from "../modules/access/index.js";
 import {
   decideWorkspaceSignoff,
   getWorkspaceSignoff,
+  listSessionSignoffs,
   listWorkspaceSignoffs,
   type Viewer,
 } from "../modules/signoffs/index.js";
@@ -13,6 +14,7 @@ import { userOf, withWorkspace } from "./requestContext.js";
 // records; these routes decide visibility and the right to decide.
 //
 // - GET  /workspaces/:wsId/signoffs?scope=open|all
+// - GET  /workspaces/:wsId/peons/:peonId/sessions/:sid/signoffs   (open ones, for the session banner)
 // - GET  /workspaces/:wsId/peons/:peonId/signoffs/:signoffId
 // - POST /workspaces/:wsId/peons/:peonId/signoffs/:signoffId/events
 export function signoffsRouter(): express.Router {
@@ -40,6 +42,10 @@ export function signoffsRouter(): express.Router {
     }
     return handler(req, res, viewerOf(req, c), record);
   });
+
+  router.get("/workspaces/:wsId/peons/:peonId/sessions/:sid/signoffs", withPeon(async (req, res, viewer, record) => {
+    res.json({ signoffs: await listSessionSignoffs(viewer, record, String(req.params.sid)) });
+  }));
 
   router.get("/workspaces/:wsId/peons/:peonId/signoffs/:signoffId", withPeon(async (req, res, viewer, record) => {
     const result = await getWorkspaceSignoff(viewer, record, String(req.params.signoffId));

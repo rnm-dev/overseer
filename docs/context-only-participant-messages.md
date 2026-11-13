@@ -313,3 +313,15 @@ routing.
 - silently truncating or summarizing the pending context backlog; and
 - promising provider execution exactly once across an ambiguous external
   provider failure.
+
+## The unread badge on the Sessions icon
+
+The Peon header's Sessions icon carries the number of that Peon's sessions with
+something unread for the viewer: a finished turn they started (unread
+`session_attention`) or a mention of them (unread `session_mention_attention`).
+A session counts once. `GET /api/workspaces/:wsId/peons/:id/unread-sessions` →
+`{ count }`; the web recounts on every `attention` and `mention_attention` live
+event (coalesced) and every 60 s. Sessions started through the automation API
+are attributed to the key's owner, so their finished turns count for that
+person too.
+

@@ -104,10 +104,13 @@ async function decorate(viewer: Viewer, record: PeonRecord, row: PeonSignoffSumm
   };
 }
 
-async function readPeon(viewer: Viewer, record: PeonRecord, status: readonly string[] | null): Promise<WorkspaceSignoff[] | UnavailablePeon> {
+async function readPeon(viewer: Viewer, record: PeonRecord, status: readonly string[] | null, sessionId?: string): Promise<WorkspaceSignoff[] | UnavailablePeon> {
   const unavailable = (reason: UnavailablePeon["reason"]): UnavailablePeon => ({ peonId: record.peonId, peonName: record.name, reason });
   if (!isPeonConnected(record.peonId)) return unavailable("offline");
-  const query = status ? `?status=${status.join(",")}` : "";
+  const params = new URLSearchParams();
+  if (status) params.set("status", status.join(","));
+  if (sessionId) params.set("sessionId", sessionId);
+  const query = params.size ? `?${params.toString()}` : "";
   const result = await callPeon(connOfRecord(record), "GET", `/signoffs${query}`, { actor: viewer.email, timeoutMs: READ_TIMEOUT_MS });
   if (result.status === 404) return unavailable("unsupported");
   if (!result.ok) return unavailable("error");
@@ -204,4 +207,17 @@ export async function decideWorkspaceSignoff(
     },
   });
   return { status: result.status, body: result.json };
+}
+
+// One session's open sign-offs, for the banner above its composer.
+// Each carries its summary: the card in the transcript shows it, and a session
+// has only a handful open at a time.
+export async function listSessionSignoffs(viewer: Viewer, record: PeonRecord, sessionId: string): Promise<Array<WorkspaceSignoff & { summary: string | null }>> {
+  const result = await readPeon(viewer, record, OPEN_STATUSES, sessionId);
+  if (!Array.isArray(result)) return [];
+  return Promise.all(result.map(async (row) => {
+    const view = await getWorkspaceSignoff(viewer, record, row.id);
+    const snapshot = view.ok ? (view.view as { snapshot?: { summary?: unknown } }).snapshot : undefined;
+    return { ...row, summary: typeof snapshot?.summary === "string" ? snapshot.summary : null };
+  }));
 }

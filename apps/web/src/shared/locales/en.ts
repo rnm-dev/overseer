@@ -761,7 +761,6 @@ export const en = {
   "signoffs.recommended": "Recommended",
   "signoffs.goAhead": "Go ahead",
   "signoffs.reject": "Reject",
-  "signoffs.somethingElse": "Something else…",
   "signoffs.send": "Send",
   "signoffs.reasonPlaceholder": "Why (optional)",
   "signoffs.commentPlaceholder": "What should the agent do instead?",
@@ -786,6 +785,12 @@ export const en = {
   "proj.api.introNote": "Takes one click. You'll get a ready-to-paste example.",
   "signoffs.showMore": "Show more",
   "signoffs.showLess": "Show less",
+  "signoffs.card.decide": "Decide",
+  "signoffs.card.open": "Open",
+  "signoffs.choose": "Suggested options — pick one",
+  "signoffs.or": "Or:",
+  "signoffs.somethingElse": "Suggest something else",
+  "sessions.unreadCount": "{count} unread",
 } as const;
 
 export type MessageKey = keyof typeof en;

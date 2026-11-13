@@ -32,9 +32,21 @@ type Choice = { kind: "approved"; optionId: string } | { kind: "rejected" } | { 
 // decision is bound to the version on screen (baseSeq); Peon refuses it if the
 // agent revised meanwhile, and the card reloads.
 export function SignoffDetail() {
-  const t = useT();
   const { wsId } = useOutletContext<PeonContext>();
   const { signoffPeonId, signoffId } = useParams();
+  return <SignoffView wsId={wsId} signoffPeonId={signoffPeonId} signoffId={signoffId} />;
+}
+
+// The card itself, used by the page and by the dialog the chat opens. In the
+// dialog the session link is dropped (you are in it) and the outer padding is
+// the dialog's.
+export function SignoffView({ wsId, signoffPeonId, signoffId, embedded = false }: {
+  wsId: string | undefined;
+  signoffPeonId: string | undefined;
+  signoffId: string | undefined;
+  embedded?: boolean;
+}) {
+  const t = useT();
   const [view, setView] = useState<SignoffView | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [choice, setChoice] = useState<Choice>(null);
@@ -107,11 +119,11 @@ export function SignoffDetail() {
     event.author.type === "operator" ? event.author.id : event.author.type === "policy" ? t("signoffs.policy") : event.author.type === "peon" ? "Peon" : t("signoffs.agent");
 
   return (
-    <div className="mx-auto w-full max-w-3xl overflow-y-auto px-4 py-6 md:px-8">
+    <div className={embedded ? "w-full" : "mx-auto w-full max-w-3xl overflow-y-auto px-4 py-6 md:px-8"}>
       <div className="font-body text-xs text-ink-muted">
-        {signoff.displayNumber} · {signoff.peonName}{signoff.projectKey ? ` · ${signoff.projectKey}` : ""} · <Link className="hover:text-accent-strong" to={sessionTo}>{t("signoffs.openSession")}</Link>
+        {signoff.displayNumber} · {signoff.peonName}{signoff.projectKey ? ` · ${signoff.projectKey}` : ""}{!embedded && <> · <Link className="hover:text-accent-strong" to={sessionTo}>{t("signoffs.openSession")}</Link></>}
       </div>
-      <h1 className="mt-1 font-display text-xl text-ink">{snapshot.title}</h1>
+      {!embedded && <h1 className="mt-1 font-display text-xl text-ink">{snapshot.title}</h1>}
       <p className={`mt-1 font-body text-sm ${signoffStatusTone(signoff.status)}`}>
         {t(`signoffs.status.${signoff.status}` as MessageKey)}{deciding ? ` — ${t("signoffs.yourDecision")}` : ""}{signoff.orphaned ? ` — ${t("signoffs.sessionGone")}` : ""}
       </p>
@@ -142,69 +154,84 @@ export function SignoffDetail() {
           {snapshot.context.length > 0 && (
             <div className="mt-3 space-y-1">
               {snapshot.context.map((excerpt, index) => (
-                <blockquote key={index} className="border-l-2 border-edge pl-3 font-body text-xs text-ink-muted whitespace-pre-wrap">{excerpt}</blockquote>
+                <blockquote key={index} className="rounded-lg bg-ink/[0.03] px-3 py-2 font-body text-xs italic text-ink-muted whitespace-pre-wrap">{excerpt}</blockquote>
               ))}
             </div>
           )}
 
-          <ul className="mt-5 space-y-2">
+          {deciding && <p className="mt-6 font-display text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-ink-faint">{t("signoffs.choose")}</p>}
+          <ul className={deciding ? "mt-2 space-y-1" : "mt-5 space-y-1"} role={deciding ? "radiogroup" : undefined}>
             {options.map((option) => {
               const selected = choice?.kind === "approved" && choice.optionId === option.id;
               return (
                 <li key={option.id}
-                  className={`rounded-lg border p-3 ${selected ? "border-accent bg-accent/5" : "border-edge"} ${deciding ? "cursor-pointer" : ""}`}
+                  role={deciding ? "radio" : undefined}
+                  aria-checked={deciding ? selected : undefined}
+                  className={`rounded-xl px-3 py-3 transition-colors ${selected ? "bg-accent/[0.08] ring-1 ring-accent/50" : deciding ? "cursor-pointer hover-wash" : ""}`}
                   onClick={() => deciding && setChoice({ kind: "approved", optionId: option.id })}>
-                  <div className="flex items-center gap-2 font-body text-sm font-semibold text-ink">
-                    {option.label}
-                    {option.recommended && <span className="rounded bg-accent/10 px-1.5 py-0.5 text-[0.6875rem] font-medium text-accent-strong">{t("signoffs.recommended")}</span>}
-                  </div>
-                  {option.rationale && <p className="mt-1 font-body text-xs text-ink-muted">{option.rationale}</p>}
-                  <ol className="mt-2 space-y-1">
-                    {option.actions.map((action, index) => {
-                      const result = results.get(action.id);
-                      return (
-                        <li key={action.id} className="font-body text-sm text-ink">
-                          <span className="mr-1.5 text-ink-muted">{result ? (result.outcome === "done" ? "✓" : result.outcome === "failed" ? "!" : "·") : `${index + 1}.`}</span>
-                          {action.summary}
-                          {action.detail && (
-                            <div className="mt-2 rounded-lg border border-edge bg-surface/40 px-3 py-2.5">
-                              <Folded text={action.detail} lines={6} className="font-body text-sm leading-relaxed text-ink" />
-                            </div>
-                          )}
-                          {result?.note && <div className="mt-0.5 text-xs text-ink-muted">{result.note}</div>}
-                        </li>
-                      );
-                    })}
-                  </ol>
-                  {selected && (
-                    <div className="mt-3 flex justify-end">
-                      <Button size="sm" disabled={busy} onClick={(event) => { event.stopPropagation(); void submit(); }}>
-                        {t("signoffs.goAhead")}
-                      </Button>
+                  <div className="flex items-start gap-3">
+                    {deciding && (
+                      <span aria-hidden className={`mt-0.5 grid size-4 shrink-0 place-items-center rounded-full border ${selected ? "border-accent" : "border-edge-strong"}`}>
+                        {selected && <span className="size-2 rounded-full bg-accent" />}
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 font-body text-sm font-semibold text-ink">
+                        {option.label}
+                        {option.recommended && <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[0.65rem] font-medium text-accent-strong">{t("signoffs.recommended")}</span>}
+                      </div>
+                      {option.rationale && <p className="mt-0.5 font-body text-xs text-ink-muted">{option.rationale}</p>}
+                      <ol className="mt-2 space-y-2">
+                        {option.actions.map((action, index) => {
+                          const result = results.get(action.id);
+                          return (
+                            <li key={action.id} className="font-body text-sm text-ink">
+                              <span className="mr-1.5 text-ink-faint">{result ? (result.outcome === "done" ? "✓" : result.outcome === "failed" ? "!" : "·") : option.actions.length > 1 ? `${index + 1}.` : "→"}</span>
+                              {action.summary}
+                              {action.detail && (
+                                <div className="mt-1.5 rounded-lg bg-ink/[0.04] px-3 py-2">
+                                  <Folded text={action.detail} lines={6} className="font-body text-sm leading-relaxed text-ink-muted" />
+                                </div>
+                              )}
+                              {result?.note && <div className="mt-0.5 text-xs text-ink-muted">{result.note}</div>}
+                            </li>
+                          );
+                        })}
+                      </ol>
+                      {selected && (
+                        <div className="mt-3 flex justify-end">
+                          <Button size="sm" disabled={busy} onClick={(event) => { event.stopPropagation(); void submit(); }}>
+                            {t("signoffs.goAhead")}
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </li>
               );
             })}
           </ul>
 
           {(deciding || commentable) && (
-            <div className="mt-3 space-y-2">
-              {deciding && (
-                <button type="button" onClick={() => setChoice({ kind: "rejected" })}
-                  className={`w-full rounded-lg border p-3 text-left font-body text-sm ${choice?.kind === "rejected" ? "border-danger/60 bg-danger/5" : "border-edge text-ink-muted hover-wash"}`}>
-                  {t("signoffs.reject")}
+            <div className="mt-3 px-3">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 font-body text-sm">
+                <span className="text-ink-faint">{t("signoffs.or")}</span>
+                <button type="button" onClick={() => setChoice({ kind: "commented" })}
+                  className={choice?.kind === "commented" ? "font-medium text-accent-strong" : "text-ink-muted hover:text-ink"}>
+                  {t("signoffs.somethingElse")}
                 </button>
-              )}
-              <button type="button" onClick={() => setChoice({ kind: "commented" })}
-                className={`w-full rounded-lg border p-3 text-left font-body text-sm ${choice?.kind === "commented" ? "border-accent bg-accent/5" : "border-edge text-ink-muted hover-wash"}`}>
-                {t("signoffs.somethingElse")}
-              </button>
+                {deciding && (
+                  <button type="button" onClick={() => setChoice({ kind: "rejected" })}
+                    className={choice?.kind === "rejected" ? "font-medium text-danger" : "text-ink-muted hover:text-danger"}>
+                    {t("signoffs.reject")}
+                  </button>
+                )}
+              </div>
               {(choice?.kind === "rejected" || choice?.kind === "commented") && (
-                <div className="space-y-2">
-                  <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={3} maxLength={8000}
+                <div className="mt-2 space-y-2">
+                  <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={3} maxLength={8000} autoFocus
                     placeholder={t(choice.kind === "rejected" ? "signoffs.reasonPlaceholder" : "signoffs.commentPlaceholder")}
-                    className="w-full rounded-lg border border-edge bg-surface p-2 font-body text-sm text-ink" />
+                    className="field w-full p-2 font-body text-sm" />
                   <div className="flex justify-end">
                     <Button size="sm" variant={choice.kind === "rejected" ? "secondary" : "accent"} disabled={busy || (choice.kind === "commented" && !message.trim())} onClick={() => void submit()}>
                       {t(choice.kind === "rejected" ? "signoffs.reject" : "signoffs.send")}

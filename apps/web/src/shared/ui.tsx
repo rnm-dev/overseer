@@ -40,6 +40,10 @@ export function toolbarItemClass(active = false, iconOnly = false): string {
   return `flex h-7 flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-body text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-default disabled:opacity-45 ${iconOnly ? "w-7" : "px-1.5"} ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover-wash hover:text-ink disabled:hover:bg-transparent disabled:hover:text-ink-muted"}`;
 }
 
+// The title bar of a card: one height, padding and type everywhere.
+export const CARD_HEADER_CLASS = "flex h-11 flex-none items-center gap-3 border-b border-edge px-4";
+export const CARD_TITLE_CLASS = "min-w-0 flex-1 truncate font-display text-sm font-semibold text-ink";
+
 export function Card({ children, className = "", title }: { children: ReactNode; className?: string; title?: string }) {
   return <div className={`glass-panel ${className}`} title={title}>{children}</div>;
 }

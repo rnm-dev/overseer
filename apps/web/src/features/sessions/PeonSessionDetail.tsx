@@ -45,6 +45,7 @@ import { lockSessionDocument } from "./sessionViewport";
 import { loadToolDisplayMode } from "./sessionToolDisplay";
 import { isSuccessfulRunResult, onSelectedSoundPackChange, playPeonSound, playWorkSound, stopWorkSound } from "../../realtime/peonSounds";
 import { PluginInquiryCard } from "./PluginInquiryCard";
+import { SessionSignoffCard, useSessionSignoffs, type SessionSignoff } from "../signoffs/SessionSignoffCard";
 import { DropdownMenu, menuItemClass } from "../../shared/ui";
 import { useSessionBranch } from "./useSessionBranch";
 import { inquiryInsertionIndex, PLUGIN_INQUIRY_CAPABILITY, usePluginInquiries, type PluginInstallInquiry } from "./pluginInquiries";
@@ -70,6 +71,7 @@ type VirtualTranscriptRow =
   | { key: string; kind: "item"; item: Item; paddingClass: string }
   | { key: string; kind: "ghost"; ghost: ComposerGhost; paddingClass: string }
   | { key: string; kind: "inquiry"; inquiry: PluginInstallInquiry; paddingClass: string }
+  | { key: string; kind: "signoff"; signoff: SessionSignoff; paddingClass: string }
   | { key: string; kind: "recovery"; failure: SessionContinuationFailure; paddingClass: string }
   | { key: string; kind: "working"; paddingClass: string }
   | { key: string; kind: "footer"; height: number };
@@ -249,6 +251,7 @@ function PeonSessionDetailPage() {
 
   const controlReadScope = user?.email.toLowerCase() ?? "";
   const pluginInquiries = usePluginInquiries(base, sid, pluginInquiriesSupported, running, controlReadScope);
+  const sessionSignoffs = useSessionSignoffs(wsId, peon.peonId, sid, running);
   const refreshPluginInquiries = pluginInquiries.refresh;
   // A run only exists while the Peon holding it is connected. If it dies mid-run
   // nothing can report the ending, so stop claiming live work rather than
@@ -693,6 +696,10 @@ function PeonSessionDetailPage() {
       rows.splice(itemIndex + insertedInquiries, 0, { key: `plugin-inquiry:${inquiry.inquiryId}`, kind: "inquiry", inquiry, paddingClass: "pt-6" });
       insertedInquiries += 1;
     }
+    // Where the agent stopped: its sign-offs waiting for a decision close the transcript.
+    if (!liveWork) {
+      for (const signoff of sessionSignoffs) rows.push({ key: `signoff:${signoff.id}`, kind: "signoff", signoff, paddingClass: "pt-6" });
+    }
     if (lineage) rows.unshift({ key: "session-lineage", kind: "lineage", ...lineage, paddingClass: "pb-6" });
     if (liveWork) {
       const previousIsUser = ghost || (items.length > 0 && items[items.length - 1]!.kind === "user");
@@ -706,7 +713,7 @@ function PeonSessionDetailPage() {
     }
     rows.push({ key: "session-footer", kind: "footer", height: composerHeight + 40 });
     return rows;
-  }, [composerHeight, continuationFailure, ghost, items, lineage, liveWork, pluginInquiries.inquiries]);
+  }, [composerHeight, continuationFailure, ghost, items, lineage, liveWork, pluginInquiries.inquiries, sessionSignoffs]);
   const recoverInNewSession = useCallback(async () => {
     if (recovering) return;
     setRecovering(true);
@@ -902,6 +909,11 @@ function PeonSessionDetailPage() {
                     replyTo={row.ghost.replyTo ?? undefined}
                     createdAt={row.ghost.createdAt}
                   />
+                </div>
+              );
+              if (row.kind === "signoff") return (
+                <div data-session-signoff-row className={`mx-auto w-full max-w-6xl px-3 sm:px-6 ${row.paddingClass}`}>
+                  <SessionSignoffCard signoff={row.signoff} wsId={wsId} />
                 </div>
               );
               if (row.kind === "inquiry") return (

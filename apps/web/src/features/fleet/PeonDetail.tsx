@@ -24,11 +24,11 @@ import { applyProjectEvent, applyProjectSessionCounts, mergeProjects, withLiveAc
 import { applyAttentionEvent, applyLocalSessionRunningChange, applySessionEvent, mergeSessions, sessionFromIndex, sessionSidebarCanLoad, type IndexedSessionEvent, type IndexedSessionLite, type SessionLite } from "../sessions/sessionList";
 import { MobilePaneIdentity } from "../sessions/mobileHeader";
 import { nextSessionAfterDeletion } from "../sessions/nextSession";
-import { sessionRouteShellClass } from "../sessions/sessionViewport";
 import { prefetchTranscriptSnapshot } from "../sessions/transcriptSnapshotCache";
 import { isProjectPath, sessionListRequestPath } from "./peonApi";
 import { useResizableSidebar } from "./useResizableSidebar";
 import { useWorkingTitle } from "./useWorkingTitle";
+import { sessionRouteShellClass } from "../sessions/sessionViewport";
 import { SignoffSidebarList } from "../signoffs/SignoffSidebarList";
 import { useWorkspaceSignoffs } from "../signoffs/signoffApi";
 
@@ -52,7 +52,7 @@ const newButtonClass = (active: boolean) => `inline-flex items-center gap-1 roun
 export function PeonDetail() {
   const t = useT();
   const { peonId = "", sid = "", key: projectKey = "" } = useParams();
-  const { subscribeAttention, subscribeProjects, subscribeSessions } = useLiveSocket();
+  const { subscribeAttention, subscribeMentionAttention, subscribeProjects, subscribeSessions } = useLiveSocket();
   const { viewersFor } = usePresence();
   const location = useLocation();
   const navigate = useNavigate();
@@ -63,6 +63,34 @@ export function PeonDetail() {
   const base = `/workspaces/${wsId}/peons/${peonId}`;
   const workspaceSignoffs = useWorkspaceSignoffs(wsId, "all");
   const signoffsAwaiting = workspaceSignoffs.signoffs?.filter((row) => row.awaitingViewer).length ?? 0;
+  // Sessions with something unread for me — a finished turn I started or a
+  // mention of me. Recounted on every attention change, coalesced.
+  const [unreadSessions, setUnreadSessions] = useState(0);
+  useEffect(() => {
+    if (!wsId || !peonId) return;
+    let alive = true;
+    let pending: number | null = null;
+    const load = () => {
+      void api<{ count: number }>(`${base}/unread-sessions`)
+        .then((body) => alive && setUnreadSessions(body.count))
+        .catch(() => undefined);
+    };
+    const soon = () => {
+      if (pending !== null) window.clearTimeout(pending);
+      pending = window.setTimeout(load, 400);
+    };
+    load();
+    const timer = window.setInterval(load, 60_000);
+    const offAttention = subscribeAttention(soon);
+    const offMentions = subscribeMentionAttention(soon);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      if (pending !== null) window.clearTimeout(pending);
+      offAttention();
+      offMentions();
+    };
+  }, [base, peonId, subscribeAttention, subscribeMentionAttention, wsId]);
   const isOwner = workspaces.find((workspace) => workspace.id === wsId)?.role === "owner";
 
   // Landing on a peon (deep-link/refresh) may have a different workspace selected;
@@ -342,13 +370,13 @@ export function PeonDetail() {
                 // The sidebar list follows these; on Stats or Settings they also
                 // bring the main pane back to sessions.
                 const selected = view === "signoffs" ? signoffTab : !signoffTab && sessionListMode === view;
-                const awaiting = view === "signoffs" ? signoffsAwaiting : 0;
+                const awaiting = view === "signoffs" ? signoffsAwaiting : view === "flat" ? unreadSessions : 0;
                 return (
                   <button
                     key={view}
                     type="button"
                     title={t(key)}
-                    aria-label={awaiting > 0 ? `${t(key)} — ${t("signoffs.awaitingCount", { count: awaiting })}` : t(key)}
+                    aria-label={awaiting > 0 ? `${t(key)} — ${t(view === "signoffs" ? "signoffs.awaitingCount" : "sessions.unreadCount", { count: awaiting })}` : t(key)}
                     aria-pressed={selected}
                     className={`relative ${iconNavClass(selected && !onPeonPage)}`}
                     onClick={() => {

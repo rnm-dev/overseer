@@ -763,7 +763,6 @@ export const ru: Record<MessageKey, string> = {
   "signoffs.recommended": "Рекомендую",
   "signoffs.goAhead": "Делай",
   "signoffs.reject": "Отклонить",
-  "signoffs.somethingElse": "Другое…",
   "signoffs.send": "Отправить",
   "signoffs.reasonPlaceholder": "Почему (необязательно)",
   "signoffs.commentPlaceholder": "Что агенту сделать вместо этого?",
@@ -788,4 +787,10 @@ export const ru: Record<MessageKey, string> = {
   "proj.api.introNote": "Один клик — и готовый пример, который можно вставить.",
   "signoffs.showMore": "Показать полностью",
   "signoffs.showLess": "Свернуть",
+  "signoffs.card.decide": "Решить",
+  "signoffs.card.open": "Открыть",
+  "signoffs.choose": "Предложенные варианты — выбери один",
+  "signoffs.or": "Или:",
+  "signoffs.somethingElse": "Предложить другое",
+  "sessions.unreadCount": "Непрочитанных: {count}",
 };
