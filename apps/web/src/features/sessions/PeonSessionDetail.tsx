@@ -165,6 +165,8 @@ function PeonSessionDetailPage() {
     if (!sid || !shouldAcknowledgeAttention(attentionUnreadRef.current, document.visibilityState, document.hasFocus())) return;
     if (attentionReadInFlightRef.current === sessionKey) return;
     attentionReadInFlightRef.current = sessionKey;
+    // Lets the list and the badge drop the unread mark now, not after the round trip.
+    window.dispatchEvent(new CustomEvent("overseer:attention-read", { detail: { sessionId: sid } }));
     void api(sessionPath(base, sid, "/attention/read"), { method: "POST" }).catch(() => {
       if (attentionReadInFlightRef.current === sessionKey) attentionReadInFlightRef.current = null;
     });

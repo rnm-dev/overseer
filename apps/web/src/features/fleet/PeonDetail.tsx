@@ -83,6 +83,8 @@ export function PeonDetail() {
   // mention of me. Recounted on every attention change, coalesced.
   const [unreadSessions, setUnreadSessions] = useState(0);
   const [unreadRows, setUnreadRows] = useState<SessionLite[]>([]);
+  const unreadRowsRef = useRef(unreadRows);
+  unreadRowsRef.current = unreadRows;
   useEffect(() => {
     if (!wsId || !peonId) return;
     let alive = true;
@@ -105,6 +107,16 @@ export function PeonDetail() {
       if (pending !== null) window.clearTimeout(pending);
       pending = window.setTimeout(load, 400);
     };
+    const onRead = (event: Event) => {
+      const sessionId = (event as CustomEvent<{ sessionId: string }>).detail?.sessionId;
+      if (unreadRowsRef.current.some((row) => row.id === sessionId && row.attentionUnread)) {
+        setUnreadSessions((count) => Math.max(0, count - 1));
+        setUnreadRows((rows) => rows.map((row) => row.id === sessionId ? { ...row, attentionUnread: false } : row));
+      }
+      setSessions((current) => current.map((row) => row.id === sessionId ? { ...row, attentionUnread: false } : row));
+      soon();
+    };
+    window.addEventListener("overseer:attention-read", onRead);
     load();
     const timer = window.setInterval(load, 60_000);
     const offAttention = subscribeAttention(soon);
@@ -112,6 +124,7 @@ export function PeonDetail() {
     return () => {
       alive = false;
       window.clearInterval(timer);
+      window.removeEventListener("overseer:attention-read", onRead);
       if (pending !== null) window.clearTimeout(pending);
       offAttention();
       offMentions();
