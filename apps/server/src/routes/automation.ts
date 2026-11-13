@@ -19,6 +19,8 @@ import { agentAuthBlocked, transcriptQuery } from "./peons/sessions.js";
 import { bearer, relay } from "./requestContext.js";
 import { automationOpenApiDocument } from "./automationOpenApi.js";
 import { config } from "../infrastructure/config/index.js";
+import { query } from "../infrastructure/db/index.js";
+import { ingestEvent, sourceStatus, TriggerSourceError, type IncomingEvent } from "../modules/triggers/index.js";
 
 // The automation front door. It is a second entrance onto the operator control
 // plane, not a second control plane: every write below ends in the same Fleet
@@ -197,6 +199,15 @@ export function automationRouter(): express.Router {
       // A project-scoped token names its project itself. Letting a caller
       // override it would make the scope advisory.
       if (c.projectKey) body.projectKey = c.projectKey;
+      // Every automation session is trigger-started, so it may record sign-offs
+      // for decisions a person must make (docs/signoffs.md). The caller cannot
+      // say otherwise; it may only name its own correlation id.
+      const correlationId = typeof body.correlationId === "string" && body.correlationId.trim()
+        ? body.correlationId.trim().slice(0, 200)
+        : null;
+      delete body.correlationId;
+      body.origin = "trigger";
+      body.trigger = { id: c.token.id, source: "automation", correlationId };
       const projectKey = typeof body.projectKey === "string" && body.projectKey ? body.projectKey : null;
       if (projectKey) {
         const indexed = await getIndexedProject(c.record.peonId, projectKey);
@@ -232,7 +243,7 @@ export function automationRouter(): express.Router {
       }
       await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
       if (!result.ok) return relay(result, res);
-      res.status(result.status).json({ ...(result.json as Record<string, unknown>), sessionId });
+      res.status(result.status).json({ ...(result.json as Record<string, unknown>), sessionId, requestId });
     })().catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : "start failed", code: "INTERNAL" }));
   });
 
@@ -275,7 +286,9 @@ export function automationRouter(): express.Router {
         });
       }
       if (!(await authorizeSession(c, sid, res))) return;
-      const body = req.body;
+      // The commandId marks the turn this follow-up opens, which is what
+      // GET /sessions/:sid/requests/:requestId looks for.
+      const body = { ...(req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {}), commandId } as Record<string, unknown>;
       const result = await runIdempotentFollowup(c.record.peonId, sid, commandId, body, () =>
         callPeon(connOfRecord(c.record), "POST", `/sessions/${encodeURIComponent(sid)}/followup`, {
           actor: c.operator.email, body, requestId: commandId,
@@ -291,8 +304,57 @@ export function automationRouter(): express.Router {
         }).catch(() => undefined);
       }
       await indexAcceptedSession(result, c.workspaceId, c.record.peonId);
-      relay(result, res);
+      if (!result.ok) return relay(result, res);
+      const accepted = (result.json && typeof result.json === "object" ? result.json : {}) as Record<string, unknown>;
+      res.status(result.status).json({ ...accepted, sessionId: sid, requestId: commandId });
     })().catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : "followup failed", code: "INTERNAL" }));
+  });
+
+  // One request's turn, so a caller can wait for its own work rather than for
+  // the session: queued, running, completed or failed, with the final text.
+  // The create's Idempotency-Key names the first turn; a follow-up's names its own.
+  router.get("/sessions/:sid/requests/:requestId", (req, res) => {
+    void (async () => {
+      const c = contextOf(req);
+      const sid = String(req.params.sid);
+      const requestId = String(req.params.requestId);
+      if (!requestId || requestId.length > 255) return res.status(400).json({ error: "invalid request id", code: "BAD_REQUEST" });
+      if (!(await authorizeSession(c, sid, res))) return;
+      const peonRequest = await isCreateRequest(c.record.peonId, sid, requestId) ? "initial" : requestId;
+      const result = await callPeon(connOfRecord(c.record), "GET",
+        `/sessions/${encodeURIComponent(sid)}/requests/${encodeURIComponent(peonRequest)}`, { actor: c.operator.email });
+      // An unknown session is UNKNOWN_SESSION; any other 404 is a Peon without the route.
+      if (result.status === 404 && (result.json as { code?: unknown } | null)?.code !== "UNKNOWN_SESSION") {
+        return res.status(501).json({ error: "this Peon is too old to report request status", code: "UNSUPPORTED" });
+      }
+      if (!result.ok || !result.json || typeof result.json !== "object") return relay(result, res);
+      const body = result.json as Record<string, unknown>;
+      res.json({ ...body, requestId, done: body.status === "completed" || body.status === "failed" });
+    })().catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : "read failed", code: "INTERNAL" }));
+  });
+
+  // Trigger sources (docs/triggers.md): post each event of one source as it
+  // happens; Overseer delivers them as one stint once the source goes quiet.
+  router.post("/sources/:sourceId/events", (req, res) => {
+    void (async () => {
+      try {
+        res.status(202).json(await ingestEvent(contextOf(req), String(req.params.sourceId), (req.body ?? {}) as IncomingEvent));
+      } catch (error) {
+        if (error instanceof TriggerSourceError) return res.status(error.status).json({ error: error.message, code: error.code });
+        throw error;
+      }
+    })().catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : "event failed", code: "INTERNAL" }));
+  });
+
+  router.get("/sources/:sourceId", (req, res) => {
+    void (async () => {
+      try {
+        res.json(await sourceStatus(contextOf(req), String(req.params.sourceId)));
+      } catch (error) {
+        if (error instanceof TriggerSourceError) return res.status(error.status).json({ error: error.message, code: error.code });
+        throw error;
+      }
+    })().catch((error) => res.status(500).json({ error: error instanceof Error ? error.message : "read failed", code: "INTERNAL" }));
   });
 
   router.get("/sessions/:sid/transcript", (req, res) => {
@@ -328,4 +390,13 @@ export function automationRouter(): express.Router {
   });
 
   return router;
+}
+
+// The create's Idempotency-Key was recorded as the session's `create:` occurrence.
+async function isCreateRequest(peonId: string, sessionId: string, requestId: string): Promise<boolean> {
+  const { rows } = await query(
+    `SELECT 1 FROM session_attention WHERE peon_id=$1 AND session_id=$2 AND occurrence_key=$3 LIMIT 1`,
+    [peonId, sessionId, `create:${requestId}`],
+  );
+  return rows.length > 0;
 }

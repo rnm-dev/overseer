@@ -298,9 +298,12 @@ export function registerSessionRoutes(router: express.Router): void {
           authState: blocked,
         });
       }
+      // A session a person starts is theirs: only the automation API may mark
+      // one trigger-started, the one kind allowed to propose sign-offs.
+      const { origin: _origin, trigger: _trigger, ...body } = (req.body ?? {}) as Record<string, unknown>;
       const result = await callPeon(connOfRecord(c.record), "POST", "/sessions", {
         actor: c.operator.email,
-        body: req.body,
+        body: { ...body, origin: "operator" },
         requestId: typeof requestId === "string" ? requestId : undefined,
       });
       const sessionId = acceptedSessionId(result);

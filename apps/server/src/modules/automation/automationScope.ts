@@ -2,7 +2,7 @@ import { registry, type PeonRecord } from "../fleet/index.js";
 import { membership, type Role } from "../workspaces/index.js";
 import { getUserById } from "../auth/index.js";
 import { allowedProjects, canAccessPeon, canAccessProject } from "../access/index.js";
-import { verifyAutomationToken } from "./automationTokens.js";
+import { getAutomationToken, verifyAutomationToken } from "./automationTokens.js";
 import type { AutomationTokenRecord } from "./automationTokenTypes.js";
 
 // What a verified automation request may do, once the token's frozen scope has
@@ -35,6 +35,21 @@ const unknownPeon: AutomationRefusal = { code: "UNKNOWN_PEON", status: 404, mess
 export async function resolveAutomationRequest(rawToken: string): Promise<AutomationContext | AutomationRefusal> {
   const token = await verifyAutomationToken(rawToken);
   if (!token) return { code: "UNAUTHENTICATED", status: 401, message: "invalid, expired or revoked automation token" };
+  return resolveAutomationScope(token);
+}
+
+// The same live check for work the token already queued — a stint that fires
+// later. A token revoked or expired since, or an owner who lost access, stops it.
+export async function resolveAutomationTokenById(tokenId: string): Promise<AutomationContext | AutomationRefusal> {
+  const token = await getAutomationToken(tokenId);
+  const now = Date.now();
+  if (!token || token.revokedAt !== null || (token.expiresAt !== null && token.expiresAt < now)) {
+    return { code: "UNAUTHENTICATED", status: 401, message: "invalid, expired or revoked automation token" };
+  }
+  return resolveAutomationScope(token);
+}
+
+async function resolveAutomationScope(token: AutomationTokenRecord): Promise<AutomationContext | AutomationRefusal> {
 
   const record = await registry.get(token.peonId);
   if (!record || record.workspaceId !== token.workspaceId) return unknownPeon;

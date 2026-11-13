@@ -46,6 +46,7 @@ import { UnauthorizedRateLimiter } from "./runtime/unauthorizedRateLimit.js";
 import { attachResourceUsageRoutes } from "./http/fleet/resources.js";
 import { attachSignoffRoutes, type FleetSignoffService } from "./http/fleet/signoffs.js";
 import { SIGNOFFS_CAPABILITY, signoffs } from "./signoffs/index.js";
+import { REQUEST_STATUS_CAPABILITY } from "./sessions/index.js";
 
 // The machine-facing control surface a "overseer" (fleet control plane) uses
 // to drive this peon — see PROTOCOL.md. It is deliberately a *separate* router
@@ -259,7 +260,7 @@ function agentStatusView() {
     activeSessionCount: sessions.activeCount(),
     sessionCount: sessions.list().length,
     filesEnabled: Boolean(settings.get().fileTransferRoot),
-    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY, SIGNOFFS_CAPABILITY],
+    capabilities: [MANAGED_PLUGIN_INQUIRY_CAPABILITY, ARMORY_PROJECT_PACKAGES_CAPABILITY, CONTEXT_ONLY_MESSAGES_CAPABILITY, MESSAGE_THREADS_CAPABILITY, SIGNOFFS_CAPABILITY, REQUEST_STATUS_CAPABILITY],
     // `agentAuthByAgent` is the per-harness gate. `agentAuth` is the
     // single-harness field older Overseer servers still read; it describes
     // the harness sessions without an explicit agent historically used.

@@ -1221,4 +1221,47 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       target_user_id TEXT NOT NULL, revoked_devices INTEGER NOT NULL, created_at BIGINT NOT NULL
     )`],
   },
+  {
+    // Trigger sources (docs/triggers.md): an external system's events for one
+    // source id are buffered until quietMs of silence, then delivered to the
+    // source's session as one stint. Events are kept; nothing is truncated.
+    id: "048_trigger_sources",
+    statements: [
+      `CREATE TABLE IF NOT EXISTS trigger_sources (
+         id               TEXT PRIMARY KEY,
+         scope_key        TEXT NOT NULL,
+         source_id        TEXT NOT NULL,
+         token_id         TEXT NOT NULL,
+         workspace_id     TEXT NOT NULL,
+         peon_id          TEXT NOT NULL,
+         project_key      TEXT,
+         session_id       TEXT,
+         quiet_ms         BIGINT NOT NULL,
+         max_ms           BIGINT NOT NULL,
+         stint_started_at BIGINT,
+         deadline_at      BIGINT,
+         last_request_id  TEXT,
+         last_fired_at    BIGINT,
+         last_error       TEXT,
+         created_at       BIGINT NOT NULL,
+         updated_at       BIGINT NOT NULL,
+         UNIQUE (scope_key, source_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS trigger_sources_deadline_idx ON trigger_sources (deadline_at)`,
+      `CREATE INDEX IF NOT EXISTS trigger_sources_session_idx ON trigger_sources (peon_id, session_id)`,
+      `CREATE TABLE IF NOT EXISTS trigger_source_events (
+         id           TEXT PRIMARY KEY,
+         source_row   TEXT NOT NULL,
+         external_id  TEXT NOT NULL,
+         author       TEXT,
+         text         TEXT NOT NULL,
+         at           BIGINT NOT NULL,
+         received_at  BIGINT NOT NULL,
+         stint_id     TEXT,
+         delivered_as TEXT,
+         UNIQUE (source_row, external_id)
+       )`,
+      `CREATE INDEX IF NOT EXISTS trigger_source_events_pending_idx ON trigger_source_events (source_row, delivered_as)`,
+    ],
+  },
 ];

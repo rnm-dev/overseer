@@ -1,18 +1,17 @@
-import { useEffect, useState, type FormEvent } from "react";
-import { Check, Copy, KeyRound, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, ClipboardCheck, Copy, KeyRound, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { ApiError } from "../../shared/api";
 import { useT } from "../../shared/i18n";
-import { Card, ConfirmationDialog, Input } from "../../shared/ui";
+import { Card, ConfirmationDialog } from "../../shared/ui";
+import { AutomationApiGuide } from "./AutomationApiGuide";
 import {
   canRevoke,
   createAutomationToken,
-  EXPIRY_CHOICES,
   isExpired,
   listAutomationTokens,
   orderedTokens,
   revokeAutomationToken,
   type AutomationToken,
-  type ExpiryChoice,
 } from "./automationTokens";
 
 function when(at: number | null, locale: string): string {
@@ -23,8 +22,7 @@ export function ProjectAutomationTokens({ base, projectKey }: { base: string; pr
   const t = useT();
   const [tokens, setTokens] = useState<AutomationToken[]>([]);
   const [canManageAll, setCanManageAll] = useState(false);
-  const [label, setLabel] = useState("");
-  const [expiry, setExpiry] = useState<ExpiryChoice>(90);
+  const [loaded, setLoaded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,25 +41,25 @@ export function ProjectAutomationTokens({ base, projectKey }: { base: string; pr
         setTokens(orderedTokens(list.tokens));
         setCanManageAll(list.canManageAll);
       })
-      .catch((cause) => alive && setError(message(cause)));
+      .catch((cause) => alive && setError(message(cause)))
+      .finally(() => alive && setLoaded(true));
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base, projectKey]);
 
-  async function create(event: FormEvent) {
-    event.preventDefault();
+  // One button, no options: a key for this project that lasts a year.
+  async function create() {
     if (creating) return;
     setCreating(true);
     setError(null);
     try {
       const result = await createAutomationToken(base, projectKey, {
-        label: label.trim() || null,
-        expiresInDays: expiry,
+        label: null,
+        expiresInDays: 365,
       });
       setTokens((current) => orderedTokens([result.created, ...current]));
       setIssued(result.token);
       setCopied(false);
-      setLabel("");
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -96,18 +94,79 @@ export function ProjectAutomationTokens({ base, projectKey }: { base: string; pr
   }
 
   const locale = typeof navigator === "undefined" ? "en" : navigator.language;
+  const hasKeys = tokens.length > 0 || issued !== null;
+
+  // Before any key exists the card is only a short, friendly explanation and
+  // one button; the URL, the example and the key list appear with the first key.
+  if (!loaded) return null;
+  if (!hasKeys) {
+    const steps = [
+      { icon: KeyRound, key: "proj.api.step1" },
+      { icon: Send, key: "proj.api.step2" },
+      { icon: ClipboardCheck, key: "proj.api.step3" },
+    ] as const;
+    return (
+      <Card className="overflow-hidden">
+        <div className="relative px-5 py-5">
+          <div aria-hidden className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-accent/10 blur-3xl" />
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 flex-none place-items-center rounded-xl bg-accent/15 text-accent-strong">
+              <Sparkles size={17} aria-hidden />
+            </span>
+            <div className="min-w-0">
+              <h2 className="font-display text-sm font-bold text-ink">{t("proj.api.introTitle")}</h2>
+              <p className="mt-1 text-xs leading-relaxed text-ink-muted">{t("proj.api.introBody", { project: projectKey })}</p>
+            </div>
+          </div>
+          <ol className="mt-4 grid gap-2 sm:grid-cols-3">
+            {steps.map(({ icon: Icon, key }, index) => (
+              <li key={key} className="flex items-start gap-2 rounded-lg border border-edge bg-surface/30 p-2.5">
+                <span className="grid h-5 w-5 flex-none place-items-center rounded-full bg-accent/15 font-display text-[0.62rem] font-bold text-accent-strong">{index + 1}</span>
+                <span className="min-w-0 text-[0.7rem] leading-snug text-ink">
+                  <Icon size={12} aria-hidden className="mr-1 inline-block align-[-2px] text-ink-muted" />
+                  {t(key)}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="btn-accent inline-flex h-9 items-center gap-1.5 rounded-lg px-4 font-display text-xs font-semibold disabled:opacity-40"
+              disabled={creating}
+              onClick={() => void create()}
+            >
+              <Plus size={14} aria-hidden /> {creating ? t("proj.tokens.creating") : t("proj.api.createKey")}
+            </button>
+            <span className="text-[0.68rem] text-ink-faint">{t("proj.api.introNote")}</span>
+          </div>
+          {error && <p role="alert" className="mt-3 font-mono text-xs text-danger">⚠ {error}</p>}
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center gap-3 border-b border-edge bg-surface-raised/40 px-4 py-2.5">
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-xs font-bold text-ink">{t("proj.tokens")}</h2>
-          <p className="mt-0.5 truncate text-[0.68rem] text-ink-faint">{t("proj.tokens.hint")}</p>
+          <h2 className="font-display text-xs font-bold text-ink">{t("proj.api")}</h2>
+          <p className="mt-0.5 text-[0.68rem] text-ink-faint">{t("proj.api.hint", { project: projectKey })}</p>
         </div>
         <KeyRound size={13} className="flex-none text-ink-faint" aria-hidden />
       </div>
 
-      <div className="space-y-2.5 p-3">
+      <div className="space-y-3 p-3">
+        {!issued && (
+          <button
+            type="button"
+            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-accent/35 bg-accent/10 px-3 font-display text-[0.68rem] font-semibold text-accent-strong transition-colors hover:bg-accent/15 disabled:opacity-40"
+            disabled={creating}
+            onClick={() => void create()}
+          >
+            <Plus size={12} aria-hidden /> {creating ? t("proj.tokens.creating") : t(tokens.length === 0 ? "proj.api.createKey" : "proj.api.createAnother")}
+          </button>
+        )}
         {issued && (
           <div className="rounded-lg border border-accent/40 bg-accent/[0.07] p-3">
             <p className="mb-2 font-mono text-[0.68rem] text-accent-strong">⚡ {t("proj.tokens.created")}</p>
@@ -132,7 +191,9 @@ export function ProjectAutomationTokens({ base, projectKey }: { base: string; pr
           </div>
         )}
 
-        {tokens.length === 0 && <p className="px-1 py-1 text-xs text-ink-faint">{t("proj.tokens.empty")}</p>}
+        <AutomationApiGuide token={issued} />
+
+        {tokens.length > 0 && <h3 className="pt-1 font-display text-[0.68rem] font-semibold text-ink-muted">{t("proj.api.keys")}</h3>}
         {tokens.length > 0 && (
           <div className="divide-y divide-edge overflow-hidden rounded-lg border border-edge">
             {tokens.map((token) => {
@@ -173,39 +234,6 @@ export function ProjectAutomationTokens({ base, projectKey }: { base: string; pr
           </div>
         )}
 
-        <form className="grid gap-1.5 rounded-lg border border-dashed border-edge-strong bg-surface/15 p-2 md:grid-cols-[minmax(10rem,2fr)_minmax(7rem,1fr)_auto] md:items-center" onSubmit={create}>
-          <label className="sr-only" htmlFor="new-automation-token-label">{t("proj.tokens.label")}</label>
-          <Input
-            id="new-automation-token-label"
-            className="h-8 px-2.5 text-xs"
-            maxLength={120}
-            value={label}
-            disabled={creating}
-            onChange={(event) => setLabel(event.target.value)}
-            placeholder={t("proj.tokens.labelPlaceholder")}
-          />
-          <label className="sr-only" htmlFor="new-automation-token-expiry">{t("proj.tokens.expiry")}</label>
-          <select
-            id="new-automation-token-expiry"
-            className="field h-8 px-2 text-xs"
-            value={expiry === null ? "never" : String(expiry)}
-            disabled={creating}
-            onChange={(event) => setExpiry(event.target.value === "never" ? null : Number(event.target.value) as ExpiryChoice)}
-          >
-            {EXPIRY_CHOICES.map((choice) => (
-              <option key={choice === null ? "never" : choice} value={choice === null ? "never" : String(choice)}>
-                {choice === null ? t("proj.tokens.expiry.never") : t("proj.tokens.expiry.days", { days: String(choice) })}
-              </option>
-            ))}
-          </select>
-          <button
-            type="submit"
-            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-accent/35 bg-accent/10 px-3 font-display text-[0.68rem] font-semibold text-accent-strong transition-colors hover:bg-accent/15 disabled:opacity-40"
-            disabled={creating}
-          >
-            <Plus size={12} aria-hidden /> {creating ? t("proj.tokens.creating") : t("proj.tokens.create")}
-          </button>
-        </form>
 
         {error && <p role="alert" className="px-1 font-mono text-xs text-danger">⚠ {error}</p>}
       </div>

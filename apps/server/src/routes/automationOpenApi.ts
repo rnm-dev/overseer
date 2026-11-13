@@ -147,6 +147,7 @@ export function automationOpenApiDocument(publicUrl: string) {
                   type: "object",
                   properties: {
                     prompt: { type: "string" },
+                    correlationId: { type: "string", maxLength: 200, description: "your id for the event that triggered this session, e.g. a ticket" },
                     projectKey: { type: "string", description: "ignored on a project-scoped token, which names its own project" },
                     dir: { type: "string" },
                     agent: { type: "string" },
@@ -204,6 +205,40 @@ export function automationOpenApiDocument(publicUrl: string) {
             },
           },
           responses: { 200: { description: "accepted" }, ...failures },
+        },
+      },
+      "/sessions/{sessionId}/requests/{requestId}": {
+        get: {
+          summary: "Status of one request",
+          description: "The turn a create or a follow-up started, named by the Idempotency-Key it was sent with. Poll until `done` is true.",
+          parameters: [
+            { name: "sessionId", in: "path", required: true, schema: { type: "string" } },
+            { name: "requestId", in: "path", required: true, schema: { type: "string" } },
+          ],
+          responses: {
+            200: {
+              description: "the request's turn",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      sessionId: { type: "string" },
+                      requestId: { type: "string" },
+                      status: { type: "string", enum: ["queued", "running", "completed", "failed", "unknown"] },
+                      done: { type: "boolean" },
+                      queuePosition: { type: ["integer", "null"] },
+                      text: { type: ["string", "null"], description: "the turn's last assistant text, bounded" },
+                      awaitingSignoff: { type: "boolean", description: "the agent asked a person to decide; see Sign-offs" },
+                      error: { type: ["string", "null"] },
+                    },
+                  },
+                },
+              },
+            },
+            501: { description: "the Peon is too old to report request status" },
+            ...failures,
+          },
         },
       },
       "/sessions/{sessionId}/transcript": {

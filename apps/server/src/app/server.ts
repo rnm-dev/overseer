@@ -8,6 +8,7 @@ import { agentRouter } from "../routes/agent.js";
 import { accountRouter, publicAuthRouter } from "../routes/auth.js";
 import { workspacesRouter } from "../routes/workspaces.js";
 import { peonsRouter } from "../routes/peons.js";
+import { signoffsRouter } from "../routes/signoffs.js";
 import { pushRouter } from "../routes/push.js";
 import { webPreviewHandler } from "../routes/webPreview.js";
 import { projectViewerRouter } from "../routes/projectViewer.js";
@@ -109,6 +110,7 @@ export function createServer({ production = isProduction }: { production?: boole
   api.use(accountRouter());
   api.use(pushRouter());
   api.use(workspacesRouter());
+  api.use(signoffsRouter());
   api.use(peonsRouter());
   // Dictation carries a raw audio body, so it mounts its own parser with its
   // own, larger limit — under this router only.

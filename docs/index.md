@@ -86,6 +86,8 @@ repository — that content lives here.
 - [automation API](automation-api.md) — bearer tokens scoped to a Peon and
   optionally a project, for machine callers that start sessions, follow up,
   attach files and poll status without a browser session.
+- [trigger sources and stints](triggers.md) — external events buffered per
+  source until it goes quiet, then delivered to one session as a stint.
 - [session sign-offs](signoffs.md) — a trigger-started session records a
   decision a person must make, ends its turn, and gets the decision back as a
   follow-up; Peon owns the record, Overseer projects and decides.

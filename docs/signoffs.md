@@ -249,3 +249,63 @@ gets an `interrupted` event with each action's result `unknown`, "check whether
 it happened". When a turn settles, an `executing` it left open is interrupted
 the same way. After sessions are restored, sign-offs of missing sessions are
 marked orphaned.
+
+## What Overseer implements (OVSR-611)
+
+Code: `apps/server/src/modules/signoffs/`, `apps/server/src/routes/signoffs.ts`,
+`apps/web/src/features/signoffs/`.
+
+### Reads are live, not projected yet
+
+This first cut does **not** consume `signoff-catalog-v1`. The workspace list
+asks every online Peon the viewer can access (`GET /signoffs` over Fleet HTTP,
+10 s timeout each, in parallel). An offline Peon is reported in `unavailable`
+and its sign-offs are missing from the list until it is back. A Peon without
+the routes (404) counts as `unsupported` and is not mentioned in the UI.
+Consuming the projection, so that offline sign-offs stay visible and pushes
+can fire, is the next step; it has to join the shared durable-delivery
+coordinator in `adapters/peonSessionSync.ts`.
+
+### API
+
+- `GET /api/workspaces/:wsId/signoffs?scope=open|all` → `{ signoffs, unavailable }`.
+  Each row is Peon's summary plus `peonId`, `peonName`, `canDecide` and
+  `awaitingViewer`.
+- `GET /api/workspaces/:wsId/peons/:peonId/signoffs/:signoffId` → Peon's view
+  (summary, snapshot, history), decorated the same way. `503 PEON_OFFLINE`
+  while the Peon is away.
+- `POST /api/workspaces/:wsId/peons/:peonId/signoffs/:signoffId/events` with
+  `{ kind, baseSeq, optionId?, message?, requestId? }`, `kind` one of
+  `commented`, `approved`, `rejected`, `withdrawn`. Overseer checks the right,
+  then forwards with `operatorId` = the operator's email; Peon's refusals
+  (`SIGNOFF_CHANGED`, `SIGNOFF_STATE`, `SIGNOFF_SESSION_GONE`) pass through
+  unchanged. Reassigning has no UI yet and is not accepted here.
+
+### Visibility and the right to decide
+
+- **Sees** a sign-off: whoever could see its session — Peon access, plus
+  project access when it belongs to a project — and any named assignee on a
+  Peon they can access.
+- **Decides** (approve, reject, withdraw): the named assignees (matched by
+  email or user id, case-insensitively) and workspace owners; when nobody is
+  named, the project's administrators and the owners; outside a project, the
+  owners only. Administrator grants are matched through the indexed project's
+  id, because that is how they are stored.
+- **Comments**: anyone who sees it, while it is not orphaned.
+- `awaitingViewer` (the badge and the "Mine" filter): decidable by the viewer,
+  and either they are named or nobody is.
+
+### Web
+
+The Peon header toolbar holds the sidebar's views as icons — Sessions, Projects,
+**Sign-offs** (with a count of what waits on the viewer), then Stats and
+Settings; there is no tab bar. It lists the whole workspace with
+*Mine · Open · All* filters and refreshes every 20 s and after each decision.
+A row opens `/peons/:peonId/signoffs/:signoffPeonId/:signoffId` in the main
+pane. The card has the summary, the trigger excerpts and the options with their
+steps. Choosing an option shows its **Go ahead**; **Reject** (with an optional
+reason) and **Something else…** (a comment) sit below. A History tab lists the
+events. Results after execution are labelled as reported by the agent.
+
+Not built yet: the sign-off inside the session view, pushes, live updates over
+the workspace socket instead of polling, and reassigning.
