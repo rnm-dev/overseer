@@ -791,6 +791,8 @@ export const en = {
   "signoffs.or": "Or:",
   "signoffs.somethingElse": "Suggest something else",
   "sessions.unreadCount": "{count} unread",
+  "peon.settings.signoffs": "Sign-offs",
+  "peon.settings.signoffsHint": "Sessions started by another app or a trigger ask a person before important steps and wait in Sign-offs. Off: they never ask and decide on their own.",
 } as const;
 
 export type MessageKey = keyof typeof en;

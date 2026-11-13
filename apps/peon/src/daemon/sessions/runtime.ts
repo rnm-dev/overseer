@@ -669,7 +669,8 @@ function launchProcess(
     author,
     record.parentSessionId === null && record.spawnDepth === 0,
   );
-  if (record.origin === "trigger") systemPromptAppend += `\n\n${SIGNOFF_TRIGGER_APPEND}`;
+  // The sign-off rule only when this Peon has sign-offs switched on.
+  if (record.origin === "trigger" && settings.get().signoffsEnabled !== false) systemPromptAppend += `\n\n${SIGNOFF_TRIGGER_APPEND}`;
   if (mcpConfig?.unavailableArmoryPackages?.length) {
     systemPromptAppend += `\n\nSome optional Armory tools are unavailable for this turn. Continue the task with the remaining
 tools; mention an unavailable package only if it is relevant to the request:\n${mcpConfig.unavailableArmoryPackages

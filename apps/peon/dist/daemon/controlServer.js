@@ -104,6 +104,7 @@ export function createControlServer(options = {}) {
                 const session = sessions.get(sessionId);
                 return session ? session.origin ?? "operator" : undefined;
             },
+            proposeEnabled: () => settings.get().signoffsEnabled !== false,
         },
     }));
     app.use(express.json());

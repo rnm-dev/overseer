@@ -154,6 +154,15 @@ Wire shapes are normative in
 fixtures beside it. Peon advertises `session-signoffs-v1` in `GET /status`
 capabilities. Code lives in `apps/peon/src/daemon/signoffs/`.
 
+### The switch
+
+`signoffsEnabled` (default `true`) is a daemon setting, on the Peon's General
+settings page as **Sign-offs** and remotely manageable through the daemon
+configuration patch. Off: no session is offered `signoff_propose` (a direct
+call is refused with `SIGNOFF_DISABLED`) and trigger sessions get no sign-off
+rule in their prompt, so they act on their own. Sign-offs already recorded can
+still be decided, and the other sign-off tools keep working.
+
 ### Session origin
 
 - `POST /api/v1/sessions` accepts `origin: "operator" | "trigger"` and, with

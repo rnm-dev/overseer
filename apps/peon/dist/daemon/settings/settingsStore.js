@@ -58,6 +58,7 @@ const DEFAULT_SETTINGS = {
     listenAddress: `0.0.0.0:${process.env.ACA_CONTROL_PORT ?? 4570}`,
     name: "",
     autoResumeInterrupted: true,
+    signoffsEnabled: true,
     overseerToken: "",
     fileTransferRoot: "",
     overseerUrl: "",

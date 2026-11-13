@@ -793,4 +793,6 @@ export const ru: Record<MessageKey, string> = {
   "signoffs.or": "Или:",
   "signoffs.somethingElse": "Предложить другое",
   "sessions.unreadCount": "Непрочитанных: {count}",
+  "peon.settings.signoffs": "Согласования",
+  "peon.settings.signoffsHint": "Сессии, запущенные другим приложением или триггером, спрашивают человека перед важными шагами и ждут в Согласованиях. Выключено: никогда не спрашивают и решают сами.",
 };

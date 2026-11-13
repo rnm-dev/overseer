@@ -133,6 +133,8 @@ export interface SignoffMcpApi {
   service: Pick<SignoffService, "propose" | "agentList" | "agentGet" | "revise" | "answer" | "withdraw" | "executing" | "executed">;
   /** The calling session's origin; undefined for an unknown session. */
   origin(sessionId: string): "operator" | "trigger" | undefined;
+  /** The Peon's sign-offs switch (settings.signoffsEnabled); off hides and refuses propose. */
+  proposeEnabled?(): boolean;
 }
 
 const SNAPSHOT_PROPERTIES = {
@@ -274,7 +276,7 @@ const SIGNOFF_TOOLS: Tool[] = [
 
 function signoffProvider(api: SignoffMcpApi, sessionId: string): McpToolProvider {
   return {
-    listTools: async () => api.origin(sessionId) === "trigger" ? [SIGNOFF_PROPOSE_TOOL, ...SIGNOFF_TOOLS] : SIGNOFF_TOOLS,
+    listTools: async () => api.origin(sessionId) === "trigger" && api.proposeEnabled?.() !== false ? [SIGNOFF_PROPOSE_TOOL, ...SIGNOFF_TOOLS] : SIGNOFF_TOOLS,
     callTool: async (name, args) => {
       try {
         const { service } = api;
@@ -283,6 +285,9 @@ function signoffProvider(api: SignoffMcpApi, sessionId: string): McpToolProvider
           // depend on the agent not knowing the tool's name.
           if (api.origin(sessionId) !== "trigger") {
             return toolError("SIGNOFF_NOT_ALLOWED: sign-offs are only for sessions started by a trigger. A person is in this chat: ask them directly.");
+          }
+          if (api.proposeEnabled?.() === false) {
+            return toolError("SIGNOFF_DISABLED: sign-offs are turned off on this Peon. Do not take steps that need a person's decision; describe them in your reply instead.");
           }
           return toolJson(service.propose(sessionId, args));
         }

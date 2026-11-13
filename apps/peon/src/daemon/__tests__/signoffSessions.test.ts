@@ -56,7 +56,11 @@ async function serve() {
   app.use(express.json());
   app.use("/mcp", createScopedMcpRouter({
     armoryRuntime: {} as never,
-    signoffs: { service: signoffs, origin: (id) => sessions.get(id)?.origin ?? (sessions.get(id) ? "operator" : undefined) },
+    signoffs: {
+      service: signoffs,
+      origin: (id) => sessions.get(id)?.origin ?? (sessions.get(id) ? "operator" : undefined),
+      proposeEnabled: () => settings.get().signoffsEnabled !== false,
+    },
   }));
   const fleet = express.Router();
   fleet.use((req, _res, next) => { req.actor = "owner@example.com"; next(); });
@@ -166,6 +170,25 @@ test("an operator-origin session is not offered signoff_propose and a direct cal
     assert.match(refused.text, /ask them directly/);
     await agent.client.close();
   } finally {
+    server.close();
+  }
+});
+
+test("with sign-offs switched off on the Peon, even a trigger session is not offered signoff_propose", async () => {
+  const { server, base } = await serve();
+  settings.update({ signoffsEnabled: false });
+  try {
+    const record = sessions.start({ prompt: "event", dir: fakeDir, agent: "claude-code", deferStart: true, origin: "trigger" } as never);
+    assert.equal(record.origin, "trigger");
+    const agent = await mcp(base, record.id);
+    const tools = (await agent.client.listTools()).tools.map((tool) => tool.name);
+    assert.ok(!tools.includes("signoff_propose"));
+    const refused = await agent.call("signoff_propose", proposal);
+    assert.equal(refused.isError, true);
+    assert.match(refused.text, /SIGNOFF_DISABLED/);
+    await agent.client.close();
+  } finally {
+    settings.update({ signoffsEnabled: true });
     server.close();
   }
 });

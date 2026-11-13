@@ -62,6 +62,7 @@ export class SettingsService extends EventEmitter {
             maxTurns: s.maxTurns,
             taskTimeoutMs: s.taskTimeoutMs,
             maxBudgetUsd: s.maxBudgetUsd,
+            signoffsEnabled: s.signoffsEnabled !== false,
         };
     }
     getDaemonConfigurationView(settings = this.get()) {
@@ -76,6 +77,7 @@ export class SettingsService extends EventEmitter {
             maxTurns: settings.maxTurns,
             taskTimeoutMs: settings.taskTimeoutMs,
             maxBudgetUsd: settings.maxBudgetUsd,
+            signoffsEnabled: settings.signoffsEnabled !== false,
         };
     }
     patchDaemonConfiguration(body) {
@@ -100,7 +102,7 @@ export class SettingsService extends EventEmitter {
         const allowed = new Set([
             "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
             "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
-            "maxTurns", "taskTimeoutMs", "maxBudgetUsd",
+            "maxTurns", "taskTimeoutMs", "maxBudgetUsd", "signoffsEnabled",
         ]);
         const unknown = Object.keys(value).find((key) => !allowed.has(key));
         if (unknown)
@@ -168,6 +170,11 @@ export class SettingsService extends EventEmitter {
             if (typeof body.paused !== "boolean")
                 this.throwBadRequest("paused must be a boolean");
             patch.paused = body.paused;
+        }
+        if ("signoffsEnabled" in body) {
+            if (typeof body.signoffsEnabled !== "boolean")
+                this.throwBadRequest("signoffsEnabled must be a boolean");
+            patch.signoffsEnabled = body.signoffsEnabled;
         }
         if ("name" in body) {
             const name = body.name;
@@ -387,6 +394,7 @@ export class SettingsService extends EventEmitter {
             maxTurns: settings.maxTurns,
             taskTimeoutMs: settings.taskTimeoutMs,
             maxBudgetUsd: settings.maxBudgetUsd,
+            signoffsEnabled: settings.signoffsEnabled !== false,
         };
     }
     throwBadRequest(error) {
