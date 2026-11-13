@@ -22,6 +22,8 @@ test("large Claude system prompts are passed through a private temporary file", 
     assert.equal(invocation.args[flagIndex + 1], invocation.systemPromptPath);
     assert.equal(invocation.args.includes("--append-system-prompt"), false);
     assert.equal(invocation.args.includes(systemPromptAppend), false);
+    // The prompt goes to stdin, never argv.
+    assert.equal(invocation.args.includes("hello"), false);
     assert.equal(readFileSync(invocation.systemPromptPath, "utf8"), systemPromptAppend);
     assert.equal(statSync(invocation.systemPromptPath).mode & 0o777, 0o600);
   } finally {

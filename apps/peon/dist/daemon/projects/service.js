@@ -24,7 +24,7 @@ For this first turn:
 3. Ask the user 3–5 concise, high-value questions in one message. Cover only what is useful and still unclear, such as the project's purpose and users, current stage, important workflows or commands, and non-obvious constraints. Make it easy to answer briefly, and allow “not sure” where appropriate.
 4. Stop after the questions and wait for the user's follow-up.
 
-After the user answers, create or update docs/index.md as a concise project hub. Add focused documents under docs/ only when the project genuinely needs them. Capture useful commands, workflows, architecture, and constraints that are supported by the repository or the user's answers. Keep it practical and lightweight; do not manufacture process or excessive documentation.`;
+After the user answers, create or update docs/index.md as a concise project hub; it is injected into every session's prompt, so keep it lean. While the documentation is small, keep it in docs/index.md itself; add focused documents under docs/ only for topics substantial enough to deserve their own page. Capture useful commands, workflows, architecture, and constraints that are supported by the repository or the user's answers. Keep it practical and lightweight; do not manufacture process or excessive documentation.`;
 export class ProjectService {
     projects;
     sessionIndex;

@@ -9,8 +9,11 @@ import { normalizeFileToolInput } from "./toolPaths.js";
 import { claudeUsage, claudeResultUsage, ClaudeInputAccumulator } from "./claudeUsage.js";
 
 export function buildClaudeCodeArgs(opts: AgentRunOptions, systemPromptPath: string): string[] {
+  // Neither the prompt nor the system prompt travels on the command line: a
+  // large one overflows the OS argument limit (E2BIG) and the spawn fails.
+  // The prompt is written to stdin, the system prompt to a private file.
   const args = [
-    "-p", opts.prompt,
+    "-p",
     "--output-format", "stream-json",
     "--verbose",
     "--permission-mode", opts.permissionMode ?? "bypassPermissions",
@@ -173,7 +176,7 @@ export function createClaudeCodeEventNormalizer(
 export function runClaudeCode(opts: AgentRunOptions): AgentRun {
   const invocation = prepareClaudeCodeInvocation(opts);
   try {
-    const run = spawnJsonAgent(opts.command, invocation.args, opts.cwd, createClaudeCodeEventNormalizer(opts));
+    const run = spawnJsonAgent(opts.command, invocation.args, opts.cwd, createClaudeCodeEventNormalizer(opts), opts.prompt);
     run.emitter.once("exit", invocation.dispose);
     return run;
   } catch (error) {

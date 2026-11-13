@@ -78,6 +78,12 @@ documentation in docs/ when the task requires updating it. When the user asks yo
 project information or instructions, persist them in docs/. Put focused details in a focused
 document. Put critical instructions and processes that should apply to every task directly in
 docs/index.md, because that index is injected into every linked session's main prompt.
+Because every session pays for docs/index.md, keep it lean: critical rules plus a short map
+of one line per topic. When you edit it, prefer tightening or moving detail out over adding
+prose, and do not repeat what a linked page already says. Scale the structure to the actual
+amount of documentation: while the whole of docs/ is small, keep the content directly in
+docs/index.md rather than fragmenting it into tiny pages; split a topic into its own page only
+once it is substantial or only relevant to some tasks.
 Repository instruction files such
 as CLAUDE.md or AGENTS.md are not a substitute for the project documentation. When creating or
 editing links between files in docs/, use Markdown paths relative to the document containing
