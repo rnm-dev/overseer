@@ -56,8 +56,11 @@ token must not be able to grow itself a longer-lived sibling.
 
 ## Where an operator manages them
 
-Project settings carries an **Automation tokens** card. Creating one asks for a
-label and an expiry (30/90/365 days, or none) and shows the secret exactly
+Project settings carries one **API** card (`ProjectAutomationTokens.tsx` with
+`AutomationApiGuide.tsx`), kept deliberately simple: a single **Create API
+key** button (no label, one-year expiry), the base URL, one copyable start →
+follow-up → poll curl example — filled in with the new key while it is on
+screen — and the list of keys with revoke. The key is shown exactly
 once — there is no route that can show it again, and no column that could.
 
 The operator routes live under the project, beside its other settings:
@@ -81,6 +84,7 @@ existing `{ error, code }` shape.
 | `POST` | `/sessions` | start a session with a message |
 | `GET` | `/sessions/:id` | status and metadata |
 | `POST` | `/sessions/:id/followup` | send a follow-up |
+| `GET` | `/sessions/:id/requests/:requestId` | status of one request's turn |
 | `GET` | `/sessions/:id/transcript` | paginated history |
 | `POST` | `/uploads` | commit a file, returns the path an attachment uses |
 | `GET` | `/whoami` | the token's scope, owner and expiry |
@@ -122,12 +126,23 @@ including the `409 AGENT_UNAVAILABLE` refusal when the Peon's agent CLI is not
 signed in.
 
 `Idempotency-Key` is required. It is passed through as `Peon-Request-Id`, so a
-retried create returns the same session instead of starting a second one.
+retried create returns the same session instead of starting a second one. The
+response adds `requestId` (that key), the id to poll the first turn by.
+
+Every automation session is **trigger-started**: Overseer always sends
+`origin: "trigger"` and `trigger: { id: <tokenId>, source: "automation",
+correlationId }`, so the agent may record [sign-offs](signoffs.md) for
+decisions a person must make. `correlationId` is the caller's own id for the
+event (a ticket, a message), at most 200 characters; the caller cannot set
+`origin` itself. Conversely the operator route always sends `origin:
+"operator"`, so a session a person starts can never propose sign-offs.
 
 ### Follow-ups
 
 `POST /sessions/:id/followup` with `{ prompt, attachments? }` and a required
-`Idempotency-Key`. Semantics are the operator route's: the Peon queues it when a
+`Idempotency-Key`, which Overseer also sends as the follow-up's `commandId` so
+the turn it opens can be found later. The response adds `sessionId` and
+`requestId`. Semantics are the operator route's: the Peon queues it when a
 turn is running, and `model`/`reasoningEffort` named here pin the conversation.
 
 ### Attachments
@@ -159,6 +174,29 @@ reconcile point: it republishes the Peon's authoritative record, so a row left
 `running` by a Peon that died mid-turn heals rather than lying to a poller
 forever. `terminalReason` carries the provider-neutral stop code described in
 [sessions, turns and their control plane](sessions-and-turns.md#turn-budget).
+
+### Status of one request
+
+`GET /sessions/:id/requests/:requestId` answers for the turn a create or a
+follow-up started, which session status cannot: a follow-up may wait behind
+another turn while the session is `running`. It returns `{ sessionId,
+requestId, status, done, queuePosition, text, awaitingSignoff, error }`:
+
+- `status` is `queued` (with its 1-based `queuePosition`), `running`,
+  `completed`, `failed` or `unknown`; `done` is true for the last two finished
+  states.
+- `text` is the turn's last top-level assistant text, bounded to 16 000
+  characters.
+- `awaitingSignoff` is true when the session settled waiting on a sign-off
+  after this turn — the answer will come after a person decides.
+
+Peon derives it, nothing is stored: the queue says what waits, and each
+`user_message` in the transcript carries the `commandId` of the turn it opened
+(`apps/peon/src/daemon/sessions/requestStatus.ts`, `GET
+/sessions/:id/requests/:requestId` on Fleet HTTP; `initial` names the first
+turn, and Overseer maps the create's key to it through the `create:` request
+record). Peon advertises `session-request-status-v1`; an older Peon answers
+`501 UNSUPPORTED`.
 
 Polling this endpoint is the supported way to wait for a turn to finish. There
 is no automation websocket or SSE surface in this iteration.

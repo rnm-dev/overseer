@@ -8,6 +8,7 @@ import { attachUpgradeFallback } from "./adapters/upgradeGuard.js";
 import { describePeonUpgrade } from "./adapters/peonSocketAuth.js";
 import { pruneEvents } from "./infrastructure/events/index.js";
 import { startPushWorker } from "./modules/notifications/index.js";
+import { startTriggerSourceWorker } from "./modules/triggers/index.js";
 import { configureEventDelivery } from "./app/eventDelivery.js";
 
 async function main(): Promise<void> {
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
     // any drift a restart introduced.
     startReconciler();
     startPushWorker();
+    startTriggerSourceWorker();
     // Keep the resumable event log bounded.
     setInterval(() => void pruneEvents().catch(() => null), 5 * 60_000);
   });

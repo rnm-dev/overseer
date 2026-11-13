@@ -82,7 +82,7 @@ function managedPluginProvider(requestInstall, sessionId) {
 }
 const SNAPSHOT_PROPERTIES = {
     title: { type: "string", minLength: 1, maxLength: SIGNOFF_LIMITS.title },
-    summary: { type: "string", minLength: 1, maxLength: SIGNOFF_LIMITS.summary, description: "What is being decided and why it needs a person." },
+    summary: { type: "string", minLength: 1, maxLength: SIGNOFF_LIMITS.summary, description: "One or two short, plain sentences: what the person decides and why. No findings dump, no file paths or error codes; the details belong in the actions." },
     options: {
         type: "array",
         minItems: 1,

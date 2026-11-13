@@ -17,6 +17,7 @@ const PeonDetail = lazy(() => import("../features/fleet/PeonDetail").then((m) =>
 const PeonNewSession = lazy(() => import("../features/sessions/PeonNewSession").then((m) => ({ default: m.PeonNewSession })));
 const PeonSessionDetail = lazy(() => import("../features/sessions/PeonSessionDetail").then((m) => ({ default: m.PeonSessionDetail })));
 const PeonProjectDetail = lazy(() => import("../features/projects/PeonProjectDetail").then((m) => ({ default: m.PeonProjectDetail })));
+const SignoffDetail = lazy(() => import("../features/signoffs/SignoffDetail").then((m) => ({ default: m.SignoffDetail })));
 const PeonStats = lazy(() => import("../features/stats/PeonStats").then((m) => ({ default: m.PeonStats })));
 const PeonSettingsLayout = lazy(() => import("../features/settings/PeonSettingsLayout").then((m) => ({ default: m.PeonSettingsLayout })));
 const Members = lazy(() => import("../features/workspaces/Members").then((m) => ({ default: m.Members })));
@@ -128,6 +129,7 @@ export function App() {
           <Route path="projects/:key/tools/new-profile" element={<ProjectArmoryProfileNew />} />
           <Route path="projects/:key/members" element={<ProjectMembers />} />
           <Route path="projects/:key/settings" element={<ProjectSettings />} />
+          <Route path="signoffs/:signoffPeonId/:signoffId" element={<SignoffDetail />} />
           <Route path="stats" element={<PeonStats />} />
           <Route path="settings" element={<PeonSettingsLayout />}>
             {/* General and Agent render from the layout's persistent PeonSettings. */}

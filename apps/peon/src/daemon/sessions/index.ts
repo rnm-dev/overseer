@@ -183,3 +183,4 @@ export {
 } from "./agentEventMetadata.js";
 export { setTurnSettledHook } from "./runtime.js";
 export type { SessionOrigin, SessionTrigger } from "./sessionTypes.js";
+export { INITIAL_REQUEST, REQUEST_STATUS_CAPABILITY, requestStatus, type RequestStatus, type RequestState } from "./requestStatus.js";

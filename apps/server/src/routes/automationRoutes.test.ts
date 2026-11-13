@@ -15,10 +15,13 @@ test("the automation surface exposes exactly the machine control routes", () => 
     "get /openapi.json",
     "get /sessions",
     "get /sessions/:sid",
+    "get /sessions/:sid/requests/:requestId",
     "get /sessions/:sid/transcript",
+    "get /sources/:sourceId",
     "get /whoami",
     "post /sessions",
     "post /sessions/:sid/followup",
+    "post /sources/:sourceId/events",
     "post /uploads",
   ]);
 });

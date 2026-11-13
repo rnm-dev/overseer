@@ -5,7 +5,7 @@ import { ATTACHMENTS_MAX_COUNT, ATTACHMENTS_MAX_FILE_BYTES } from "../../uploads
 import { listAgentDrivers } from "../../agents/index.js";
 import { narrowNewSessionAgent, narrowModel, narrowReasoningEffort } from "../../providers/modelCatalog.js";
 import { ContextMessageError, MessageThreadError, parseContextMessage, parseMessageAttribution, parseReplyTo, ReplyToError } from "../../sessions/index.js";
-import { toPublicSessionRecord } from "../../sessions/index.js";
+import { readTranscript, requestStatus, toPublicSessionRecord } from "../../sessions/index.js";
 import { toSessionSummary } from "../../sessions/index.js";
 import { parseSessionPageRequest, SessionPaginationError } from "../../sessions/index.js";
 import { fail } from "./error.js";
@@ -242,6 +242,15 @@ export function attachSessionRoutes(router, options) {
         if (!record)
             return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
         res.json(toPublicSessionRecord(record));
+    });
+    // One request's turn: queued, running, completed or failed, with its final
+    // text. `initial` is the turn that created the session; otherwise the
+    // commandId the follow-up was sent with (docs/automation-api.md).
+    router.get("/sessions/:id/requests/:requestId", (req, res) => {
+        const record = sessions.get(req.params.id);
+        if (!record)
+            return fail(res, 404, "UNKNOWN_SESSION", "unknown session");
+        res.json(requestStatus(record, readTranscript(record.id, record.agent), req.params.requestId));
     });
     router.patch("/sessions/:id", (req, res) => {
         const title = req.body?.title;

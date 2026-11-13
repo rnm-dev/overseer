@@ -89,8 +89,11 @@ const SIGNOFF_TRIGGER_APPEND = `This session was started by an external event, n
 conversation live. When the project's instructions say a step needs a person's decision, do not wait and do not ask in
 the chat: record a sign-off with the peon_signoffs signoff_propose tool (one sign-off per topic, each option a concrete
 plan with exact outgoing text, no "do nothing" option), then do everything else you can without that decision and end
-your turn. The decision arrives later as a follow-up in this session. When an approval arrives, call signoff_executing
-before acting and signoff_executed with a result for every action afterwards.`;
+your turn. The decision arrives later as a follow-up in this session. When an approval arrives, first read every message that
+reached this session after you proposed (new events and context messages). If they change the picture — the request was
+added to, withdrawn, or someone already handled it — do not execute: revise the sign-off with signoff_revise, or withdraw
+it with signoff_withdraw, and say why. Otherwise call signoff_executing before acting and signoff_executed with a result
+for every action afterwards. Keep a sign-off's summary to one or two plain sentences; details go into its actions.`;
 /**
  * Called when a turn settles, before the record is persisted. The sign-off
  * service registers here to close an unfinished execution and to mark the
