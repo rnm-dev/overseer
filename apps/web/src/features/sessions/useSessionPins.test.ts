@@ -20,3 +20,7 @@ test("unread sessions rank above read ones and keep that rank after being read",
   const read = rows.map((row) => ({ ...row, attentionUnread: false }));
   assert.deepEqual(orderPinnedSessions(read, []).map((s) => s.id), ["waiting", "fresh"]);
 });
+test("unread rows outside loaded pages are listed first", () => {
+  const rows = orderPinnedSessions([{ peonId: "v", id: "loaded", lastActivityAt: 100 }], [], "v", [{ peonId: "v", id: "old", lastActivityAt: 1, attentionUnread: true }]);
+  assert.deepEqual(rows.map((s) => s.id), ["old", "loaded"]);
+});

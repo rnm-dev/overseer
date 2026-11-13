@@ -82,13 +82,23 @@ export function PeonDetail() {
   // Sessions with something unread for me — a finished turn I started or a
   // mention of me. Recounted on every attention change, coalesced.
   const [unreadSessions, setUnreadSessions] = useState(0);
+  const [unreadRows, setUnreadRows] = useState<SessionLite[]>([]);
   useEffect(() => {
     if (!wsId || !peonId) return;
     let alive = true;
     let pending: number | null = null;
     const load = () => {
-      void api<{ count: number }>(`${base}/unread-sessions`)
-        .then((body) => alive && setUnreadSessions(body.count))
+      void api<{ count: number; sessions?: IndexedSessionLite[] }>(`${base}/unread-sessions`)
+        .then((body) => {
+          if (!alive) return;
+          setUnreadSessions(body.count);
+          // Rows that were read stay until reload so the clicked one does not vanish.
+          const fresh = (body.sessions ?? []).map(sessionFromIndex);
+          setUnreadRows((current) => [
+            ...current.filter((row) => !fresh.some((item) => item.id === row.id)).map((row) => ({ ...row, attentionUnread: false })),
+            ...fresh,
+          ]);
+        })
         .catch(() => undefined);
     };
     const soon = () => {
@@ -280,7 +290,7 @@ export function PeonDetail() {
   const projectPageActive = isProjectPath(location.pathname);
 
   // Same ordering as the session list page: newest activity first.
-  const ordered = useMemo(() => orderPinnedSessions(sessions, sessionPins.pins, peonId), [sessions, sessionPins.pins, peonId]);
+  const ordered = useMemo(() => orderPinnedSessions(sessions, sessionPins.pins, peonId, unreadRows), [sessions, sessionPins.pins, peonId, unreadRows]);
   // Project rollups refresh independently and can lag a live session event.
   // Once the sidebar session projection is hydrated, use that same projection
   // as the immediate source for project activity lights.

@@ -140,12 +140,12 @@ export function registerSessionRoutes(router: express.Router): void {
   }));
   // How many of this Peon's sessions have something unread for the caller: a
   // finished turn they started, or a mention of them. Drives the badge on the
-  // Sessions icon; a session counts once however much is unread in it.
+  // Sessions icon and the unread rows at the top of the list; a session counts once however much is unread in it.
   router.get(`${wp}/unread-sessions`, withWorkspacePeon(async (_req, res, c) => {
     res.setHeader("Cache-Control", "no-store");
-    if (c.participant) return res.json({ count: 0 });
-    const { rows } = await query<{ count: string | number }>(
-      `SELECT COUNT(DISTINCT u.session_id) AS count FROM (
+    if (c.participant) return res.json({ count: 0, sessions: [] });
+    const { rows } = await query<{ session_id: string }>(
+      `SELECT DISTINCT u.session_id FROM (
          SELECT session_id FROM session_attention
           WHERE workspace_id=$1 AND user_id=$2 AND peon_id=$3 AND state='unread'
          UNION
@@ -154,7 +154,14 @@ export function registerSessionRoutes(router: express.Router): void {
        ) u JOIN sessions s ON s.peon_id=$3 AND s.session_id=u.session_id`,
       [c.workspaceId, c.userId, c.record.peonId],
     );
-    res.json({ count: Number(rows[0]?.count ?? 0) });
+    // The rows too, so the list can rank unread sessions it has not paged in yet.
+    const sessions = [];
+    for (const { session_id } of rows.slice(0, 50)) {
+      if (!(await canAccessIndexedSessionNow(c.workspaceId, c.userId, c.record.peonId, session_id))) continue;
+      const session = await getIndexedSession(c.record.peonId, session_id);
+      if (session) sessions.push({ ...session, attentionUnread: true });
+    }
+    res.json({ count: rows.length, sessions });
   }));
   router.get(`${wp}/sessions`, withWorkspacePeon(async (_req, res, c) => {
     const result = await callPeon(connOfRecord(c.record), "GET", "/sessions", { actor: c.operator.email });
