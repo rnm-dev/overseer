@@ -416,7 +416,10 @@ export function createAgentRouter(options = {}) {
         const provider = req.params.provider;
         if (!getAgentServiceDriver(provider))
             return fail(res, 404, "NOT_FOUND", "unknown capabilities provider");
-        res.json(await agentServices.capabilities(provider, req.query.refresh === "1"));
+        // A driver without a discovery service has nothing beyond what Peon
+        // supplies per turn; answer an empty snapshot rather than an empty body.
+        res.json(await agentServices.capabilities(provider, req.query.refresh === "1")
+            ?? { provider, status: "ok", updatedAt: Date.now(), plugins: [], skills: [], mcps: [] });
     });
     router.use("/armory", createArmoryReadRouter(options.armoryInventory, {
         ...options.armoryApi,

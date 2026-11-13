@@ -398,6 +398,9 @@ class DefaultFollowupRepository implements FollowupRepository {
           '$base/followup',
           data: <String, dynamic>{
             'prompt': command.prompt,
+            // Peon dedupes queued/steered follow-ups by body commandId; the
+            // header alone only covers the server's idempotency window.
+            'commandId': command.commandId,
             if (command.model != null) 'model': command.model,
             if (command.reasoningEffort != null)
               'reasoningEffort': command.reasoningEffort,

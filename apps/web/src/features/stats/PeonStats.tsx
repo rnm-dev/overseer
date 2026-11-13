@@ -5,10 +5,11 @@ import { Card, StatPlate, TOOLBAR_GROUP, toolbarItemClass } from "../../shared/u
 import { useT, type MessageKey } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
 import {
-  EMPTY_CAPABILITIES,
-  EMPTY_QUOTA,
+  EMPTY_CAPABILITIES_STATE,
+  EMPTY_QUOTA_STATE,
   PERIODS,
-  PROVIDERS,
+  catalogProvider,
+  statsProviders,
   fmtBytes,
   fmtCount,
   fmtDuration,
@@ -38,8 +39,10 @@ export function PeonStats() {
   const [period, setPeriod] = useState<Period>("day");
   const [analytics, setAnalytics] = useState<{ users: Analytics | null; projects: Analytics | null }>({ users: null, projects: null });
   const [analyticsError, setAnalyticsError] = useState<string | null>(null);
-  const [quotas, setQuotas] = useState<Record<Provider, QuotaState>>(EMPTY_QUOTA);
-  const [capabilities, setCapabilities] = useState<Record<Provider, CapabilitiesState>>(EMPTY_CAPABILITIES);
+  const [quotas, setQuotas] = useState<Record<Provider, QuotaState>>({});
+  const [capabilities, setCapabilities] = useState<Record<Provider, CapabilitiesState>>({});
+  const providersKey = statsProviders(catalog).join(",");
+  const providers = useMemo(() => providersKey.split(","), [providersKey]);
   const [now, setNow] = useState(Date.now());
   const statsResource = useApiResource<Stats>(peon.online ? `${base}/stats?period=${period}` : null, { noStore: true });
   const reloadStats = statsResource.reload;
@@ -53,7 +56,7 @@ export function PeonStats() {
     (provider: Provider, refresh = false) => {
       setQuotas((current) => ({
         ...current,
-        [provider]: { ...current[provider], loading: true, error: null },
+        [provider]: { ...EMPTY_QUOTA_STATE, ...current[provider], loading: true, error: null },
       }));
       api<ProviderQuota>(`${base}/quota/${provider}${refresh ? "?refresh=1" : ""}`)
         .then((data) => {
@@ -61,7 +64,7 @@ export function PeonStats() {
         })
         .catch((err) => {
           const message = err instanceof Error ? err.message : t("error.loadFailed");
-          setQuotas((current) => ({ ...current, [provider]: { ...current[provider], loading: false, error: message } }));
+          setQuotas((current) => ({ ...current, [provider]: { ...EMPTY_QUOTA_STATE, ...current[provider], loading: false, error: message } }));
         });
     },
     [base, t],
@@ -71,7 +74,7 @@ export function PeonStats() {
     (provider: Provider, refresh = false) => {
       setCapabilities((current) => ({
         ...current,
-        [provider]: { ...current[provider], loading: true, error: null },
+        [provider]: { ...EMPTY_CAPABILITIES_STATE, ...current[provider], loading: true, error: null },
       }));
       api<ProviderCapabilities>(`${base}/capabilities/${provider}${refresh ? "?refresh=1" : ""}`)
         .then((data) => {
@@ -81,7 +84,7 @@ export function PeonStats() {
           const message = err instanceof Error ? err.message : t("error.loadFailed");
           setCapabilities((current) => ({
             ...current,
-            [provider]: { ...current[provider], loading: false, error: message },
+            [provider]: { ...EMPTY_CAPABILITIES_STATE, ...current[provider], loading: false, error: message },
           }));
         });
     },
@@ -91,11 +94,11 @@ export function PeonStats() {
   useEffect(() => {
     if (!peon.online) return;
     // Deliberately launch both probes without awaiting either one.
-    for (const provider of PROVIDERS) {
+    for (const provider of providers) {
       loadQuota(provider);
       loadCapabilities(provider);
     }
-  }, [loadCapabilities, loadQuota, peon.online]);
+  }, [loadCapabilities, loadQuota, peon.online, providers]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
@@ -237,15 +240,16 @@ export function PeonStats() {
       {analyticsError && <p className="border-l-2 border-danger bg-danger/5 py-2 pl-3 font-mono text-sm text-danger">⚠ {t("peon.stats.breakdownUnavailable")}</p>}
 
       <div className="grid gap-4">
-        {PROVIDERS.map((provider) => (
+        {providers.map((provider) => (
           <ProviderUsage
             key={provider}
             provider={provider}
             base={base}
-            canLogin={isOwner && catalog?.providers.some((p) => p.agent === (provider === "codex" ? "codex-app-server" : provider) && p.capabilities?.login === true) === true}
-            canLogout={isOwner && catalog?.providers.some((p) => p.agent === (provider === "codex" ? "codex-app-server" : provider) && p.capabilities?.logout === true) === true}
-            quota={quotas[provider]}
-            capabilities={capabilities[provider]}
+            canLogin={isOwner && catalogProvider(catalog, provider)?.capabilities?.login === true}
+            canLogout={isOwner && catalogProvider(catalog, provider)?.capabilities?.logout === true}
+            loginKind={catalogProvider(catalog, provider)?.capabilities?.loginKind ?? "attempt"}
+            quota={quotas[provider] ?? EMPTY_QUOTA_STATE}
+            capabilities={capabilities[provider] ?? EMPTY_CAPABILITIES_STATE}
             models={byModel.filter((model) => model.agent === provider)}
             now={now}
             onRefresh={() => {

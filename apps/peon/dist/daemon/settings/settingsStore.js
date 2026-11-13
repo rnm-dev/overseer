@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS = {
     defaultAgent: "claude-code",
     agentCommand: "claude",
     codexCommand: "codex",
+    opencodeCommand: "opencode",
     maxBudgetUsd: DEFAULT_MAX_BUDGET_USD,
     publicControlUrl: `http://127.0.0.1:${process.env.ACA_CONTROL_PORT ?? 4570}`,
     listenAddress: `0.0.0.0:${process.env.ACA_CONTROL_PORT ?? 4570}`,

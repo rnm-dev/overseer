@@ -475,7 +475,7 @@ target dump over the old source database without a separate reconciliation plan.
 The facts an operator needs before touching production; the procedures above
 remain the authority for *how* to change them.
 
-- **Host** — `root@94.247.128.103` (nid-01 / `nid-prod-coloc.mesh.rnm` /
+- **Host** — `root@94.247.128.103` (nid-01 / `dev-rnm-ps-web01.mesh.rnm` /
   Tailscale `100.64.0.5`).
 - **Tailnet** — `hs.rnm.dev`, MagicDNS suffix `mesh.rnm`. The production app
   container resolves and reaches Peons at `peon-*.mesh.rnm:4570`.

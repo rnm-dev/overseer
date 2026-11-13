@@ -264,6 +264,25 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
     }
   }
 
+  /// After a socket reconnect, read the newest page first (it replaces a cache
+  /// it no longer overlaps) and subscribe from its boundary, so the operator
+  /// sees the latest activity at once and older rows wait for scrolling.
+  Future<void> _resubscribeFromNewestPage() async {
+    _tailSubscribed = false;
+    await _reconcile(forceTranscript: true);
+    if (!ref.mounted || _tailSubscribed) return;
+    if (_refreshingLatest) {
+      // The in-flight refresh subscribes, or its rerun does.
+      _refreshLatestAgain = true;
+      return;
+    }
+    await _refresh(reportFailure: false);
+    if (!ref.mounted || _tailSubscribed) return;
+    // A refresh can be skipped (e.g. while older history is loading); resume
+    // from the durable cache boundary rather than staying unsubscribed.
+    _ensureTailSubscribed(_cachedEvents.lastOrNull?.eventId);
+  }
+
   void _ensureTailSubscribed(String? lastEventId) {
     if (_tailSubscribed) return;
     final liveService = ref.read(transcriptLiveServiceProvider);
@@ -288,6 +307,10 @@ class TranscriptController extends AsyncNotifier<TranscriptState> {
 
   Future<void> _handleTailFrame(TranscriptTailFrame frame) async {
     if (!ref.mounted) return;
+    if (frame.reconnected) {
+      unawaited(_resubscribeFromNewestPage());
+      return;
+    }
     if (frame.terminal) {
       _diagnostics.record(
         AppDiagnosticEvent(

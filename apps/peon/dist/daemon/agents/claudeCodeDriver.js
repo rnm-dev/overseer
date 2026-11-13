@@ -43,7 +43,7 @@ export const claudeCodeDriver = {
     // Claude Code can dequeue the supplied -p prompt in the same startup batch
     // as an orphaned background-task notification and terminate the resumed
     // invocation without handling the prompt.
-    turns: { replayUnprocessedResume: true },
+    turns: { replayUnprocessedResume: true, continuesAfterBackgroundTasks: true },
     tokenUsage: { cacheIncludedInInput: false },
     capabilities: { steering: false, cancellation: true, recovery: true, quota: true, status: true, cliUpdate: true, branching: true, branchAtTurn: false, login: true, logout: true },
     services: {

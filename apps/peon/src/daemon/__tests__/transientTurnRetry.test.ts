@@ -17,8 +17,8 @@ const attemptsDir = fakeDir;
 writeFileSync(fakeClaude, `#!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-const promptIndex = process.argv.indexOf("-p");
-const prompt = promptIndex >= 0 ? process.argv[promptIndex + 1] : "";
+// Peon writes the prompt to stdin, never argv.
+const prompt = readFileSync(0, "utf8");
 const counter = path.join(${JSON.stringify(attemptsDir)}, "attempts-" + prompt.replace(/[^a-z]/gi, ""));
 const attempt = (existsSync(counter) ? Number(readFileSync(counter, "utf8")) : 0) + 1;
 writeFileSync(counter, String(attempt));

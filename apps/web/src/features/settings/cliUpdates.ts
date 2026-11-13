@@ -1,4 +1,4 @@
-export type CliProvider = "codex" | "claude-code";
+export type CliProvider = "codex" | "claude-code" | "opencode";
 
 export interface CliUpdateItem {
   provider: CliProvider;
@@ -13,7 +13,7 @@ export interface CliUpdateItem {
   error: string | null;
 }
 
-const providers: CliProvider[] = ["codex", "claude-code"];
+const providers: CliProvider[] = ["codex", "claude-code", "opencode"];
 
 function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
@@ -35,6 +35,7 @@ function timestamp(value: unknown): number | null {
 
 function providerOf(value: unknown): CliProvider | null {
   if (value === "codex") return "codex";
+  if (value === "opencode") return "opencode";
   if (value === "claude-code" || value === "claudeCode" || value === "claude") return "claude-code";
   return null;
 }

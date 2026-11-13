@@ -13,8 +13,8 @@ const retryCountPath = path.join(fakeDir, "retry-count");
 
 writeFileSync(fakeClaude, `#!/usr/bin/env node
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-const promptIndex = process.argv.indexOf("-p");
-const prompt = promptIndex >= 0 ? process.argv[promptIndex + 1] : "";
+// Peon writes the prompt to stdin, never argv.
+const prompt = readFileSync(0, "utf8");
 const retryCountPath = ${JSON.stringify(retryCountPath)};
 console.log(JSON.stringify({ type: "system", subtype: "init", session_id: "fake-claude-session", model: "claude-test" }));
 if (prompt === "retry me") {

@@ -937,6 +937,12 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
   Future<void> _startSession(FollowupScope scope) async {
     if (_startingSession) return;
     setState(() => _startingSession = true);
+    // Clear the box as soon as the message is submitted. A failed start
+    // restores the draft through the controller state once
+    // [_startingSession] drops back to false.
+    _syncingComposer = true;
+    _composerController.clear();
+    _syncingComposer = false;
     final created = await ref
         .read(sessionComposerControllerProvider(scope).notifier)
         .startSession(
@@ -1073,7 +1079,9 @@ class _SessionDetailPageState extends ConsumerState<SessionDetailPage>
 
   Future<void> _settleProvider(Future<Object?> future) async {
     try {
-      await future;
+      // Warming is an optimisation; on a slow link (Tor) never let it hold
+      // the hand-off to the created session.
+      await future.timeout(const Duration(seconds: 3));
     } catch (_) {
       // The destination surface owns its normal retryable error treatment.
     }

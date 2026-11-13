@@ -30,7 +30,7 @@ export interface ProviderQuotaCredits {
 export interface ProviderQuotaSnapshot {
   provider: string;
   status: "ok" | "unavailable" | "error";
-  source: "oauth" | "cli-rpc" | null;
+  source: "oauth" | "cli-rpc" | "api" | null;
   updatedAt: number;
   accountEmail?: string;
   windows: ProviderQuotaWindow[];

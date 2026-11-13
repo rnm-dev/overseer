@@ -5,13 +5,30 @@ class TranscriptTailFrame {
     this.event,
   }) : error = null,
        retryable = true,
-       terminal = false;
+       terminal = false,
+       reconnected = false;
 
   const TranscriptTailFrame.terminal({required this.retryable, this.error})
     : eventId = null,
       data = '',
       event = null,
-      terminal = true;
+      terminal = true,
+      reconnected = false;
+
+  /// The workspace socket reconnected and the tail was NOT resubscribed.
+  ///
+  /// The handler's last applied `eventId` may be arbitrarily old by now, and
+  /// resuming after it would make Peon replay the whole missed gap oldest
+  /// first. The owner reads the newest HTTP page instead and subscribes again
+  /// from that boundary.
+  const TranscriptTailFrame.reconnected()
+    : eventId = null,
+      data = '',
+      event = null,
+      error = null,
+      retryable = true,
+      terminal = false,
+      reconnected = true;
 
   final String? eventId;
   final String? event;
@@ -19,6 +36,7 @@ class TranscriptTailFrame {
   final String? error;
   final bool retryable;
   final bool terminal;
+  final bool reconnected;
 }
 
 abstract interface class TranscriptLiveService {

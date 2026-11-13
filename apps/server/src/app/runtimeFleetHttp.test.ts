@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
@@ -37,7 +37,9 @@ test("explicit status and model reads do not select the runtime projection", () 
 
 test("runtime query operations are absent from reverse command registries", () => {
   const serverTypes = source("modules/reverseCommands/reverseCommandTypes.ts");
-  const peonOperations = source("../../peon/src/daemon/overseer/socket/channels/reverseCommandOperations.ts");
+  // Peon deleted its reverse-command channel; a missing registry has no operations.
+  const peonRegistry = path.resolve(import.meta.dirname, "../../../peon/src/daemon/overseer/socket/channels/reverseCommandOperations.ts");
+  const peonOperations = existsSync(peonRegistry) ? readFileSync(peonRegistry, "utf8") : "";
   for (const operation of [
     "runtime.stats", "runtime.analytics", "runtime.quota", "runtime.capabilities",
   ]) {

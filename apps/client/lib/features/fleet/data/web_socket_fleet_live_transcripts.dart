@@ -2,6 +2,7 @@ part of 'web_socket_fleet_live_service.dart';
 
 extension _WebSocketFleetLiveTranscripts on WebSocketFleetLiveService {
   void _sendTailSubscription(_WorkspaceSocket state, _TailHandler handler) {
+    handler.sent = true;
     state.channel?.sink.add(
       jsonEncode({
         'type': 'subscribe',

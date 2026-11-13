@@ -681,6 +681,55 @@ void main() {
 
     expect(sounds.cues, isEmpty);
   });
+
+  test(
+    'a socket reconnect reads the newest page before resubscribing',
+    () async {
+      final live = _FakeTranscriptLiveService();
+      final repository = _FakeSessionRepository(
+        latest: Future.value(
+          TranscriptPage(
+            events: [
+              TranscriptEvent(
+                eventId: 'newest-9',
+                orderKey: 0,
+                payload: {'type': 'assistant'},
+              ),
+            ],
+            nextCursor: 'older',
+            hasMore: true,
+            insertedCount: 1,
+          ),
+        ),
+      );
+      final container = ProviderContainer(
+        overrides: [
+          sessionRepositoryProvider.overrideWithValue(repository),
+          transcriptLiveServiceProvider.overrideWithValue(live),
+        ],
+      );
+      addTearDown(container.dispose);
+      final subscription = container.listen(
+        transcriptControllerProvider(scope),
+        (_, _) {},
+        fireImmediately: true,
+      );
+      addTearDown(subscription.close);
+      await container.read(transcriptControllerProvider(scope).future);
+      while (live.subscriptions.isEmpty) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final requestsBefore = repository.latestRequests;
+
+      await live.onFrame!(const TranscriptTailFrame.reconnected());
+      while (live.subscriptions.length < 2) {
+        await Future<void>.delayed(Duration.zero);
+      }
+
+      expect(repository.latestRequests, greaterThan(requestsBefore));
+      expect(live.subscriptions, ['newest-9', 'newest-9']);
+    },
+  );
 }
 
 class _RecordingWorkSoundPlayer implements WorkSoundPlayer {

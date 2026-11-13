@@ -132,6 +132,8 @@ export function createSelfUpdatingCliUpdater(options: {
   packageName: string;
   versionPattern: RegExp;
   nativePathFragments?: string[];
+  // The CLI's own self-update subcommand; most providers call it `update`.
+  updateArgs?: string[];
 }): AgentCliUpdater {
   return {
     async inspect(command, runtime = agentCliUpdateRuntime) {
@@ -161,7 +163,7 @@ export function createSelfUpdatingCliUpdater(options: {
     },
     async apply(inspection, runtime = agentCliUpdateRuntime) {
       if (!inspection.updateSupported) throw new Error(inspection.reason ?? "automatic CLI update is not supported");
-      await runtime.run(inspection.executable, ["update"], 30 * 60_000);
+      await runtime.run(inspection.executable, options.updateArgs ?? ["update"], 30 * 60_000);
     },
     verify(inspection, runtime = agentCliUpdateRuntime) {
       return runtime.run(inspection.executable, ["--version"]);

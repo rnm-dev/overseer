@@ -119,7 +119,7 @@ export function createSelfUpdatingCliUpdater(options) {
         async apply(inspection, runtime = agentCliUpdateRuntime) {
             if (!inspection.updateSupported)
                 throw new Error(inspection.reason ?? "automatic CLI update is not supported");
-            await runtime.run(inspection.executable, ["update"], 30 * 60_000);
+            await runtime.run(inspection.executable, options.updateArgs ?? ["update"], 30 * 60_000);
         },
         verify(inspection, runtime = agentCliUpdateRuntime) {
             return runtime.run(inspection.executable, ["--version"]);

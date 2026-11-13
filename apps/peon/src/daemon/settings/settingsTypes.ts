@@ -13,6 +13,8 @@ export interface DaemonSettings {
   agentCommand: string;
   // Codex CLI binary used when a session selects agent:"codex".
   codexCommand: string;
+  // opencode CLI binary used when a session selects agent:"opencode".
+  opencodeCommand: string;
   // Per-session USD cap passed as `--max-budget-usd`. 0 (default) means no cap —
   // agentExecutor's `if (opts.maxBudgetUsd)` guard omits the flag entirely.
   maxBudgetUsd: number;

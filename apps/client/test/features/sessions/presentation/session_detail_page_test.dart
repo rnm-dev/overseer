@@ -332,7 +332,8 @@ void main() {
             .widget<TextField>(find.byKey(const Key('session-composer-input')))
             .controller
             ?.text,
-        'Keep this screen steady',
+        isEmpty,
+        reason: 'the box clears on submit, not after the hand-off',
       );
       expect(find.text('Starting session…'), findsOneWidget);
 

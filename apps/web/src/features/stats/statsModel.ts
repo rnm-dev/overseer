@@ -1,3 +1,5 @@
+import type { MessageKey, Translate } from "../../shared/i18n";
+
 export type Period = "day" | "yesterday" | "week" | "month";
 export const PERIODS: Period[] = ["day", "yesterday", "week", "month"];
 
@@ -80,13 +82,14 @@ export interface ByModel {
   totalDurationMs?: number;
   totalCostUsd?: number;
 }
-export type Provider = "claude-code" | "codex";
+// A Peon agent's service name (`claude-code`, `codex`, `opencode`, …).
+export type Provider = string;
 export type QuotaStatus = "ok" | "unavailable" | "error";
 
 export interface ProviderQuota {
   provider: Provider;
   status: QuotaStatus;
-  source: "oauth" | "cli-rpc" | null;
+  source: "oauth" | "cli-rpc" | "api" | null;
   updatedAt: number;
   accountEmail?: string;
   windows: Array<{
@@ -136,15 +139,39 @@ export interface CapabilitiesState {
   error: string | null;
 }
 
+// What a Peon that publishes no catalog (an older one) is assumed to run.
 export const PROVIDERS: Provider[] = ["claude-code", "codex"];
-export const EMPTY_QUOTA: Record<Provider, QuotaState> = {
-  "claude-code": { data: null, loading: false, error: null },
-  codex: { data: null, loading: false, error: null },
-};
-export const EMPTY_CAPABILITIES: Record<Provider, CapabilitiesState> = {
-  "claude-code": { data: null, loading: false, error: null },
-  codex: { data: null, loading: false, error: null },
-};
+export const EMPTY_QUOTA_STATE: QuotaState = { data: null, loading: false, error: null };
+export const EMPTY_CAPABILITIES_STATE: CapabilitiesState = { data: null, loading: false, error: null };
+
+interface CatalogProvider {
+  agent: string;
+  serviceProvider?: string;
+  capabilities?: { quota?: boolean; login?: boolean; logout?: boolean; loginKind?: string };
+}
+
+// The usage cards follow the Peon's own driver list. Older Peons omit
+// `serviceProvider`; their only aliased driver is `codex-app-server` → `codex`.
+export function serviceName(provider: CatalogProvider): Provider {
+  return provider.serviceProvider ?? (provider.agent === "codex-app-server" ? "codex" : provider.agent);
+}
+
+export function statsProviders(catalog: { providers: CatalogProvider[] } | null): Provider[] {
+  if (!catalog) return PROVIDERS;
+  const names = catalog.providers.filter((provider) => provider.capabilities?.quota !== false).map(serviceName);
+  return names.length ? [...new Set(names)] : PROVIDERS;
+}
+
+// Known providers have a translated name; an unknown one shows its own id.
+export function providerName(t: Translate, provider: Provider): string {
+  const key = `peon.quota.provider.${provider}` as MessageKey;
+  const name = t(key);
+  return name === key ? provider : name;
+}
+
+export function catalogProvider<T extends CatalogProvider>(catalog: { providers: T[] } | null, provider: Provider): T | null {
+  return catalog?.providers.find((candidate) => serviceName(candidate) === provider) ?? null;
+}
 
 export const compact = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 

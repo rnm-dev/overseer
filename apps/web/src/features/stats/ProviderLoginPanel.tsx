@@ -4,7 +4,7 @@ import { api, json } from "../../shared/api";
 import { Button } from "../../shared/ui";
 import { useT } from "../../shared/i18n";
 import { loginCodeAccepted, loginPath, loginPending, normalizeAttempt, pollDelay, type LoginAttempt } from "./providerLogin";
-import type { Provider } from "./statsModel";
+import { type Provider } from "./statsModel";
 
 // Named distinctly from providerLogin.ts so case-insensitive filesystems resolve both modules reliably.
 

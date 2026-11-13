@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import {
+  agentServiceName,
   getAgentDriver,
   LEGACY_DEFAULT_AGENT,
   listAgentDrivers,
@@ -20,6 +21,8 @@ function allDrivers(): ReturnType<typeof listAgentDrivers> {
 
 export interface AiProvider {
   agent: CodingAgent;
+  // The name the agent's quota, capability, login and usage routes use.
+  serviceProvider?: string;
   label: string;
   models: ModelInfo[];
   reasoningEfforts?: ReasoningEffortInfo[];
@@ -216,7 +219,7 @@ export function modelCatalog(
     });
     if (selected && !known) models.push({ id: selected, label: selected, default: true });
     return {
-      agent: driver.id, label: driver.label, models,
+      agent: driver.id, serviceProvider: agentServiceName(driver), label: driver.label, models,
       reasoningEfforts: providerEfforts(driver.id)?.map((item) => ({ ...item })),
       available: driver.available(), visible: driver.visible, legacy: driver.legacy,
       capabilities: publicCapabilities(driver),

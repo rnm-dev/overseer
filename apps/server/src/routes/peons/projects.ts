@@ -1,5 +1,5 @@
 import express from "express";
-import { registerProviderLoginRoutes } from "./providerLogin.js";
+import { PROVIDER_SLUG, registerProviderLoginRoutes } from "./providerLogin.js";
 import { registry, toView } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, normalizePeonUrl, proxyFileDownload, proxyFileUpload, proxyGet, proxyUpload } from "../../infrastructure/peonHttp/index.js";
 import { reconcilePeon } from "../../modules/sessions/index.js";
@@ -405,7 +405,7 @@ export function registerProjectRoutes(router: express.Router): void {
   // recorded /stats response).
   router.get(`${wp}/quota/:provider`, withWorkspacePeon(async (req, res, c) => {
     const provider = String(req.params.provider);
-    if (provider !== "claude-code" && provider !== "codex") {
+    if (!PROVIDER_SLUG.test(provider)) {
       return res.status(404).json({ error: "unknown quota provider", code: "UNKNOWN_PROVIDER" });
     }
     const refresh = req.query.refresh === "1" ? "?refresh=1" : "";
@@ -420,7 +420,7 @@ export function registerProjectRoutes(router: express.Router): void {
   // either CLI may be slow, so callers must be able to fetch them independently.
   router.get(`${wp}/capabilities/:provider`, withWorkspacePeon(async (req, res, c) => {
     const provider = String(req.params.provider);
-    if (provider !== "claude-code" && provider !== "codex") {
+    if (!PROVIDER_SLUG.test(provider)) {
       return res.status(404).json({ error: "unknown capabilities provider", code: "UNKNOWN_PROVIDER" });
     }
     const refresh = req.query.refresh === "1" ? "?refresh=1" : "";

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiError, api, isPeonNeedsUpdate } from "../../shared/api";
 import { Badge, Button, Card } from "../../shared/ui";
-import { useT } from "../../shared/i18n";
+import { useT, type MessageKey } from "../../shared/i18n";
 import { cliUpdateBusy, normalizeCliUpdates, type CliProvider, type CliUpdateItem } from "./cliUpdates";
 
 interface Props {
@@ -9,7 +9,10 @@ interface Props {
   online: boolean;
 }
 
-const labels: Record<CliProvider, string> = { codex: "Codex CLI", "claude-code": "Claude Code" };
+const labels: Record<CliProvider, string> = { codex: "Codex CLI", "claude-code": "Claude Code", opencode: "OpenCode" };
+const packageKeys: Record<CliProvider, MessageKey> = {
+  codex: "peon.cliUpdates.codexPackage", "claude-code": "peon.cliUpdates.claudePackage", opencode: "peon.cliUpdates.opencodePackage",
+};
 
 export function CliUpdatesPanel({ base, online }: Props) {
   const t = useT();
@@ -91,7 +94,7 @@ export function CliUpdatesPanel({ base, online }: Props) {
             return (
               <div key={item.provider} className="flex flex-col rounded-md bg-ink/[0.04] px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
-                  <p className="font-display text-sm font-bold text-ink" title={t(`peon.cliUpdates.${item.provider === "codex" ? "codexPackage" : "claudePackage"}`)}>{labels[item.provider]}</p>
+                  <p className="font-display text-sm font-bold text-ink" title={t(packageKeys[item.provider])}>{labels[item.provider]}</p>
                   <Badge tone={failed || unsupported ? "red" : available ? "amber" : active ? "neutral" : "green"}>
                     {failed ? t("peon.cliUpdates.failed") : unsupported ? t("peon.cliUpdates.unavailable") : active ? t("peon.cliUpdates.updating") : available ? t("peon.cliUpdates.available") : t("peon.cliUpdates.current")}
                   </Badge>

@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { getAgentDriver, LEGACY_DEFAULT_AGENT, listAgentDrivers, REASONING_EFFORTS, } from "../agents/index.js";
+import { agentServiceName, getAgentDriver, LEGACY_DEFAULT_AGENT, listAgentDrivers, REASONING_EFFORTS, } from "../agents/index.js";
 export { REASONING_EFFORTS };
 function allDrivers() {
     return listAgentDrivers();
@@ -169,7 +169,7 @@ export function modelCatalog(defaultAgent, defaultModel, defaultReasoningEffort 
         if (selected && !known)
             models.push({ id: selected, label: selected, default: true });
         return {
-            agent: driver.id, label: driver.label, models,
+            agent: driver.id, serviceProvider: agentServiceName(driver), label: driver.label, models,
             reasoningEfforts: providerEfforts(driver.id)?.map((item) => ({ ...item })),
             available: driver.available(), visible: driver.visible, legacy: driver.legacy,
             capabilities: publicCapabilities(driver),

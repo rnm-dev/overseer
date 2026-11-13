@@ -165,6 +165,11 @@ export interface AgentDriver {
     // prompt (num_turns 0, no assistant output). Replay such a turn once,
     // silently, because nothing was attempted.
     replayUnprocessedResume?: boolean;
+    // The harness keeps its process alive past a result while background tasks
+    // it started are still running, and continues the conversation with a new
+    // query (and a new result) when they finish. The driver reports the live
+    // set as `system`/`background_tasks` events carrying `background_task_count`.
+    continuesAfterBackgroundTasks?: boolean;
   };
   tokenUsage: {
     // Claude reports uncached input, cache writes and cache reads as disjoint
@@ -182,6 +187,9 @@ export interface AgentDriver {
     branchAtTurn?: boolean;
     login?: boolean;
     logout?: boolean;
+    // "attempt": a browser/device-code dialogue (Claude, Codex).
+    // "api-key": the operator submits a key to POST /login (OpenRouter).
+    loginKind?: "attempt" | "api-key";
   };
   services: {
     status?: () => unknown;

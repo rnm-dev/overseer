@@ -210,7 +210,7 @@ void main() {
   });
 
   test(
-    'foreground resume reconnects and replays a mounted transcript tail',
+    'foreground resume reconnects and asks a mounted tail to resync',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final probes = StreamController<_SocketProbe>.broadcast();
@@ -250,13 +250,18 @@ void main() {
         jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
       );
       final tailReceived = Completer<void>();
+      final reconnectedFrame = Completer<void>();
       service.subscribeTranscript(
         workspaceId: 'workspace-1',
         peonId: 'peon-1',
         sessionId: 'session-1',
         lastEventId: null,
-        onFrame: (_) async {
-          if (!tailReceived.isCompleted) tailReceived.complete();
+        onFrame: (frame) async {
+          if (frame.reconnected) {
+            if (!reconnectedFrame.isCompleted) reconnectedFrame.complete();
+          } else if (!tailReceived.isCompleted) {
+            tailReceived.complete();
+          }
         },
       );
       await first.next('subscribe');
@@ -278,14 +283,23 @@ void main() {
       second.socket.add(
         jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
       );
+      // The stale boundary is not replayed; the owner is told to resync.
+      await reconnectedFrame.future.timeout(const Duration(seconds: 1));
+      service.subscribeTranscript(
+        workspaceId: 'workspace-1',
+        peonId: 'peon-1',
+        sessionId: 'session-1',
+        lastEventId: 'event-900',
+        onFrame: (_) async {},
+      );
       final subscription = await second.next('subscribe');
 
-      expect(subscription['lastEventId'], 'event-7');
+      expect(subscription['lastEventId'], 'event-900');
     },
   );
 
   test(
-    'reconnect resumes after the last durably handled transcript event',
+    'reconnect after a failed tail write asks the owner to resync',
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final probes = StreamController<_SocketProbe>.broadcast();
@@ -325,12 +339,17 @@ void main() {
         jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
       );
       final handlingFailed = Completer<void>();
+      final resyncRequested = Completer<void>();
       service.subscribeTranscript(
         workspaceId: 'workspace-1',
         peonId: 'peon-1',
         sessionId: 'session-1',
         lastEventId: 'event-7',
-        onFrame: (_) async {
+        onFrame: (frame) async {
+          if (frame.reconnected) {
+            if (!resyncRequested.isCompleted) resyncRequested.complete();
+            return;
+          }
           if (!handlingFailed.isCompleted) handlingFailed.complete();
           throw StateError('simulated cache write failure');
         },
@@ -355,9 +374,7 @@ void main() {
       second.socket.add(
         jsonEncode({'type': 'snapshot', 'cursor': 0, 'presence': const []}),
       );
-      final subscription = await second.next('subscribe');
-
-      expect(subscription['lastEventId'], 'event-7');
+      await resyncRequested.future.timeout(const Duration(seconds: 1));
     },
   );
 

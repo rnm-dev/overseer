@@ -35,7 +35,7 @@ test("provider login proxies require workspace ownership for reads, code submiss
     await replaceMemberAccess("login-ws", "member", { peonIds: ["login-peon"], projects: [] }, "owner");
     await new Promise<void>((resolve) => app.listen(0, "127.0.0.1", resolve));
     const base = `http://127.0.0.1:${(app.address() as AddressInfo).port}/api/workspaces/login-ws/peons/login-peon/driver`;
-    for (const [method, route] of [["POST", "claude-code/logout"], ["POST", "codex/logout"], ["GET", "claude-code/login"], ["POST", "claude-code/login"], ["POST", "claude-code/login/attempt/code"], ["DELETE", "claude-code/login/attempt"], ["GET", "codex/login/attempt"], ["POST", "codex/login"], ["DELETE", "codex/login/attempt"]]) {
+    for (const [method, route] of [["POST", "claude-code/logout"], ["POST", "codex/logout"], ["GET", "claude-code/login"], ["POST", "claude-code/login"], ["POST", "claude-code/login/attempt/code"], ["DELETE", "claude-code/login/attempt"], ["GET", "codex/login/attempt"], ["POST", "codex/login"], ["DELETE", "codex/login/attempt"], ["GET", "opencode/login"], ["POST", "opencode/login"], ["POST", "opencode/logout"]]) {
       const denied = await fetch(`${base}/${route}`, { method, headers: { Authorization: `Bearer ${member.token}` } });
       assert.equal(denied.status, 403);
       const before = seen.length;
@@ -46,7 +46,10 @@ test("provider login proxies require workspace ownership for reads, code submiss
       assert.equal(seen.at(-1)!.path, `/api/v1/driver/${route}`);
       assert.equal(seen.at(-1)!.actor, "owner@test.dev");
     }
-    assert.equal(seen.length, 9);
+    assert.equal(seen.length, 12);
+    const malformed = await fetch(`${base}/Not_A_Provider/login`, { headers: { Authorization: `Bearer ${owner.token}` } });
+    assert.equal(malformed.status, 404);
+    assert.equal(seen.length, 12, "a malformed provider name never reaches the Peon");
   } finally {
     await Promise.all([app, peon].map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   }

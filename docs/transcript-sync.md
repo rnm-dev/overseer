@@ -37,9 +37,19 @@ endpoint; older or disjoint history is reconciled through HTTP pagination.
 
 Delivery is deliberately **at least once**. There is no transcript ACK,
 snapshot epoch, sequence space, generation fence, Postgres inbox, message-body
-projection or selective-ACK hole. After a disconnect the client resubscribes
-with its last applied `eventId`; after a malformed frame, failed cache write or
-suspected gap it reads the newest HTTP page and resubscribes from that boundary.
+projection or selective-ACK hole. After a malformed frame, failed cache write or
+suspected gap the client reads the newest HTTP page and resubscribes from that
+boundary.
+
+After a workspace WebSocket reconnect the mobile client does **not** resubscribe
+with its last applied `eventId`. That id can be hours old after the operator
+worked elsewhere, and Peon replays everything after a known boundary, oldest
+first, so the screen would replay the missed gap one row at a time. Instead the
+live service hands each already-subscribed tail a `reconnected` frame; the
+transcript controller reads the newest page (which replaces a cache it no longer
+overlaps) and subscribes from that page's newest `eventId`. The gap waits for
+upward scrolling. A tail whose subscribe never reached a socket still sends its
+owner's fresh boundary as-is.
 
 ## Authorization and bounds
 

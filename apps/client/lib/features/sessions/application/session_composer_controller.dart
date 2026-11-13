@@ -548,7 +548,10 @@ class SessionComposerController extends AsyncNotifier<SessionComposerState> {
         clearSubmissionProgress: true,
       ),
     );
-    _persistDraft(submitted);
+    // Persist the cleared draft, not the submitted text: the command is now
+    // in the durable outbox, so a reload while the request is in flight (slow
+    // network) must not resurrect the prompt and invite a duplicate resend.
+    _persistDraft(state.value!);
     if (ghost != null) _scheduleGhostExpiry();
     final submissionLifetime = ref.keepAlive();
     try {

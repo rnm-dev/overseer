@@ -112,6 +112,8 @@ repository — that content lives here.
   supported installation ownership and safe refusal rules for Codex and Claude.
 - [agent provider login](agent-provider-login.md) — separate Claude and Codex
   login APIs, polling, ownership, expiration, and process cleanup.
+- [the opencode driver](opencode-driver.md) — opencode on OpenRouter models:
+  one `opencode serve` per turn, event and usage mapping, the API-key login.
 - [the account Peon runs as](peon-user-account.md) — why it is a regular login
   user, systemd linger, the macOS login caveat, and the environment the
   generated unit freezes at install time.

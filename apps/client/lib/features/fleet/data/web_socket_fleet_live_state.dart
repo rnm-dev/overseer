@@ -39,6 +39,10 @@ class _TailHandler {
   String? lastEventId;
   int attempt = 0;
   ScheduledTask? retryTimer;
+
+  /// Whether a subscribe for this handler already reached a socket. A handler
+  /// that never did still holds the fresh boundary its owner gave it.
+  bool sent = false;
 }
 
 class _SessionState {

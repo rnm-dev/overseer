@@ -230,6 +230,23 @@ a prompt that nothing answers. Three guards back the limits above:
   the message sat in the chat unanswered until the operator wrote again. A
   process that reports its result but does not exit within 10 seconds is
   stopped through the interrupt deadline.
+- **A turn waits for its own background tasks (OVSR-605).** An agent that
+  starts a deploy with `run_in_background` (or a `Monitor`) and answers
+  "started, waiting" has not finished: `claude -p` keeps its process alive and,
+  when the task completes, runs a continuation query with its own `init` and
+  `result`. Peon used to finalize on the first result and stop the process
+  10 seconds later, killing the deploy and the promised follow-up. The Claude
+  driver now reports the live set from `background_tasks_changed` as a
+  `system`/`background_tasks` event (`background_task_count`). A successful
+  result that arrives with tasks still running is held and the session stays
+  `running`, with the silence guard paused. The continuation's `result` ends
+  the turn. Usage and `num_turns` add up across both queries, the process-
+  cumulative `total_cost_usd` is de-duplicated, and each query gets its own
+  usage run id. The wait is capped by the turn time limit (`taskTimeoutMs`) and
+  ends as a `task_timeout`. If the process exits without continuing, the held
+  answer completes the turn. A follow-up sent during the wait interrupts it,
+  like any running Claude turn, and the background task dies with the process.
+  The driver flag is `turns.continuesAfterBackgroundTasks`.
 - **The queue keeps moving.** A turn that never reached its provider used to
   finalize without dispatching the queue, and a queued turn whose spawn threw
   was put back with nothing to retry it. Both now retry the queue after 5 s,

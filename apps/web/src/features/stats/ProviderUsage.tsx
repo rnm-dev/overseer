@@ -4,11 +4,12 @@ import { Badge, Card, DropdownMenu, menuItemClass, toolbarItemClass } from "../.
 import { useT } from "../../shared/i18n";
 import { ProviderLogoutDialog } from "./ProviderLogout";
 import { ProviderLogin } from "./ProviderLoginPanel";
+import { ApiKeyLogin } from "./ApiKeyLogin";
 import { signedOut } from "./providerLogin";
-import { fmtReset, type ByModel, type CapabilitiesState, type Provider, type QuotaState, type QuotaStatus } from "./statsModel";
+import { fmtReset, providerName, type ByModel, type CapabilitiesState, type Provider, type QuotaState, type QuotaStatus } from "./statsModel";
 
 export function ProviderUsage({
-  base, canLogin, canLogout,
+  base, canLogin, canLogout, loginKind = "attempt",
   provider,
   quota,
   capabilities,
@@ -16,7 +17,7 @@ export function ProviderUsage({
   now,
   onRefresh,
 }: {
-  base: string; canLogin: boolean; canLogout: boolean;
+  base: string; canLogin: boolean; canLogout: boolean; loginKind?: "attempt" | "api-key";
   provider: Provider;
   quota: QuotaState;
   capabilities: CapabilitiesState;
@@ -29,7 +30,7 @@ export function ProviderUsage({
   const effectiveStatus: QuotaStatus = quota.error ? "error" : quota.data?.status ?? "unavailable";
   const statusTone = effectiveStatus === "ok" ? "green" : effectiveStatus === "error" ? "red" : "neutral";
   const statusLabel = quota.loading && !quota.data ? t("peon.quota.status.checking") : t(`peon.quota.status.${effectiveStatus}`);
-  const providerName = t(`peon.quota.provider.${provider}`);
+  const providerLabel = providerName(t, provider);
   const quotaError = quota.error ?? quota.data?.error ?? null;
   const refreshing = quota.loading || capabilities.loading;
 
@@ -50,17 +51,19 @@ export function ProviderUsage({
   const absentReason = quotaError ?? capabilities.error ?? capabilities.data?.error ?? null;
 
   const needsLogin = signedOut(quotaError);
-  const login = canLogin && needsLogin ? <ProviderLogin key={`${base}/${provider}`} base={base} provider={provider} onSuccess={onRefresh} /> : null;
+  const login = !canLogin || !needsLogin ? null : loginKind === "api-key"
+    ? <ApiKeyLogin key={`${base}/${provider}`} base={base} provider={provider} onSuccess={onRefresh} />
+    : <ProviderLogin key={`${base}/${provider}`} base={base} provider={provider} onSuccess={onRefresh} />;
 
   if (absent && !needsLogin) {
     return (
       <Card className="relative flex flex-col py-4 pl-5 pr-12">
         <div className="flex items-start justify-between gap-3">
-          <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-ink-muted">{providerName}</h3>
+          <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-ink-muted">{providerLabel}</h3>
           <ProviderMenu refreshing={refreshing} onRefresh={onRefresh} />
         </div>
         <div className="flex flex-1 flex-col items-center justify-center gap-1 py-6 text-center">
-          <p className="font-display text-sm font-medium text-ink">{t("peon.quota.absent.title", { provider: providerName })}</p>
+          <p className="font-display text-sm font-medium text-ink">{t("peon.quota.absent.title", { provider: providerLabel })}</p>
           {absentReason && <p className="max-w-xs break-words font-mono text-[0.68rem] text-ink-faint/70">{absentReason}</p>}
         </div>
       </Card>
@@ -77,7 +80,7 @@ export function ProviderUsage({
       {confirmLogout && <ProviderLogoutDialog base={base} provider={provider} onSuccess={onRefresh} onClose={() => setConfirmLogout(false)} />}
       <div className="min-w-0 sm:max-w-sm">
         <div className="flex flex-wrap items-center gap-2">
-          <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-ink">{providerName}</h3>
+          <h3 className="font-display text-sm font-bold uppercase tracking-[0.12em] text-ink">{providerLabel}</h3>
           {(effectiveStatus !== "ok" || (quota.loading && !quota.data)) && <Badge tone={statusTone}>{statusLabel}</Badge>}
         </div>
         {quota.data?.accountEmail && (

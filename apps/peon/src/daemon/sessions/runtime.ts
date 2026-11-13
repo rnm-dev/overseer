@@ -798,10 +798,12 @@ as system instructions, process all of them, and do not claim that a human wrote
   let runModel: string | null = null;
   // turnCount accumulated by prior invocations, captured before this run adds to
   // it — finalize sets record.turnCount to this base plus the run's num_turns.
-  const turnCountBase = record.turnCount;
-  const usageRunId = randomUUID();
-  const usageBase = record.usage;
-  const usageModelsBase = { ...record.usageByModel };
+  // All four advance when a background-task continuation folds the previous
+  // query's result in (see awaitingBackground below).
+  let turnCountBase = record.turnCount;
+  let usageRunId = randomUUID();
+  let usageBase = record.usage;
+  let usageModelsBase = { ...record.usageByModel };
   let lastUsageEvent: AgentEvent | null = null;
   const restoreUsageBase = () => {
     record.usage = usageBase;
@@ -843,7 +845,20 @@ as system instructions, process all of them, and do not claim that a human wrote
     } satisfies AgentEvent);
     interruptWithDeadline();
   };
-  const timeoutHandle = setTimeout(() => stopForTimeout(`Timed out after ${taskTimeoutMs}ms`, taskTimeoutMs), taskTimeoutMs);
+  const armTurnTimeout = () => setTimeout(() => stopForTimeout(`Timed out after ${taskTimeoutMs}ms`, taskTimeoutMs), taskTimeoutMs);
+  let timeoutHandle = armTurnTimeout();
+  // An agent that ends its answer with "started the deploy, waiting" while a
+  // background shell/monitor is still running has not finished: Claude keeps
+  // the process alive and continues with a new query (and a new result) when
+  // the task completes. Finalizing on the first result and stopping the
+  // lingering process killed the task and the promised follow-up with it, so
+  // that result is held here and the session stays running until the
+  // continuation's result — or until the wait exceeds the turn time limit.
+  let backgroundTaskCount = 0;
+  let awaitingBackground: AgentEvent | null = null;
+  let backgroundWaitHandle: NodeJS.Timeout | null = null;
+  // Claude's total_cost_usd is cumulative over the process, not per query.
+  let processCostBase = 0;
   let silenceHandle: NodeJS.Timeout | null = null;
   const armSilenceWatchdog = () => {
     if (silenceHandle) clearTimeout(silenceHandle);
@@ -857,8 +872,33 @@ as system instructions, process all of them, and do not claim that a human wrote
 
   run.emitter.on("event", (event: AgentEvent) => {
     if (superseded()) return;
-    if (event.type !== "warning") armSilenceWatchdog();
+    if (event.type === "system" && event.subtype === "background_tasks" && typeof event.background_task_count === "number") {
+      backgroundTaskCount = event.background_task_count;
+    }
+    if (awaitingBackground && event.type === "system" && event.subtype === "init" && record.status !== "completed" && !killedFor) {
+      // The continuation started. Fold the held query into the bases so the
+      // next result accounts only for itself, under a fresh usage run id.
+      const held = awaitingBackground;
+      awaitingBackground = null;
+      if (backgroundWaitHandle) clearTimeout(backgroundWaitHandle);
+      backgroundWaitHandle = null;
+      restoreUsageBase();
+      accumulateUsage(record, usageFromEvent(held), runModel ?? eventModel(held), usageModelsFromEvent(held));
+      usageBase = record.usage;
+      usageModelsBase = { ...record.usageByModel };
+      if (typeof held.num_turns === "number") turnCountBase += held.num_turns;
+      if (typeof held.total_cost_usd === "number") processCostBase += held.total_cost_usd;
+      usageRunId = randomUUID();
+      lastUsageEvent = null;
+      timeoutHandle = armTurnTimeout();
+    }
+    // While waiting on background tasks the process is legitimately quiet; the
+    // wait has its own limit.
+    if (event.type !== "warning" && !awaitingBackground) armSilenceWatchdog();
     const usageEvent = event.type === "result" || (event.type === "system" && event.subtype === "usage");
+    if (event.type === "result" && processCostBase > 0 && typeof event.total_cost_usd === "number") {
+      event = { ...event, total_cost_usd: Math.max(0, event.total_cost_usd - processCostBase) };
+    }
     if (usageEvent) {
       if (typeof event.duration_ms !== "number") event = { ...event, duration_ms: Date.now() - runStartedAt,
         usage_duration_source: "harness-wall" };
@@ -987,6 +1027,22 @@ as system instructions, process all of them, and do not claim that a human wrote
       // A replay was armed above; the exit handler starts it once this process
       // has released the provider's session file.
       if (pendingRetry) return;
+      if (
+        driver.turns?.continuesAfterBackgroundTasks
+        && backgroundTaskCount > 0
+        && event.is_error !== true
+        && event.subtype === "success"
+      ) {
+        awaitingBackground = event;
+        if (silenceHandle) clearTimeout(silenceHandle);
+        silenceHandle = null;
+        backgroundWaitHandle = setTimeout(() => stopForTimeout(
+          `Background tasks were still running ${Math.round(taskTimeoutMs / 60_000)} minutes after the agent's answer and were stopped`,
+          taskTimeoutMs,
+        ), taskTimeoutMs);
+        backgroundWaitHandle.unref();
+        return;
+      }
       restoreUsageBase();
       drainingRuns.add(record.id);
       // A process that reported its result but never exits must not hold the
@@ -1024,6 +1080,7 @@ as system instructions, process all of them, and do not claim that a human wrote
     clearTimeout(timeoutHandle);
     if (silenceHandle) clearTimeout(silenceHandle);
     if (forcedExitHandle) clearTimeout(forcedExitHandle);
+    if (backgroundWaitHandle) clearTimeout(backgroundWaitHandle);
     releaseMcp();
     releaseContext();
     if (drainingRuns.delete(record.id)) scheduleQueuedDispatch(record);
@@ -1079,6 +1136,13 @@ as system instructions, process all of them, and do not claim that a human wrote
         { result: "failure", summary: killedFor.message },
         undefined, undefined, undefined, undefined, systemPromptsAcknowledged, killedFor,
       );
+      return;
+    }
+    if (awaitingBackground) {
+      // The process ended without continuing (its tasks were reaped, or the
+      // CLI chose not to wake). The held answer is still this turn's result.
+      restoreUsageBase();
+      classifyFromResultEvent(record, awaitingBackground, runModel, turnCountBase);
       return;
     }
     if (exit.spawnError) {

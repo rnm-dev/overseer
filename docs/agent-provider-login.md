@@ -12,15 +12,25 @@ service and routes (`agents/claudeLoginRoutes.ts`, `agents/codexLoginRoutes.ts`)
 touching the HTTP layer. The login services shut down in
 `shutdownAgentDriverRuntimes()`.
 
+`capabilities.loginKind` tells clients which dialogue to render: `attempt` (the
+default) is the browser/device-code flow described here; `api-key` means the
+operator submits a key to `POST /login {apiKey}`. The opencode driver is the
+only `api-key` driver; its contract is in [the opencode driver](opencode-driver.md#the-openrouter-key).
+
 ## Access and paths
 
 Local CLI and authenticated Fleet callers use the same Peon namespace:
 
-`/api/v1/driver/{claude-code|codex}`
+`/api/v1/driver/{claude-code|codex|opencode}`
 
 Overseer exposes these under:
 
-`/api/workspaces/:wsId/peons/:id/driver/{claude-code|codex}`
+`/api/workspaces/:wsId/peons/:id/driver/:provider`
+
+The server relays the fixed set of route shapes (`login`, `login/:attemptId`,
+`login/:attemptId/code`, `logout`) for any well-formed provider name
+(`^[a-z0-9][a-z0-9-]{0,63}$`) and leaves unknown providers to the Peon's 404.
+The quota and capabilities proxies use the same rule.
 
 All Overseer login routes, including reads, require workspace ownership. Fleet
 calls require the existing bearer token and a `Peon-Actor`. Attempts are bound to

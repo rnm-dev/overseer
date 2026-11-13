@@ -2,14 +2,14 @@ import { useState } from "react";
 import { api, json } from "../../shared/api";
 import { useT } from "../../shared/i18n";
 import { ConfirmationDialog } from "../../shared/ui";
-import type { Provider } from "./statsModel";
+import { providerName, type Provider } from "./statsModel";
 
 /** Confirms and performs a provider logout; stays open with the error if it fails. */
 export function ProviderLogoutDialog({ base, provider, onSuccess, onClose }: { base: string; provider: Provider; onSuccess: () => void; onClose: () => void }) {
   const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
-  const providerName = t(`peon.quota.provider.${provider}`);
+  const providerLabel = providerName(t, provider);
   async function logout() {
     setBusy(true); setError(false);
     try {
@@ -21,9 +21,9 @@ export function ProviderLogoutDialog({ base, provider, onSuccess, onClose }: { b
   }
   return (
     <ConfirmationDialog
-      title={t("providerLogin.logoutConfirmTitle", { provider: providerName })}
+      title={t("providerLogin.logoutConfirmTitle", { provider: providerLabel })}
       description={<>
-        {t("providerLogin.logoutConfirmBody", { provider: providerName })}
+        {t("providerLogin.logoutConfirmBody", { provider: providerLabel })}
         {error && <span role="alert" className="mt-2 block text-danger">{t("providerLogin.logoutError")}</span>}
       </>}
       confirmLabel={t("providerLogin.logout")}

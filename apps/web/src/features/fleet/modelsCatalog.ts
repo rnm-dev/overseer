@@ -17,8 +17,9 @@ export interface CatalogOption {
 }
 
 export interface ModelProvider {
-  capabilities?: { login?: boolean; logout?: boolean };
+  capabilities?: { login?: boolean; logout?: boolean; quota?: boolean; loginKind?: "attempt" | "api-key" };
   agent: string;
+  serviceProvider?: string;
   label: string;
   models: CatalogOption[];
   reasoningEfforts: CatalogOption[];

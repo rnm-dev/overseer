@@ -1,5 +1,7 @@
 import { refreshSessionPins } from "./useSessionPins";
 import { ProviderLogin } from "../stats/ProviderLoginPanel";
+import { ApiKeyLogin } from "../stats/ApiKeyLogin";
+import { serviceName } from "../stats/statsModel";
 import { signedOut } from "../stats/providerLogin";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type MouseEvent, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
@@ -891,7 +893,9 @@ function PeonSessionDetailPage() {
                       projectViewer={projectViewer}
                     />
                     </ErrorBoundary>
-                    {isOwner && peon.online && sessionProvider?.agent === "claude-code" && sessionProvider.capabilities?.login && ((row.item.kind === "notice" && row.item.tone === "error" && signedOut(row.item.text)) || (row.item.kind === "text" && Boolean(row.item.providerError) && signedOut(`${row.item.providerError} ${row.item.text}`))) && <ProviderLogin key={`${base}/${sid}/${row.item.key}`} base={base} provider="claude-code" />}
+                    {isOwner && peon.online && (sessionProvider?.agent === "claude-code" || sessionProvider?.capabilities?.loginKind === "api-key") && sessionProvider.capabilities?.login && ((row.item.kind === "notice" && row.item.tone === "error" && signedOut(row.item.text)) || (row.item.kind === "text" && Boolean(row.item.providerError) && signedOut(`${row.item.providerError} ${row.item.text}`))) && (sessionProvider.capabilities.loginKind === "api-key"
+                      ? <ApiKeyLogin key={`${base}/${sid}/${row.item.key}`} base={base} provider={serviceName(sessionProvider)} />
+                      : <ProviderLogin key={`${base}/${sid}/${row.item.key}`} base={base} provider="claude-code" />)}
                     {row.item.key === lastAssistantItemKey && (
                       <BranchMessageMenu branching={branching} disabled={liveWork} error={branchError} onBranch={() => void branchSession()} t={t} />
                     )}

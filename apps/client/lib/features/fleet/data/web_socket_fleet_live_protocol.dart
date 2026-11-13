@@ -55,8 +55,16 @@ extension _WebSocketFleetLiveProtocol on WebSocketFleetLiveService {
           jsonEncode({'type': 'resume', 'cursor': resumeCursor}),
         );
       }
-      for (final handler in state.tails.values) {
-        _sendTailSubscription(state, handler);
+      for (final handler in List.of(state.tails.values)) {
+        if (!handler.sent) {
+          _sendTailSubscription(state, handler);
+          continue;
+        }
+        // After a reconnect the boundary is stale. Let the owner read the
+        // newest page and resubscribe rather than replaying the whole gap.
+        handler.retryTimer?.cancel();
+        handler.retryTimer = null;
+        unawaited(handler.onFrame(const TranscriptTailFrame.reconnected()));
       }
       _sendPresence(state);
       unawaited(_seedActiveSessions(workspaceId, state, seedGeneration));

@@ -71,6 +71,16 @@ export function normalizeClaudeCodeEvent(raw: Record<string, unknown>, cwd?: str
     // Persisted, it filled the newest transcript page and crowded out the
     // conversation, so it never becomes a transcript event.
     if (raw.subtype === "thinking_tokens") return null;
+    // The live set of background shells/monitors. The harness needs only the
+    // count: a result with tasks still running is not the end of the turn.
+    if (raw.subtype === "background_tasks_changed") {
+      return {
+        type: "system",
+        subtype: "background_tasks",
+        background_task_count: Array.isArray(raw.tasks) ? raw.tasks.length : 0,
+        ...sourceTimestamp,
+      };
+    }
     return {
       type: "system",
       ...(typeof raw.subtype === "string" ? { subtype: raw.subtype } : {}),
@@ -136,6 +146,10 @@ export function createClaudeCodeEventNormalizer(
   return (raw, emit) => {
     const event = normalizeClaudeCodeEvent(raw, opts.cwd);
     if (!event) return;
+    // Every query in the process (including the continuation Claude starts
+    // after a background task finishes) opens with init and reports its own
+    // per-query result usage; the partial snapshot must restart with it.
+    if (raw.type === "system" && raw.subtype === "init") usage.reset();
     const providerAccepted = raw.type === "assistant" || raw.type === "user"
       || (raw.type === "system" && raw.subtype === "init");
     if (!accepted && providerAccepted) {

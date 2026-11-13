@@ -119,12 +119,14 @@ GET   /api/v1/status                     identity + live load (activeSessionCoun
 PATCH /api/v1/status                     change state; body { paused: boolean }
 POST  /api/v1/control/check-update       run update check now; returns fresh update fields
 GET   /api/v1/models                      CLI-discovered provider/model/effort catalog; ?refresh=1 forces discovery
+                                          (each provider carries `serviceProvider`, the name its quota/login/usage routes use,
+                                          and `capabilities.loginKind`: "attempt" or "api-key")
 GET   /api/v1/quota                       live provider account quota; ?refresh=1 bypasses cache
-GET   /api/v1/quota/:provider             independently fetch claude-code or codex quota
+GET   /api/v1/quota/:provider             independently fetch one provider's quota (claude-code, codex, opencode)
 GET   /api/v1/capabilities                installed plugins, skills, and MCP metadata
 GET   /api/v1/capabilities/:provider      independently fetch one provider's capabilities
-GET   /api/v1/ai/cli-updates              durable Codex/Claude CLI version and installation status
-GET   /api/v1/ai/cli-updates/:provider    one provider; public ids are codex or claude-code
+GET   /api/v1/ai/cli-updates              durable agent CLI version and installation status
+GET   /api/v1/ai/cli-updates/:provider    one provider; public ids are codex, claude-code or opencode
 POST  /api/v1/ai/cli-updates/:provider    start a supported, installation-aware CLI update
 GET   /api/v1/driver/claude-code/login  recover caller's Claude login attempt
 POST  /api/v1/driver/claude-code/login  start Claude subscription login (empty body)
@@ -135,6 +137,9 @@ GET   /api/v1/driver/codex/login    recover caller's Codex login attempt
 POST  /api/v1/driver/codex/login    start Codex device-code login (empty body)
 GET   /api/v1/driver/codex/login/:id  poll Codex login
 DELETE /api/v1/driver/codex/login/:id  cancel Codex login
+GET   /api/v1/driver/opencode/login  OpenRouter key status { loggedIn, keySource, keyHint, authState } (never the key)
+POST  /api/v1/driver/opencode/login  validate with OpenRouter and store { apiKey }; INVALID_API_KEY when rejected
+POST  /api/v1/driver/opencode/logout  remove the stored key (KEY_FROM_ENVIRONMENT if it comes from OPENROUTER_API_KEY)
 GET   /api/v1/filesystem/<path>?stat=1    read-only host directory browser (directories only)
 GET   /api/v1/armory/packages             available + installed Armory package inventory
 GET   /api/v1/armory/packages/:id         one Armory package's catalog and local state

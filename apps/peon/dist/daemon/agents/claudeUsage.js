@@ -50,6 +50,9 @@ export class ClaudeInputAccumulator {
         this.messages.set(message.id, usage);
         return Object.keys(usage).length > 0;
     }
+    reset() {
+        this.messages.clear();
+    }
     report() {
         const usage = {};
         for (const row of this.messages.values())

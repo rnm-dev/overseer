@@ -45,6 +45,9 @@ export class ClaudeInputAccumulator {
     this.messages.set(message.id, usage);
     return Object.keys(usage).length > 0;
   }
+  reset(): void {
+    this.messages.clear();
+  }
   report(): Record<string, unknown> {
     const usage: Usage = {};
     for (const row of this.messages.values()) for (const key of fields) {
