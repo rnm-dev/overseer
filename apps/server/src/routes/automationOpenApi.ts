@@ -241,6 +241,41 @@ export function automationOpenApiDocument(publicUrl: string) {
           },
         },
       },
+      "/sources/{sourceId}/events": {
+        post: {
+          summary: "Post one event of a trigger source",
+          description: "Events of one source are buffered until it has been quiet for quietMs (never longer than maxMs from the stint's first event), then delivered to the source's session as one stint. A repeated externalId is a no-op. Needs a project-scoped key.",
+          parameters: [{ name: "sourceId", in: "path", required: true, schema: { type: "string", maxLength: 200 } }],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    externalId: { type: "string", maxLength: 255, description: "your id for this event; retries with the same id are ignored" },
+                    text: { type: "string" },
+                    author: { type: "string" },
+                    at: { type: "integer", description: "when it happened, ms since epoch" },
+                    quietMs: { type: "integer", minimum: 0, default: 720000 },
+                    maxMs: { type: "integer", minimum: 0, default: 3600000 },
+                  },
+                  required: ["externalId", "text"],
+                },
+              },
+            },
+          },
+          responses: { 202: { description: "buffered; the source's status, with duplicate and eventId" }, ...failures },
+        },
+      },
+      "/sources/{sourceId}": {
+        get: {
+          summary: "Status of a trigger source",
+          description: "state idle|buffering, pendingEvents, deadlineAt, the source's sessionId and lastRequestId (poll it under /sessions/{sessionId}/requests/{requestId}), lastError.",
+          parameters: [{ name: "sourceId", in: "path", required: true, schema: { type: "string" } }],
+          responses: { 200: { description: "the source's status" }, ...failures },
+        },
+      },
       "/sessions/{sessionId}/transcript": {
         get: {
           summary: "Read the conversation",

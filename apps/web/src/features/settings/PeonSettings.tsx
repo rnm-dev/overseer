@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { SportShoe } from "lucide-react";
 import { useNavigate } from "react-router";
 import { api, ApiError } from "../../shared/api";
-import { Badge, Button, Card, ConfirmationDialog, Input, Label } from "../../shared/ui";
+import { Badge, Button, Card, ConfirmationDialog, Input, Label, Switch } from "../../shared/ui";
 import { useT } from "../../shared/i18n";
 import { usePeon } from "../fleet/context";
 import { effortsForModel, providerForAgent, useModels } from "../fleet/modelsCatalog";
@@ -20,6 +20,8 @@ interface Settings {
   aiDefaultModel?: string | null;
   aiDefaultReasoningEffort?: string | null;
   defaultAgent?: string | null;
+  /** Absent on a Peon too old to have sign-offs. */
+  signoffsEnabled?: boolean;
 }
 
 
@@ -207,6 +209,14 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
             <Label>{t("peon.settings.name")}</Label>
             <Input value={form.name ?? ""} onChange={(e) => patch("name", e.target.value)} />
           </div>
+          {typeof form.signoffsEnabled === "boolean" && (
+            <Switch
+              checked={form.signoffsEnabled}
+              onChange={(checked) => setForm((current) => current ? { ...current, signoffsEnabled: checked } : current)}
+              label={t("peon.settings.signoffs")}
+              hint={t("peon.settings.signoffsHint")}
+            />
+          )}
           <div className="flex items-center gap-3">
             <Button onClick={save} disabled={saving}>
               {saving ? t("peon.settings.saving") : t("peon.settings.save")}

@@ -40,6 +40,41 @@ export function toolbarItemClass(active = false, iconOnly = false): string {
   return `flex h-7 flex-none items-center justify-center gap-1.5 whitespace-nowrap rounded font-body text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/60 disabled:cursor-default disabled:opacity-45 ${iconOnly ? "w-7" : "px-1.5"} ${active ? "bg-accent/10 text-accent-strong" : "text-ink-muted hover-wash hover:text-ink disabled:hover:bg-transparent disabled:hover:text-ink-muted"}`;
 }
 
+// An on/off setting. A real button with role="switch", so it is reachable and
+// announced like one; the label and hint sit beside it and toggle it too.
+export function Switch({ checked, onChange, label, hint, disabled = false }: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  label: ReactNode;
+  hint?: ReactNode;
+  disabled?: boolean;
+}) {
+  const id = useId();
+  return (
+    <div className="flex items-start gap-3">
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative mt-0.5 inline-flex h-5 w-9 flex-none items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-50 ${checked ? "border-accent bg-accent" : "border-edge-strong bg-ink/10"}`}
+      >
+        <span aria-hidden className={`inline-block size-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-[1.05rem]" : "translate-x-0.5"}`} />
+      </button>
+      <label htmlFor={id} className="min-w-0 cursor-pointer select-none">
+        <span className="block font-body text-sm text-ink">{label}</span>
+        {hint && <span className="mt-0.5 block font-body text-xs leading-relaxed text-ink-muted">{hint}</span>}
+      </label>
+    </div>
+  );
+}
+
+// The title bar of a card: one height, padding and type everywhere.
+export const CARD_HEADER_CLASS = "flex h-11 flex-none items-center gap-3 border-b border-edge px-4";
+export const CARD_TITLE_CLASS = "min-w-0 flex-1 truncate font-display text-sm font-semibold text-ink";
+
 export function Card({ children, className = "", title }: { children: ReactNode; className?: string; title?: string }) {
   return <div className={`glass-panel ${className}`} title={title}>{children}</div>;
 }

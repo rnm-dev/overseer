@@ -116,3 +116,19 @@ every theme's border colours render lighter than declared. The interface is
 meant to separate areas by background tint rather than lines.
 `--color-edge-emphasis` stays unmixed for focus and scrollbar contrast. Tune the
 percentages there rather than editing each theme.
+
+## Fixed headers and panels
+
+**Fixed headers never paint a colour band.** On pages (`FixedPaneHeader`) the
+bar is a progressive blur: it blurs what scrolls beneath it and the blur fades
+out downwards through a mask (`.fixed-pane-header::before`). The session header
+(`.fixed-pane-header-clear`) is clear instead, and the transcript fades itself
+out with `--pane-top-fade`. Page content is deliberately not masked: an element
+with a mask is a backdrop root, and glass panels inside it lose their blur.
+
+**One panel look.** `Card` (`.glass-panel`) and `.surface` are the same frosted
+glass, from the same tokens: `--ov-panel-bg`, `--ov-panel-backdrop`,
+`--ov-panel-border`, `--ov-panel-shadow`, `--ov-panel-radius`
+(`--ov-surface-radius` and `--ov-surface-shadow` still override a surface).
+Inside the masked transcript a panel's blur has nothing to sample and it reads
+as its tinted fill.

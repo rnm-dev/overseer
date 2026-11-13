@@ -1,5 +1,6 @@
 import { deleteSessionPins } from "../../modules/sessions/index.js";
 import express from "express";
+import { query } from "../../infrastructure/db/index.js";
 import type { PeonRecord } from "../../modules/fleet/index.js";
 import { callPeon, connOfRecord, proxyGet, proxyStream } from "../../infrastructure/peonHttp/index.js";
 import {
@@ -136,6 +137,24 @@ export function registerSessionRoutes(router: express.Router): void {
     const r = await callPeon(connOfRecord(c.record), "GET", "/models", { actor: c.operator.email });
     if (r.status === 404 || r.status === 401) return res.json({ providers: [], defaultModel: null });
     relay(r, res);
+  }));
+  // How many of this Peon's sessions have something unread for the caller: a
+  // finished turn they started, or a mention of them. Drives the badge on the
+  // Sessions icon; a session counts once however much is unread in it.
+  router.get(`${wp}/unread-sessions`, withWorkspacePeon(async (_req, res, c) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (c.participant) return res.json({ count: 0 });
+    const { rows } = await query<{ count: string | number }>(
+      `SELECT COUNT(DISTINCT u.session_id) AS count FROM (
+         SELECT session_id FROM session_attention
+          WHERE workspace_id=$1 AND user_id=$2 AND peon_id=$3 AND state='unread'
+         UNION
+         SELECT session_id FROM session_mention_attention
+          WHERE workspace_id=$1 AND recipient_kind='user' AND recipient_id=$2 AND peon_id=$3 AND state='unread'
+       ) u JOIN sessions s ON s.peon_id=$3 AND s.session_id=u.session_id`,
+      [c.workspaceId, c.userId, c.record.peonId],
+    );
+    res.json({ count: Number(rows[0]?.count ?? 0) });
   }));
   router.get(`${wp}/sessions`, withWorkspacePeon(async (_req, res, c) => {
     const result = await callPeon(connOfRecord(c.record), "GET", "/sessions", { actor: c.operator.email });

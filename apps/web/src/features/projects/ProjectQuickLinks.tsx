@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ExternalLink, Plus, Save, Trash2 } from "lucide-react";
 import { ApiError } from "../../shared/api";
 import { useT } from "../../shared/i18n";
-import { Card, Input } from "../../shared/ui";
+import { Card, CARD_HEADER_CLASS, CARD_TITLE_CLASS, Input } from "../../shared/ui";
 import {
   createProjectQuickLink,
   deleteProjectQuickLink,
@@ -41,16 +41,16 @@ export function ProjectQuickLinksCard({ links, cached = false }: { links: Projec
   const t = useT();
   if (links.length === 0) return null;
   return (
-    <section className="border-b border-edge">
-      <div className="flex h-8 flex-none items-center gap-3 border-b border-edge px-4 sm:px-5">
-        <h2 className="font-display text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-ink-muted">{t("proj.quickLinks")}</h2>
+    <Card className="flex-none overflow-hidden">
+      <div className={CARD_HEADER_CLASS}>
+        <h2 className={CARD_TITLE_CLASS}>{t("proj.quickLinks")}</h2>
         <span className="rounded bg-surface-hover px-1.5 py-0.5 font-mono text-[0.6rem] text-ink-faint">{links.length}</span>
       </div>
       <div className="px-4 py-3 sm:px-5">
         {cached && <p className="mb-2 font-mono text-[0.65rem] text-warning/80">{t("proj.quickLinks.cached")}</p>}
         <ProjectQuickLinksList links={links} />
       </div>
-    </section>
+    </Card>
   );
 }
 

@@ -154,6 +154,15 @@ Wire shapes are normative in
 fixtures beside it. Peon advertises `session-signoffs-v1` in `GET /status`
 capabilities. Code lives in `apps/peon/src/daemon/signoffs/`.
 
+### The switch
+
+`signoffsEnabled` (default `true`) is a daemon setting, on the Peon's General
+settings page as **Sign-offs** and remotely manageable through the daemon
+configuration patch. Off: no session is offered `signoff_propose` (a direct
+call is refused with `SIGNOFF_DISABLED`) and trigger sessions get no sign-off
+rule in their prompt, so they act on their own. Sign-offs already recorded can
+still be decided, and the other sign-off tools keep working.
+
 ### Session origin
 
 - `POST /api/v1/sessions` accepts `origin: "operator" | "trigger"` and, with
@@ -307,5 +316,15 @@ steps. Choosing an option shows its **Go ahead**; **Reject** (with an optional
 reason) and **Something else…** (a comment) sit below. A History tab lists the
 events. Results after execution are labelled as reported by the agent.
 
-Not built yet: the sign-off inside the session view, pushes, live updates over
+A session's sign-offs waiting for a decision close its transcript as cards
+(`SessionSignoffCard.tsx`), where the agent stopped — in the scrollable
+conversation, not pinned to the composer, and only while no turn is running.
+The card is one compact row with an accent edge: "SO-5" and the title, the
+sign-off's summary below in up to three lines, and **Decide** (or **Open** for
+someone who cannot decide) on the right; the whole row opens the sign-off in a dialog over the chat (`SignoffView`, the same card as the Sign-offs page, without the session link). It
+reads `GET /workspaces/:wsId/peons/:peonId/sessions/:sid/signoffs` and
+refreshes when a turn starts or ends, every 20 s and after a decision.
+
+Not built yet: a marker on awaiting sessions in the session list, an inline
+sign-off card in the transcript, pushes, live updates over
 the workspace socket instead of polling, and reassigning.

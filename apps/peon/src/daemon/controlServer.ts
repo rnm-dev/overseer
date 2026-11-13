@@ -145,6 +145,7 @@ export function createControlServer(options: ControlServerOptions = {}) {
           const session = sessions.get(sessionId);
           return session ? session.origin ?? "operator" : undefined;
         },
+        proposeEnabled: () => settings.get().signoffsEnabled !== false,
       },
     }),
   );

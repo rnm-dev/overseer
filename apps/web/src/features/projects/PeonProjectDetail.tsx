@@ -1,3 +1,5 @@
+import { Card, CARD_HEADER_CLASS, CARD_TITLE_CLASS } from "../../shared/ui";
+import { useViewportFill } from "../../shared/viewportFill";
 import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus } from "lucide-react";
@@ -103,6 +105,7 @@ export function ProjectRecentSessions({
     loadPage(0);
   }, [loadPage]);
 
+  const scroller = useRef<HTMLDivElement | null>(null);
   const fetchedCount = projectPage?.length ?? 0;
   const hasMore = projectTotal !== null && fetchedCount < projectTotal;
 
@@ -111,7 +114,8 @@ export function ProjectRecentSessions({
     if (!target || !hasMore || pageLoading || projectPageError) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) loadPage(fetchedCount);
-    }, { rootMargin: "400px 0px" });
+    // The list scrolls inside its card on wide screens; elsewhere the page does.
+    }, { root: scroller.current && scroller.current.scrollHeight > scroller.current.clientHeight ? scroller.current : null, rootMargin: "400px 0px" });
     observer.observe(target);
     return () => observer.disconnect();
   }, [fetchedCount, hasMore, loadPage, pageLoading, projectPageError]);
@@ -122,9 +126,9 @@ export function ProjectRecentSessions({
   const failed = error && (wsId ? projectPageError : true);
 
   return (
-    <section className="min-w-0 border-b border-edge lg:border-b-0">
-      <header className="flex h-8 flex-none items-center gap-3 border-b border-edge px-4 sm:px-5">
-        <h2 className="min-w-0 flex-1 font-display text-sm font-bold tracking-wide text-ink">{t("peon.dash.recentSessions")}</h2>
+    <Card className="flex min-w-0 flex-col overflow-hidden lg:h-full">
+      <header className={CARD_HEADER_CLASS}>
+        <h2 className={CARD_TITLE_CLASS}>{t("peon.dash.recentSessions")}</h2>
         <span className="hidden md:inline-flex">
           <Link to={newSessionTo} className="flex items-center gap-1 font-body text-xs font-bold text-accent-strong transition-opacity hover:opacity-75">
             {t("sidebar.newSession")}
@@ -133,7 +137,7 @@ export function ProjectRecentSessions({
         </span>
       </header>
 
-      <div>
+      <div ref={scroller} className="min-h-0 lg:flex-1 lg:overflow-y-auto">
         {recent.length > 0 ? (
           <SessionSidebarList
             onPin={sessionPins.toggle}
@@ -158,7 +162,6 @@ export function ProjectRecentSessions({
         ) : (
           <p className="px-3 py-8 text-center font-body text-xs text-ink-faint">{t("peon.dash.noSessions")}</p>
         )}
-      </div>
       {hasMore && (
         <div ref={sentinel} className="flex min-h-10 items-center justify-center" aria-live="polite">
           {pageLoading && <span className="loading-spinner scale-75" role="status" aria-label={t("sessions.loading")} />}
@@ -169,12 +172,13 @@ export function ProjectRecentSessions({
           )}
         </div>
       )}
+      </div>
       {recent.length > 0 && (
         <footer className="border-t border-edge px-4 py-2.5 sm:px-5 text-right font-mono text-xs tabular-nums text-ink-faint">
           {t("peon.projects.sessions", { n: Math.max(recent.length, projectTotal ?? 0) })}
         </footer>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -192,6 +196,9 @@ export function PeonProjectDetail() {
   const liveProject = peonContext.projects?.find((project) => project.key === key && !project.deleted);
   const newSessionTo = `/peons/${encodeURIComponent(peon.peonId)}/sessions/new?project=${encodeURIComponent(key)}`;
 
+  // On wide screens the two columns end where the viewport ends and scroll
+  // independently: sessions inside their card, links and docs in theirs.
+  const pane = useViewportFill({ minHeight: 448 });
   const { data: detail, error: detailError } = useApiResource<ProjectDetail>(`${base}/projects/${encodeURIComponent(key)}`);
   const detailErr = Boolean(detailError);
 
@@ -200,8 +207,9 @@ export function PeonProjectDetail() {
       <ProjectPageHeader showDesktopNewSession={false} />
       <ProjectTabs />
 
-      {/* Edge-to-edge grid under the top bar: cells are divided by lines, not cards. */}
-      <div className="-mx-3 -mb-4 grid border-t border-edge sm:-mx-6 sm:-mb-7 md:border-t-0 lg:min-h-[calc(100dvh-var(--fixed-pane-header-height,49px))] lg:grid-cols-[minmax(20rem,2fr)_minmax(0,3fr)]">
+      {/* Glass panels like every other page: sessions on the left, quick links
+          and the project's documentation on the right. */}
+      <div ref={pane.ref} style={{ height: pane.height }} className="mt-1 grid items-start gap-3 lg:grid-cols-[minmax(20rem,2fr)_minmax(0,3fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
         <ProjectRecentSessions
           projectKey={key}
           peonId={peon.peonId}
@@ -216,10 +224,11 @@ export function PeonProjectDetail() {
           base={base}
           paginationSupported={peon.capabilities.includes("transcript-pagination-v1")}
         />
-        <div className="min-w-0 lg:border-l lg:border-edge">
+        <div className="flex min-w-0 flex-col gap-3 lg:min-h-0">
           {detail && <ProjectQuickLinksCard links={liveProject?.quickLinks ?? detail.quickLinks ?? []} cached={!peon.online} />}
+          <Card className="min-w-0 overflow-hidden lg:min-h-0 lg:flex-1">
           {detail ? (
-            <ProjectDocumentation base={base} projectId={detail.projectId ?? null} />
+            <ProjectDocumentation base={base} projectId={detail.projectId ?? null} fill />
           ) : detailErr ? (
             <div className="grid min-h-40 place-items-center px-6 py-8">
               <p className="font-mono text-xs text-danger">⚠ {t("error.loadFailed")}</p>
@@ -229,6 +238,7 @@ export function PeonProjectDetail() {
               <span className="loading-spinner" role="status" aria-label={t("proj.docs.loading")} />
             </div>
           )}
+          </Card>
         </div>
       </div>
     </div>

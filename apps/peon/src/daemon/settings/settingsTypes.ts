@@ -28,6 +28,11 @@ export interface DaemonSettings {
   // restart are automatically resumed on the next startup, up to a per-session
   // attempt cap.
   autoResumeInterrupted: boolean;
+  // When true (default), sessions started by a trigger may record sign-offs
+  // for decisions a person must make (docs/signoffs.md). Off: the agent is not
+  // offered signoff_propose and its prompt carries no sign-off rule; sign-offs
+  // already recorded can still be decided.
+  signoffsEnabled: boolean;
   // Shared secret a "overseer" (fleet control plane) presents as
   // `Authorization: Bearer <token>` to reach this peon's machine-facing
   // fleet profile of `/api/v1/*` (src/daemon/agentApi.ts). Empty (default)

@@ -82,6 +82,7 @@ export interface FleetSettingsView {
   maxTurns: number;
   taskTimeoutMs: number;
   maxBudgetUsd: number;
+  signoffsEnabled: boolean;
 }
 
 export interface DaemonConfigurationView {
@@ -95,6 +96,7 @@ export interface DaemonConfigurationView {
   maxTurns: number;
   taskTimeoutMs: number;
   maxBudgetUsd: number;
+  signoffsEnabled: boolean;
 }
 
 export interface ControlSettingsView extends Omit<DaemonSettings, "overseerToken" | "pairingSecret" | "settingsDefaultsVersion"> {
@@ -165,6 +167,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       maxTurns: s.maxTurns,
       taskTimeoutMs: s.taskTimeoutMs,
       maxBudgetUsd: s.maxBudgetUsd,
+      signoffsEnabled: s.signoffsEnabled !== false,
     };
   }
 
@@ -180,6 +183,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       maxTurns: settings.maxTurns,
       taskTimeoutMs: settings.taskTimeoutMs,
       maxBudgetUsd: settings.maxBudgetUsd,
+      signoffsEnabled: settings.signoffsEnabled !== false,
     };
   }
 
@@ -206,7 +210,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     const allowed = new Set([
       "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
       "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
-      "maxTurns", "taskTimeoutMs", "maxBudgetUsd",
+      "maxTurns", "taskTimeoutMs", "maxBudgetUsd", "signoffsEnabled",
     ]);
     const unknown = Object.keys(value).find((key) => !allowed.has(key));
     if (unknown) this.throwBadRequest(`${unknown} is not remotely manageable`);
@@ -275,6 +279,11 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     if ("paused" in body) {
       if (typeof body.paused !== "boolean") this.throwBadRequest("paused must be a boolean");
       patch.paused = body.paused;
+    }
+
+    if ("signoffsEnabled" in body) {
+      if (typeof body.signoffsEnabled !== "boolean") this.throwBadRequest("signoffsEnabled must be a boolean");
+      patch.signoffsEnabled = body.signoffsEnabled;
     }
 
     if ("name" in body) {
@@ -502,6 +511,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       maxTurns: settings.maxTurns,
       taskTimeoutMs: settings.taskTimeoutMs,
       maxBudgetUsd: settings.maxBudgetUsd,
+      signoffsEnabled: settings.signoffsEnabled !== false,
     };
   }
 

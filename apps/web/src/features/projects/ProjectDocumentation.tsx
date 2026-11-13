@@ -3,7 +3,7 @@ import { BookOpen, ChevronRight, Folder, RefreshCw, TriangleAlert } from "lucide
 import { api, ApiError } from "../../shared/api";
 import { Markdown } from "../../shared/RichText";
 import { useT } from "../../shared/i18n";
-import { toolbarItemClass } from "../../shared/ui";
+import { CARD_HEADER_CLASS, toolbarItemClass } from "../../shared/ui";
 import { FileTypeIcon } from "./FileTypeIcon";
 import { fileApiPath } from "./fileLinks";
 
@@ -124,7 +124,7 @@ function errorCopy(code: string, t: ReturnType<typeof useT>): string {
   return t("proj.docs.failed");
 }
 
-export function ProjectDocumentation({ base, projectId, compact = false }: { base: string; projectId: string | null; compact?: boolean }) {
+export function ProjectDocumentation({ base, projectId, compact = false, fill = false }: { base: string; projectId: string | null; compact?: boolean; /** Fill the parent and scroll the body under a fixed title bar. */ fill?: boolean }) {
   const t = useT();
   const [revision, setRevision] = useState(0);
   const [state, setState] = useState<DocumentationState>({ kind: "loading" });
@@ -190,9 +190,9 @@ export function ProjectDocumentation({ base, projectId, compact = false }: { bas
   const refresh = () => activePath && activePath !== "docs/index.md" ? openDocument(activePath) : goHome();
 
   return (
-    <section className="min-w-0">
-      <header className={`relative flex h-8 flex-none items-center gap-3 border-b border-edge ${compact ? "sticky top-0 z-10 app-backdrop px-3" : "px-4 sm:px-5"}`}>
-        <nav aria-label={t("proj.docs.breadcrumbs")} className="flex min-w-0 flex-1 items-center gap-1 font-display text-sm font-bold tracking-wide">
+    <section className={fill ? "flex h-full min-h-0 min-w-0 flex-col" : "min-w-0"}>
+      <header className={compact ? "relative sticky top-0 z-10 flex h-8 flex-none items-center gap-3 border-b border-edge app-backdrop px-3" : `relative ${CARD_HEADER_CLASS}`}>
+        <nav aria-label={t("proj.docs.breadcrumbs")} className={`flex min-w-0 flex-1 items-center gap-1 font-display text-sm ${compact ? "font-bold tracking-wide" : "font-semibold"}`}>
           <button type="button" onClick={goHome} className="shrink-0 text-ink-muted transition-colors hover:text-accent-strong">{t("proj.docs.project")}</button>
           {breadcrumbs.map((part, index) => {
             const last = index === breadcrumbs.length - 1;
@@ -217,6 +217,7 @@ export function ProjectDocumentation({ base, projectId, compact = false }: { bas
         </button>
       </header>
 
+      <div className={fill ? "min-h-0 flex-1 overflow-y-auto" : undefined}>
       {state.kind === "loading" ? <DocumentationSkeleton label={t("proj.docs.loading")} />
         : state.kind === "missing" ? <DocumentationEmpty title={t("proj.docs.empty")} detail={t("proj.docs.emptyHint")} />
           : state.kind === "error" ? (
@@ -235,6 +236,7 @@ export function ProjectDocumentation({ base, projectId, compact = false }: { bas
               }} />
             </article>
           ) : <DocumentationFileList entries={state.entries} emptyLabel={t("proj.docs.folderEmpty")} />}
+      </div>
     </section>
   );
 }
