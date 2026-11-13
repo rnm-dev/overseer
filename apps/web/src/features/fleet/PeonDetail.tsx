@@ -63,6 +63,22 @@ export function PeonDetail() {
   const base = `/workspaces/${wsId}/peons/${peonId}`;
   const workspaceSignoffs = useWorkspaceSignoffs(wsId, "all");
   const signoffsAwaiting = workspaceSignoffs.signoffs?.filter((row) => row.awaitingViewer).length ?? 0;
+  // The Sign-offs view only exists while this Peon has sign-offs switched on.
+  const [signoffsEnabled, setSignoffsEnabled] = useState(true);
+  useEffect(() => {
+    if (!wsId || !peonId) return;
+    let alive = true;
+    const load = () => void api<{ enabled: boolean }>(`${base}/signoffs-enabled`)
+      .then((body) => alive && setSignoffsEnabled(body.enabled))
+      .catch(() => undefined);
+    load();
+    window.addEventListener("overseer:signoffs-setting-changed", load);
+    return () => {
+      alive = false;
+      window.removeEventListener("overseer:signoffs-setting-changed", load);
+    };
+  }, [base, peonId, wsId]);
+
   // Sessions with something unread for me — a finished turn I started or a
   // mention of me. Recounted on every attention change, coalesced.
   const [unreadSessions, setUnreadSessions] = useState(0);
@@ -112,6 +128,9 @@ export function PeonDetail() {
   const [sessionListMode, setSessionListMode] = useState(loadSessionListDisplayMode);
   // Sign-offs are a third sidebar tab, workspace-wide; opening one keeps it selected.
   const [signoffTab, setSignoffTab] = useState(() => location.pathname.includes("/signoffs/"));
+  useEffect(() => {
+    if (!signoffsEnabled && signoffTab) setSignoffTab(false);
+  }, [signoffTab, signoffsEnabled]);
   // Stats and Settings take the main pane; the list icons are not "current" there.
   const onPeonPage = /\/(stats|settings)(\/|$)/.test(location.pathname);
   const [sessionsPerProject] = useState(loadSessionListProjectLimit);
@@ -366,7 +385,7 @@ export function PeonDetail() {
                 { view: "flat", key: "peon.tab.sessions", icon: MessagesSquare },
                 { view: "grouped", key: "sidebar.tab.projects", icon: FolderGit2 },
                 { view: "signoffs", key: "signoffs.tab", icon: ClipboardCheck },
-              ] as const).map(({ view, key, icon: Icon }) => {
+              ] as const).filter(({ view }) => view !== "signoffs" || signoffsEnabled).map(({ view, key, icon: Icon }) => {
                 // The sidebar list follows these; on Stats or Settings they also
                 // bring the main pane back to sessions.
                 const selected = view === "signoffs" ? signoffTab : !signoffTab && sessionListMode === view;

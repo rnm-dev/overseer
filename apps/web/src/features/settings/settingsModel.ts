@@ -10,7 +10,6 @@ const SETTINGS_PATCH_FIELDS = [
   "maxTurns",
   "taskTimeoutMs",
   "maxBudgetUsd",
-  "signoffsEnabled",
 ] as const;
 
 // Settings always show a concrete model. Keep the submitted value aligned with

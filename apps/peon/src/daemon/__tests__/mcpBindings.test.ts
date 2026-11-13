@@ -67,3 +67,11 @@ test("session MCP credentials reject tampering and malformed values", () => {
   assert.equal(verifySessionMcpCredential("not-a-token"), null);
   assert.equal(verifySessionMcpCredential(undefined), null);
 });
+
+test("with sign-offs switched off the session gets no peon_signoffs server", () => {
+  const on = new McpConfigAssembler(new McpBindingRegistry(), "http://127.0.0.1:4570").assemble({ sessionId: "s1", allowSessionSpawning: false });
+  const off = new McpConfigAssembler(new McpBindingRegistry(), "http://127.0.0.1:4570", () => false).assemble({ sessionId: "s1", allowSessionSpawning: false });
+  assert.ok(JSON.stringify(on).includes("peon_signoffs"));
+  assert.ok(!JSON.stringify(off).includes("peon_signoffs"));
+  assert.ok(JSON.stringify(off).includes("peon_plugins"));
+});

@@ -41,7 +41,8 @@ export function toolbarItemClass(active = false, iconOnly = false): string {
 }
 
 // An on/off setting. A real button with role="switch", so it is reachable and
-// announced like one; the label and hint sit beside it and toggle it too.
+// announced like one. Title and hint on the left (they toggle it too), the
+// switch on the right.
 export function Switch({ checked, onChange, label, hint, disabled = false }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
@@ -51,7 +52,11 @@ export function Switch({ checked, onChange, label, hint, disabled = false }: {
 }) {
   const id = useId();
   return (
-    <div className="flex items-start gap-3">
+    <div className="flex items-center gap-4">
+      <label htmlFor={id} className="min-w-0 flex-1 cursor-pointer select-none">
+        <span className="block font-display text-sm font-bold text-ink">{label}</span>
+        {hint && <span className="mt-1 block font-body text-xs leading-relaxed text-ink-muted">{hint}</span>}
+      </label>
       <button
         id={id}
         type="button"
@@ -59,14 +64,10 @@ export function Switch({ checked, onChange, label, hint, disabled = false }: {
         aria-checked={checked}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative mt-0.5 inline-flex h-5 w-9 flex-none items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-50 ${checked ? "border-accent bg-accent" : "border-edge-strong bg-ink/10"}`}
+        className={`relative inline-flex h-5 w-9 flex-none items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:opacity-50 ${checked ? "border-accent bg-accent" : "border-edge-strong bg-ink/10"}`}
       >
         <span aria-hidden className={`inline-block size-3.5 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-[1.05rem]" : "translate-x-0.5"}`} />
       </button>
-      <label htmlFor={id} className="min-w-0 cursor-pointer select-none">
-        <span className="block font-body text-sm text-ink">{label}</span>
-        {hint && <span className="mt-0.5 block font-body text-xs leading-relaxed text-ink-muted">{hint}</span>}
-      </label>
     </div>
   );
 }

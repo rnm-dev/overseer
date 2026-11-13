@@ -383,7 +383,7 @@ export function appendUserTurn(record, prompt, attachments = [], permissionMode,
 }
 function writeMcpConfig(record) {
     const controlPort = parseListenAddress(settings.get().listenAddress).port;
-    const assembled = new McpConfigAssembler(mcpBindingRegistry, `http://127.0.0.1:${controlPort}`).assemble({
+    const assembled = new McpConfigAssembler(mcpBindingRegistry, `http://127.0.0.1:${controlPort}`, () => settings.get().signoffsEnabled !== false).assemble({
         sessionId: record.id,
         turnId: randomUUID(),
         projectId: record.projectId,

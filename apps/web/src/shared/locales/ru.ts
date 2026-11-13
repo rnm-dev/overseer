@@ -802,4 +802,5 @@ export const ru: Record<MessageKey, string> = {
   "sessions.unreadCount": "Непрочитанных: {count}",
   "peon.settings.signoffs": "Согласования",
   "peon.settings.signoffsHint": "Сессии, запущенные другим приложением или триггером, спрашивают человека перед важными шагами и ждут в Согласованиях. Выключено: никогда не спрашивают и решают сами.",
+  "peon.settings.signoffsNeedsUpdate": "Этот Peon слишком старый для этой настройки. Обнови его ниже, чтобы её менять.",
 };

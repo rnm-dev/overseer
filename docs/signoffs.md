@@ -157,11 +157,17 @@ capabilities. Code lives in `apps/peon/src/daemon/signoffs/`.
 ### The switch
 
 `signoffsEnabled` (default `true`) is a daemon setting, on the Peon's General
-settings page as **Sign-offs** and remotely manageable through the daemon
+settings page in its own **Sign-offs** box (saved on toggle; disabled with an
+update hint on a Peon too old to have it) and remotely manageable through the daemon
 configuration patch. Off: no session is offered `signoff_propose` (a direct
-call is refused with `SIGNOFF_DISABLED`) and trigger sessions get no sign-off
-rule in their prompt, so they act on their own. Sign-offs already recorded can
-still be decided, and the other sign-off tools keep working.
+call is refused with `SIGNOFF_DISABLED`), the `peon_signoffs` MCP server is
+left out of every session's MCP configuration from the next turn on, trigger
+sessions get no sign-off rule in their prompt, so they act on their own, and
+the web hides the Sign-offs icon for that Peon (`GET
+/api/workspaces/:wsId/peons/:id/signoffs-enabled`, readable by any member;
+the settings themselves stay owner-only). Sign-offs already recorded can
+still be decided in Overseer, but the agent no longer has the tools to revise
+or report on them.
 
 ### Session origin
 

@@ -16,9 +16,13 @@ export class McpBindingRegistry {
 export class McpConfigAssembler {
     registry;
     controlBaseUrl;
-    constructor(registry, controlBaseUrl) {
+    signoffsEnabled;
+    constructor(registry, controlBaseUrl, 
+    /** The Peon's sign-offs switch: off, sessions get no peon_signoffs server at all. */
+    signoffsEnabled = () => true) {
         this.registry = registry;
         this.controlBaseUrl = controlBaseUrl;
+        this.signoffsEnabled = signoffsEnabled;
     }
     assemble(context) {
         const bindings = [
@@ -29,10 +33,13 @@ export class McpConfigAssembler {
                 [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
             }));
             // Every session can read and answer its own sign-offs; whether it may
-            // propose one is decided server-side from the session's origin.
-            bindings.push(this.localBinding("peon_signoffs", "/mcp/signoffs", {
-                [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
-            }));
+            // propose one is decided server-side from the session's origin. With
+            // sign-offs switched off on this Peon the server is not offered at all.
+            if (this.signoffsEnabled()) {
+                bindings.push(this.localBinding("peon_signoffs", "/mcp/signoffs", {
+                    [SESSION_MCP_HEADER]: sessionMcpCredential(context.sessionId),
+                }));
+            }
         }
         if (context?.allowSessionSpawning) {
             bindings.push(this.localBinding("peon_sessions", "/mcp/sessions", {

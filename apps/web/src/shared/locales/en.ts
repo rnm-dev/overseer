@@ -800,6 +800,7 @@ export const en = {
   "sessions.unreadCount": "{count} unread",
   "peon.settings.signoffs": "Sign-offs",
   "peon.settings.signoffsHint": "Sessions started by another app or a trigger ask a person before important steps and wait in Sign-offs. Off: they never ask and decide on their own.",
+  "peon.settings.signoffsNeedsUpdate": "This Peon is too old for this setting. Update it below to change it.",
 } as const;
 
 export type MessageKey = keyof typeof en;

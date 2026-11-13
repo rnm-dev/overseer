@@ -160,6 +160,24 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
     setSaveError(null);
   }
 
+  const [savingSignoffs, setSavingSignoffs] = useState(false);
+  const [signoffsError, setSignoffsError] = useState<string | null>(null);
+  async function saveSignoffs(enabled: boolean) {
+    setSavingSignoffs(true);
+    setSignoffsError(null);
+    setForm((current) => current ? { ...current, signoffsEnabled: enabled } : current);
+    try {
+      const saved = await api<Settings>(`${base}/settings`, { method: "PATCH", body: JSON.stringify({ signoffsEnabled: enabled }) });
+      setForm((current) => current ? { ...current, signoffsEnabled: saved.signoffsEnabled ?? enabled } : current);
+      window.dispatchEvent(new Event("overseer:signoffs-setting-changed"));
+    } catch (err) {
+      setForm((current) => current ? { ...current, signoffsEnabled: !enabled } : current);
+      setSignoffsError(err instanceof ApiError ? err.message : t("error.generic"));
+    } finally {
+      setSavingSignoffs(false);
+    }
+  }
+
   async function save() {
     if (!form) return;
     setSaving(true);
@@ -209,14 +227,7 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
             <Label>{t("peon.settings.name")}</Label>
             <Input value={form.name ?? ""} onChange={(e) => patch("name", e.target.value)} />
           </div>
-          {typeof form.signoffsEnabled === "boolean" && (
-            <Switch
-              checked={form.signoffsEnabled}
-              onChange={(checked) => setForm((current) => current ? { ...current, signoffsEnabled: checked } : current)}
-              label={t("peon.settings.signoffs")}
-              hint={t("peon.settings.signoffsHint")}
-            />
-          )}
+
           <div className="flex items-center gap-3">
             <Button onClick={save} disabled={saving}>
               {saving ? t("peon.settings.saving") : t("peon.settings.save")}
@@ -224,6 +235,21 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
             {saved && <span className="font-mono text-xs text-accent-strong">⚡ {t("peon.settings.saved")}</span>}
             {saveError && <span className="font-mono text-xs text-danger">⚠ {saveError}</span>}
           </div>
+        </Card>
+      )}
+
+      {peon.online && !unsupported && form && (
+        <Card className="space-y-3 px-5 py-5">
+          {/* Its own box, saved on toggle. A Peon too old to have the setting
+              shows it disabled with a pointer to the update below. */}
+          <Switch
+            checked={form.signoffsEnabled ?? true}
+            disabled={typeof form.signoffsEnabled !== "boolean" || savingSignoffs}
+            onChange={(checked) => void saveSignoffs(checked)}
+            label={t("peon.settings.signoffs")}
+            hint={typeof form.signoffsEnabled === "boolean" ? t("peon.settings.signoffsHint") : t("peon.settings.signoffsNeedsUpdate")}
+          />
+          {signoffsError && <p className="font-mono text-xs text-danger">⚠ {signoffsError}</p>}
         </Card>
       )}
 
