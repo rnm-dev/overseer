@@ -243,7 +243,7 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
           {/* Its own box, saved on toggle. A Peon too old to have the setting
               shows it disabled with a pointer to the update below. */}
           <Switch
-            checked={form.signoffsEnabled ?? true}
+            checked={form.signoffsEnabled === true}
             disabled={typeof form.signoffsEnabled !== "boolean" || savingSignoffs}
             onChange={(checked) => void saveSignoffs(checked)}
             label={t("peon.settings.signoffs")}

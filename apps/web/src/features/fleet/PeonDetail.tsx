@@ -64,7 +64,7 @@ export function PeonDetail() {
   const workspaceSignoffs = useWorkspaceSignoffs(wsId, "all");
   const signoffsAwaiting = workspaceSignoffs.signoffs?.filter((row) => row.awaitingViewer).length ?? 0;
   // The Sign-offs view only exists while this Peon has sign-offs switched on.
-  const [signoffsEnabled, setSignoffsEnabled] = useState(true);
+  const [signoffsEnabled, setSignoffsEnabled] = useState(false);
   useEffect(() => {
     if (!wsId || !peonId) return;
     let alive = true;

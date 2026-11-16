@@ -333,14 +333,15 @@ export function registerProjectRoutes(router: express.Router): void {
   }));
   // Whether this Peon has sign-offs switched on, for every member: the menu
   // hides the Sign-offs view when it is off. Settings themselves stay owner-only.
-  // A Peon too old to have the switch has sign-offs on.
+  // A Peon too old to report the switch counts as off: its sign-offs are not
+  // offered here until it is updated.
   router.get(`${wp}/signoffs-enabled`, withWorkspacePeon(async (_req, res, c) => {
     res.setHeader("Cache-Control", "no-store");
     const result = await callPeon(connOfRecord(c.record), "GET", "/settings", { actor: c.operator.email, timeoutMs: 10_000 });
     const value = result.ok && result.json && typeof result.json === "object"
       ? (result.json as { signoffsEnabled?: unknown }).signoffsEnabled
       : undefined;
-    res.json({ enabled: value !== false });
+    res.json({ enabled: value === true });
   }));
   router.get(`${wp}/settings`, withWorkspacePeon(async (_req, res, c) => {
     if (!ownerOnly(res, c.role)) return;

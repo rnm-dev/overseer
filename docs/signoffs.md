@@ -165,7 +165,9 @@ left out of every session's MCP configuration from the next turn on, trigger
 sessions get no sign-off rule in their prompt, so they act on their own, and
 the web hides the Sign-offs icon for that Peon (`GET
 /api/workspaces/:wsId/peons/:id/signoffs-enabled`, readable by any member;
-the settings themselves stay owner-only). Sign-offs already recorded can
+the settings themselves stay owner-only). A Peon too old to report the
+switch counts as off: the box shows it off and disabled with an update hint,
+and the Sign-offs icon stays hidden until the Peon is updated. Sign-offs already recorded can
 still be decided in Overseer, but the agent no longer has the tools to revise
 or report on them.
 

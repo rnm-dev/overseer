@@ -1,6 +1,6 @@
 {
   "name": "@rnm-dev/overseer",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "private": true,
   "type": "module",
   "description": "Overseer monorepo — fleet control plane, operator dashboard, and the Peon daemon",
