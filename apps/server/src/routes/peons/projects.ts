@@ -197,6 +197,33 @@ export function registerProjectRoutes(router: express.Router): void {
       res.status(502).json({ error: "Peon returned unsafe project documentation", code: "UNSAFE_RESULT" });
     }
   }));
+  // Project task files (docs/project-task-files.md). Agents mostly edit the
+  // files; the web only reads the board. Task writes are open to anyone with
+  // project access (Peon fences them by digest); turning tasks on or off is a
+  // project setting and needs a project manager.
+  const taskRoute = (method: "GET" | "POST" | "PATCH" | "DELETE", suffix: (req: express.Request) => string, manage: boolean) =>
+    withWorkspacePeon(async (req, res, c) => {
+      const projectId = String(req.params.projectId);
+      if (!(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, "", projectId))) {
+        return res.status(404).json({ error: "unknown project", code: "UNKNOWN_PROJECT" });
+      }
+      if (manage && !(await canManageProject(c.workspaceId, c.userId, c.role, c.record.peonId, "", projectId))) {
+        return res.status(403).json({ error: "project administrator access required", code: "FORBIDDEN" });
+      }
+      res.setHeader("Cache-Control", "no-store");
+      relay(await callPeon(connOfRecord(c.record), method, `/projects/by-id/${encodeURIComponent(projectId)}/tasks${suffix(req)}`, {
+        actor: c.operator.email,
+        ...(method === "POST" || method === "PATCH" ? { body: req.body } : {}),
+      }), res);
+    });
+  const fixed = (suffix: string) => () => suffix;
+  const taskId = (req: express.Request) => `/${encodeURIComponent(String(req.params.taskId))}`;
+  router.get(`${wp}/projects/:projectId/tasks`, taskRoute("GET", fixed(""), false));
+  router.post(`${wp}/projects/:projectId/tasks`, taskRoute("POST", fixed(""), false));
+  router.post(`${wp}/projects/:projectId/tasks/setup`, taskRoute("POST", fixed("/setup"), true));
+  router.delete(`${wp}/projects/:projectId/tasks/config`, taskRoute("DELETE", fixed("/config"), true));
+  router.patch(`${wp}/projects/:projectId/tasks/:taskId`, taskRoute("PATCH", taskId, false));
+  router.post(`${wp}/projects/:projectId/tasks/:taskId/move`, taskRoute("POST", (req) => `${taskId(req)}/move`, false));
   router.get(`${wp}/projects/by-id/:projectId/files/{*rest}`, withWorkspacePeon(async (req, res, c) => {
     const projectId = String(req.params.projectId);
     if (!(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, "", projectId))) {

@@ -26,6 +26,7 @@ const WorkspaceSessions = lazy(() => import("../features/workspaces/WorkspaceSes
 const WorkspaceSessionsEmpty = lazy(() => import("../features/workspaces/WorkspaceSessions").then((m) => ({ default: m.WorkspaceSessionsEmpty })));
 const ProjectMembers = lazy(() => import("../features/projects/ProjectMembers").then((m) => ({ default: m.ProjectMembers })));
 const ProjectFileBrowser = lazy(() => import("../features/projects/ProjectFileBrowser").then((m) => ({ default: m.ProjectFileBrowser })));
+const ProjectTasks = lazy(() => import("../features/projects/ProjectTasks").then((m) => ({ default: m.ProjectTasks })));
 const ProjectSkills = lazy(() => import("../features/projects/ProjectSkills").then((m) => ({ default: m.ProjectSkills })));
 const ProjectArmoryPackages = lazy(() => import("../features/armory/ProjectArmoryPackages").then((m) => ({ default: m.ProjectArmoryPackages })));
 const ProjectArmoryProfileNew = lazy(() => import("../features/armory/ProjectArmoryProfileNew").then((m) => ({ default: m.ProjectArmoryProfileNew })));
@@ -123,6 +124,7 @@ export function App() {
           <Route path="sessions/new" element={<PeonNewSession />} />
           <Route path="sessions/:sid" element={<PeonSessionDetail />} />
           <Route path="projects/:key" element={<PeonProjectDetail />} />
+          <Route path="projects/:key/tasks" element={<ProjectTasks />} />
           <Route path="projects/:key/files" element={<ProjectFileBrowser />} />
           <Route path="projects/:key/skills" element={<ProjectSkills />} />
           <Route path="projects/:key/tools" element={<ProjectArmoryPackages />} />

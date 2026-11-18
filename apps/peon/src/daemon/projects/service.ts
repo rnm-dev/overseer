@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { projectDocumentation, readProjectDoc } from "./docs.js";
 import { listProjectSkills } from "./skills.js";
+import { createProjectTask, disableProjectTasks, enableProjectTasks, moveProjectTask, projectTaskBoard, updateProjectTask } from "./tasks.js";
 import type { ProjectSessionContract } from "../sessions/index.js";
 import {
   slugify,
@@ -102,6 +103,30 @@ export class ProjectService {
 
   documentById(projectId: string, docPath: string) {
     return readProjectDoc(this.requireProjectId(projectId).dir, docPath);
+  }
+
+  tasksById(projectId: string) {
+    return projectTaskBoard(this.requireProjectId(projectId).dir);
+  }
+
+  enableTasksById(projectId: string) {
+    return enableProjectTasks(this.requireProjectId(projectId).dir);
+  }
+
+  disableTasksById(projectId: string) {
+    return disableProjectTasks(this.requireProjectId(projectId).dir);
+  }
+
+  createTaskById(projectId: string, input: unknown) {
+    return createProjectTask(this.requireProjectId(projectId).dir, input);
+  }
+
+  updateTaskById(projectId: string, taskId: string, input: unknown) {
+    return updateProjectTask(this.requireProjectId(projectId).dir, taskId, input);
+  }
+
+  moveTaskById(projectId: string, taskId: string, input: unknown) {
+    return moveProjectTask(this.requireProjectId(projectId).dir, taskId, input);
   }
 
   skillsById(projectId: string) {

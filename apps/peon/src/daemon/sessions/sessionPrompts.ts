@@ -1,5 +1,5 @@
 import type { AttachmentInfo } from "./sessionTypes.js";
-import { PROJECT_DOCS_INDEX, readProjectDoc } from "../projects/index.js";
+import { PROJECT_DOCS_INDEX, projectTasksEnabled, readProjectDoc } from "../projects/index.js";
 import type { ProjectRecord } from "../projects/index.js";
 
 export const OUTCOME_SCHEMA = {
@@ -69,6 +69,11 @@ interface CandidateProject {
   dir: string;
 }
 
+// Only for projects that opted in (docs/tasks/config.yml). The rules live in
+// the project's own README so every other session pays nothing for them.
+const PROJECT_TASKS_POINTER = `This project tracks tasks as files in docs/tasks/. Read docs/tasks/README.md before
+creating, updating, or moving a task.`;
+
 function buildProjectContext(project: ProjectRecord): string {
   const guidance = `This session belongs to the Peon project ${project.label} (${project.key}). Its working
 directory is ${project.dir}. Project documentation lives in ${project.dir}/docs. When project
@@ -93,18 +98,19 @@ valid only when they still resolve within docs/; external https:// links are all
 finishing a documentation change, verify that every modified local cross-reference resolves to
 an existing file inside docs/.`;
 
+  const withTasks = projectTasksEnabled(project.dir) ? `${guidance}\n\n${PROJECT_TASKS_POINTER}` : guidance;
   try {
     const index = readProjectDoc(project.dir, PROJECT_DOCS_INDEX);
     const content = index.content.trim();
-    if (!content) return guidance;
+    if (!content) return withTasks;
     const truncationNotice = index.truncated
       ? "\n\n[The injected index is truncated; read docs/index.md before relying on omitted content.]"
       : "";
-    return `${guidance}\n\nProject documentation index (docs/index.md, injected into the main prompt):\n\n${content}${truncationNotice}`;
+    return `${withTasks}\n\nProject documentation index (docs/index.md, injected into the main prompt):\n\n${content}${truncationNotice}`;
   } catch {
     // A missing or temporarily unreadable index must not prevent a session from
     // starting. The guidance above tells the agent where durable context belongs.
-    return guidance;
+    return withTasks;
   }
 }
 

@@ -1,6 +1,6 @@
 import express from "express";
 import { ErrorCode, fail } from "./error.js";
-import { type ProjectService, ProjectServiceError, ProjectDocsError } from "../../projects/index.js";
+import { type ProjectService, ProjectServiceError, ProjectDocsError, ProjectTasksError } from "../../projects/index.js";
 
 interface FleetProjectListRecord {
   projectId: string | null;
@@ -30,7 +30,7 @@ function failProjectService(res: express.Response, error: unknown): void {
     fail(res, error.status, error.kind as ErrorCode, error.message);
     return;
   }
-  if (error instanceof ProjectDocsError) {
+  if (error instanceof ProjectDocsError || error instanceof ProjectTasksError) {
     fail(res, error.status, error.code, error.message);
     return;
   }
@@ -150,6 +150,54 @@ export function attachProjectRoutes(router: express.Router, options: AttachProje
     const docPath = ((req.params.rest as unknown as string[] | undefined) ?? []).join("/");
     try {
       res.json(projectService.documentById(req.params.projectId, docPath));
+    } catch (error) {
+      failProjectService(res, error);
+    }
+  });
+
+  router.get("/projects/by-id/:projectId/tasks", (req, res) => {
+    try {
+      res.json(projectService.tasksById(req.params.projectId));
+    } catch (error) {
+      failProjectService(res, error);
+    }
+  });
+
+  router.post("/projects/by-id/:projectId/tasks/setup", (req, res) => {
+    try {
+      res.status(201).json(projectService.enableTasksById(req.params.projectId));
+    } catch (error) {
+      failProjectService(res, error);
+    }
+  });
+
+  router.post("/projects/by-id/:projectId/tasks", (req, res) => {
+    try {
+      res.status(201).json({ task: projectService.createTaskById(req.params.projectId, req.body) });
+    } catch (error) {
+      failProjectService(res, error);
+    }
+  });
+
+  router.patch("/projects/by-id/:projectId/tasks/:taskId", (req, res) => {
+    try {
+      res.json({ task: projectService.updateTaskById(req.params.projectId, req.params.taskId, req.body) });
+    } catch (error) {
+      failProjectService(res, error);
+    }
+  });
+
+  router.post("/projects/by-id/:projectId/tasks/:taskId/move", (req, res) => {
+    try {
+      res.json({ task: projectService.moveTaskById(req.params.projectId, req.params.taskId, req.body) });
+    } catch (error) {
+      failProjectService(res, error);
+    }
+  });
+
+  router.delete("/projects/by-id/:projectId/tasks/config", (req, res) => {
+    try {
+      res.json(projectService.disableTasksById(req.params.projectId));
     } catch (error) {
       failProjectService(res, error);
     }

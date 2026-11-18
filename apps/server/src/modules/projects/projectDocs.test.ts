@@ -44,3 +44,14 @@ test("a project without documentation normalizes to the empty listing", () => {
   }));
   assert.deepEqual(projectDocsFromSnapshot(snapshot), { exists: false, entries: [] });
 });
+
+test("project task routes use the stable-ID URL", () => {
+  const router = peonsRouter() as unknown as { stack: { route?: { path?: string; methods?: Record<string, boolean> } }[] };
+  const methods = (path: string) => Object.assign({}, ...router.stack.filter((layer) => layer.route?.path === path).map((layer) => layer.route?.methods ?? {}));
+  const base = "/workspaces/:wsId/peons/:id/projects/:projectId/tasks";
+  assert.deepEqual(methods(base), { get: true, post: true });
+  assert.deepEqual(methods(`${base}/setup`), { post: true });
+  assert.deepEqual(methods(`${base}/config`), { delete: true });
+  assert.deepEqual(methods(`${base}/:taskId`), { patch: true });
+  assert.deepEqual(methods(`${base}/:taskId/move`), { post: true });
+});

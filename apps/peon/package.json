@@ -52,14 +52,15 @@
     "check:architecture-imports": "node scripts/check-architecture-imports.mjs"
   },
   "dependencies": {
-    "@rnm-dev/protocol": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@rnm-dev/protocol": "^1.0.0",
     "cross-spawn": "^7.0.6",
     "express": "^5.1.0",
     "multer": "^2.2.0",
     "semver": "^7.8.5",
     "tar": "^7.5.20",
     "ws": "^8.21.1",
+    "yaml": "^2.9.1",
     "zod": "^4.4.3"
   },
   "bundledDependencies": [
@@ -75,5 +76,8 @@
     "ajv": "^8.17.1",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "bundleDependencies": [
+    "@rnm-dev/protocol"
+  ]
 }

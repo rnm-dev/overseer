@@ -93,6 +93,7 @@ repository — that content lives here.
   follow-up; Peon owns the record, Overseer projects and decides.
 
 - [Session pins](session-pins.md) — personal session pinning and web list ordering.
+- [project task files](project-task-files.md) — opt-in tasks as Markdown files in `docs/tasks/<status>/`, managed by agents, shown in the Tasks tab.
 
 ## Peons and the fleet
 

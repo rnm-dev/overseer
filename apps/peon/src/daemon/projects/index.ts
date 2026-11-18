@@ -52,3 +52,19 @@ export {
   type ProjectServiceErrorKind,
 } from "./service.js";
 export { createProjectService } from "./service.js";
+
+export {
+  DEFAULT_TASK_STATUSES,
+  PROJECT_TASKS_DIR,
+  type ProjectTask,
+  type ProjectTaskBoard,
+  type ProjectTaskProblem,
+  ProjectTasksError,
+  createProjectTask,
+  disableProjectTasks,
+  enableProjectTasks,
+  moveProjectTask,
+  projectTaskBoard,
+  projectTasksEnabled,
+  updateProjectTask,
+} from "./tasks.js";
