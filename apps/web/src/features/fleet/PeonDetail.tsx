@@ -1,6 +1,6 @@
 import { useSessionPins, orderPinnedSessions } from "../sessions/useSessionPins";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BarChart3, ClipboardCheck, FolderGit2, MessagesSquare, Plus, Menu, Settings, type LucideIcon } from "lucide-react";
+import { ArrowLeft, BarChart3, ClipboardCheck, FolderGit2, KanbanSquare, MessagesSquare, Plus, Menu, Settings, type LucideIcon } from "lucide-react";
 import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from "react-router";
 import { api, ApiError } from "../../shared/api";
 import { useWorkspace } from "../workspaces/workspace";
@@ -31,6 +31,7 @@ import { useWorkingTitle } from "./useWorkingTitle";
 import { sessionRouteShellClass } from "../sessions/sessionViewport";
 import { SignoffSidebarList } from "../signoffs/SignoffSidebarList";
 import { useWorkspaceSignoffs } from "../signoffs/signoffApi";
+import { TaskProjectSidebarList } from "../tasks/TaskProjectSidebarList";
 
 // author: Viktor
 
@@ -76,6 +77,22 @@ export function PeonDetail() {
     return () => {
       alive = false;
       window.removeEventListener("overseer:signoffs-setting-changed", load);
+    };
+  }, [base, peonId, wsId]);
+
+  // The Tasks view likewise exists only while this Peon has tasks switched on.
+  const [tasksEnabled, setTasksEnabled] = useState(false);
+  useEffect(() => {
+    if (!wsId || !peonId) return;
+    let alive = true;
+    const load = () => void api<{ enabled: boolean }>(`${base}/tasks-enabled`)
+      .then((body) => alive && setTasksEnabled(body.enabled))
+      .catch(() => undefined);
+    load();
+    window.addEventListener("overseer:tasks-setting-changed", load);
+    return () => {
+      alive = false;
+      window.removeEventListener("overseer:tasks-setting-changed", load);
     };
   }, [base, peonId, wsId]);
 
@@ -149,11 +166,15 @@ export function PeonDetail() {
   const [projectError, setProjectError] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [sessionListMode, setSessionListMode] = useState(loadSessionListDisplayMode);
-  // Sign-offs are a third sidebar tab, workspace-wide; opening one keeps it selected.
-  const [signoffTab, setSignoffTab] = useState(() => location.pathname.includes("/signoffs/"));
+  // Tasks and Sign-offs are extra sidebar tabs beside the session lists;
+  // opening a board or a sign-off keeps its tab selected.
+  const [sideTab, setSideTab] = useState<"lists" | "tasks" | "signoffs">(() =>
+    location.pathname.includes("/signoffs/") ? "signoffs" : /\/tasks(\/|$)/.test(location.pathname) ? "tasks" : "lists");
+  const signoffTab = sideTab === "signoffs";
+  const tasksTab = sideTab === "tasks";
   useEffect(() => {
-    if (!signoffsEnabled && signoffTab) setSignoffTab(false);
-  }, [signoffTab, signoffsEnabled]);
+    if ((!signoffsEnabled && signoffTab) || (!tasksEnabled && tasksTab)) setSideTab("lists");
+  }, [signoffTab, signoffsEnabled, tasksTab, tasksEnabled]);
   // Stats and Settings take the main pane; the list icons are not "current" there.
   const onPeonPage = /\/(stats|settings)(\/|$)/.test(location.pathname);
   const [sessionsPerProject] = useState(loadSessionListProjectLimit);
@@ -300,7 +321,7 @@ export function PeonDetail() {
 
   const activeProject = sessions.find((s) => s.id === sid)?.projectKey;
   const newSessionTo = activeProject ? `sessions/new?project=${encodeURIComponent(activeProject)}` : "sessions/new";
-  const projectPageActive = isProjectPath(location.pathname);
+  const projectPageActive = isProjectPath(location.pathname) || /\/tasks(\/|$)/.test(location.pathname);
 
   // Same ordering as the session list page: newest activity first.
   const ordered = useMemo(() => orderPinnedSessions(sessions, sessionPins.pins, peonId, unreadRows), [sessions, sessionPins.pins, peonId, unreadRows]);
@@ -407,11 +428,12 @@ export function PeonDetail() {
               {([
                 { view: "flat", key: "peon.tab.sessions", icon: MessagesSquare },
                 { view: "grouped", key: "sidebar.tab.projects", icon: FolderGit2 },
+                { view: "tasks", key: "tasks.tab", icon: KanbanSquare },
                 { view: "signoffs", key: "signoffs.tab", icon: ClipboardCheck },
-              ] as const).filter(({ view }) => view !== "signoffs" || signoffsEnabled).map(({ view, key, icon: Icon }) => {
+              ] as const).filter(({ view }) => (view !== "signoffs" || signoffsEnabled) && (view !== "tasks" || tasksEnabled)).map(({ view, key, icon: Icon }) => {
                 // The sidebar list follows these; on Stats or Settings they also
                 // bring the main pane back to sessions.
-                const selected = view === "signoffs" ? signoffTab : !signoffTab && sessionListMode === view;
+                const selected = view === "signoffs" || view === "tasks" ? sideTab === view : sideTab === "lists" && sessionListMode === view;
                 const awaiting = view === "signoffs" ? signoffsAwaiting : view === "flat" ? unreadSessions : 0;
                 return (
                   <button
@@ -422,13 +444,18 @@ export function PeonDetail() {
                     aria-pressed={selected}
                     className={`relative ${iconNavClass(selected && !onPeonPage)}`}
                     onClick={() => {
-                      if (view === "signoffs") setSignoffTab(true);
-                      else {
-                        setSignoffTab(false);
+                      if (view === "signoffs") setSideTab("signoffs");
+                      else if (view === "tasks") {
+                        // The board takes the main pane; keep an open board.
+                        setSideTab("tasks");
+                        if (!/\/tasks(\/|$)/.test(location.pathname)) navigate("tasks");
+                        return;
+                      } else {
+                        setSideTab("lists");
                         setSessionListMode(view);
                         saveSessionListDisplayMode(view);
                       }
-                      if (onPeonPage) navigate("sessions");
+                      if (onPeonPage || /\/tasks(\/|$)/.test(location.pathname)) navigate("sessions");
                     }}
                   >
                     <Icon size={16} />
@@ -469,9 +496,9 @@ export function PeonDetail() {
         {/* The selected view's title, with its create action on the right. */}
         <div className="flex h-9 items-center gap-2 pl-3 pr-1.5">
           <h2 className="min-w-0 flex-1 truncate font-display text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-ink">
-            {t(signoffTab ? "signoffs.tab" : sessionListMode === "flat" ? "peon.tab.sessions" : "sidebar.tab.projects")}
+            {t(signoffTab ? "signoffs.tab" : tasksTab ? "tasks.tab" : sessionListMode === "flat" ? "peon.tab.sessions" : "sidebar.tab.projects")}
           </h2>
-          {signoffTab ? null : sessionListMode === "flat" ? (
+          {signoffTab || tasksTab ? null : sessionListMode === "flat" ? (
             <NavLink
               to={newSessionTo}
               end
@@ -496,7 +523,9 @@ export function PeonDetail() {
           )}
         </div>
         <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24 [scrollbar-gutter:stable]">
-          {signoffTab ? (
+          {tasksTab ? (
+            <TaskProjectSidebarList projects={sidebarProjects} error={Boolean(projectError)} />
+          ) : signoffTab ? (
             <SignoffSidebarList
               signoffs={workspaceSignoffs.signoffs}
               unavailable={workspaceSignoffs.unavailable}

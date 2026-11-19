@@ -83,6 +83,7 @@ export interface FleetSettingsView {
   taskTimeoutMs: number;
   maxBudgetUsd: number;
   signoffsEnabled: boolean;
+  tasksEnabled: boolean;
 }
 
 export interface DaemonConfigurationView {
@@ -97,6 +98,7 @@ export interface DaemonConfigurationView {
   taskTimeoutMs: number;
   maxBudgetUsd: number;
   signoffsEnabled: boolean;
+  tasksEnabled: boolean;
 }
 
 export interface ControlSettingsView extends Omit<DaemonSettings, "overseerToken" | "pairingSecret" | "settingsDefaultsVersion"> {
@@ -168,6 +170,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       taskTimeoutMs: s.taskTimeoutMs,
       maxBudgetUsd: s.maxBudgetUsd,
       signoffsEnabled: s.signoffsEnabled !== false,
+      tasksEnabled: s.tasksEnabled !== false,
     };
   }
 
@@ -184,6 +187,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       taskTimeoutMs: settings.taskTimeoutMs,
       maxBudgetUsd: settings.maxBudgetUsd,
       signoffsEnabled: settings.signoffsEnabled !== false,
+      tasksEnabled: settings.tasksEnabled !== false,
     };
   }
 
@@ -210,7 +214,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     const allowed = new Set([
       "name", "defaultAgent", "fileTransferRoot", "heartbeatIntervalMs",
       "aiDefaultModel", "aiDefaultReasoningEffort", "soul",
-      "maxTurns", "taskTimeoutMs", "maxBudgetUsd", "signoffsEnabled",
+      "maxTurns", "taskTimeoutMs", "maxBudgetUsd", "signoffsEnabled", "tasksEnabled",
     ]);
     const unknown = Object.keys(value).find((key) => !allowed.has(key));
     if (unknown) this.throwBadRequest(`${unknown} is not remotely manageable`);
@@ -284,6 +288,11 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
     if ("signoffsEnabled" in body) {
       if (typeof body.signoffsEnabled !== "boolean") this.throwBadRequest("signoffsEnabled must be a boolean");
       patch.signoffsEnabled = body.signoffsEnabled;
+    }
+
+    if ("tasksEnabled" in body) {
+      if (typeof body.tasksEnabled !== "boolean") this.throwBadRequest("tasksEnabled must be a boolean");
+      patch.tasksEnabled = body.tasksEnabled;
     }
 
     if ("name" in body) {
@@ -512,6 +521,7 @@ export class SettingsService extends EventEmitter implements SettingsServiceCont
       taskTimeoutMs: settings.taskTimeoutMs,
       maxBudgetUsd: settings.maxBudgetUsd,
       signoffsEnabled: settings.signoffsEnabled !== false,
+      tasksEnabled: settings.tasksEnabled !== false,
     };
   }
 

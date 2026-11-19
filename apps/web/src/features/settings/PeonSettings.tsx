@@ -22,7 +22,15 @@ interface Settings {
   defaultAgent?: string | null;
   /** Absent on a Peon too old to have sign-offs. */
   signoffsEnabled?: boolean;
+  /** Absent on a Peon too old to have project tasks. */
+  tasksEnabled?: boolean;
 }
+
+type FeatureSwitch = "signoffsEnabled" | "tasksEnabled";
+const FEATURE_SWITCH_EVENTS: Record<FeatureSwitch, string> = {
+  signoffsEnabled: "overseer:signoffs-setting-changed",
+  tasksEnabled: "overseer:tasks-setting-changed",
+};
 
 
 export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
@@ -160,21 +168,22 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
     setSaveError(null);
   }
 
-  const [savingSignoffs, setSavingSignoffs] = useState(false);
-  const [signoffsError, setSignoffsError] = useState<string | null>(null);
-  async function saveSignoffs(enabled: boolean) {
-    setSavingSignoffs(true);
-    setSignoffsError(null);
-    setForm((current) => current ? { ...current, signoffsEnabled: enabled } : current);
+  // Feature switches save on toggle and tell the Peon menu to re-read them.
+  const [savingSwitch, setSavingSwitch] = useState<FeatureSwitch | null>(null);
+  const [switchError, setSwitchError] = useState<{ key: FeatureSwitch; message: string } | null>(null);
+  async function saveSwitch(key: FeatureSwitch, enabled: boolean) {
+    setSavingSwitch(key);
+    setSwitchError(null);
+    setForm((current) => current ? { ...current, [key]: enabled } : current);
     try {
-      const saved = await api<Settings>(`${base}/settings`, { method: "PATCH", body: JSON.stringify({ signoffsEnabled: enabled }) });
-      setForm((current) => current ? { ...current, signoffsEnabled: saved.signoffsEnabled ?? enabled } : current);
-      window.dispatchEvent(new Event("overseer:signoffs-setting-changed"));
+      const saved = await api<Settings>(`${base}/settings`, { method: "PATCH", body: JSON.stringify({ [key]: enabled }) });
+      setForm((current) => current ? { ...current, [key]: saved[key] ?? enabled } : current);
+      window.dispatchEvent(new Event(FEATURE_SWITCH_EVENTS[key]));
     } catch (err) {
-      setForm((current) => current ? { ...current, signoffsEnabled: !enabled } : current);
-      setSignoffsError(err instanceof ApiError ? err.message : t("error.generic"));
+      setForm((current) => current ? { ...current, [key]: !enabled } : current);
+      setSwitchError({ key, message: err instanceof ApiError ? err.message : t("error.generic") });
     } finally {
-      setSavingSignoffs(false);
+      setSavingSwitch(null);
     }
   }
 
@@ -244,12 +253,20 @@ export function PeonSettings({ tab }: { tab: PeonSettingsTab }) {
               shows it disabled with a pointer to the update below. */}
           <Switch
             checked={form.signoffsEnabled === true}
-            disabled={typeof form.signoffsEnabled !== "boolean" || savingSignoffs}
-            onChange={(checked) => void saveSignoffs(checked)}
+            disabled={typeof form.signoffsEnabled !== "boolean" || savingSwitch !== null}
+            onChange={(checked) => void saveSwitch("signoffsEnabled", checked)}
             label={t("peon.settings.signoffs")}
             hint={typeof form.signoffsEnabled === "boolean" ? t("peon.settings.signoffsHint") : t("peon.settings.signoffsNeedsUpdate")}
           />
-          {signoffsError && <p className="font-mono text-xs text-danger">⚠ {signoffsError}</p>}
+          {switchError?.key === "signoffsEnabled" && <p className="font-mono text-xs text-danger">⚠ {switchError.message}</p>}
+          <Switch
+            checked={form.tasksEnabled === true}
+            disabled={typeof form.tasksEnabled !== "boolean" || savingSwitch !== null}
+            onChange={(checked) => void saveSwitch("tasksEnabled", checked)}
+            label={t("peon.settings.tasks")}
+            hint={typeof form.tasksEnabled === "boolean" ? t("peon.settings.tasksHint") : t("peon.settings.tasksNeedsUpdate")}
+          />
+          {switchError?.key === "tasksEnabled" && <p className="font-mono text-xs text-danger">⚠ {switchError.message}</p>}
         </Card>
       )}
 

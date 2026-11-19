@@ -865,13 +865,14 @@ object, never `overseerToken`/`pairingSecret`/listen address:
   "maxTurns": 1000,                  // integer, 1..10000
   "taskTimeoutMs": 1800000,          // integer, 60000..86400000
   "maxBudgetUsd": 0,                 // finite number, 0..10000; 0 disables
-  "signoffsEnabled": true }          // boolean; false: no session may propose sign-offs
+  "signoffsEnabled": true,           // boolean; false: no session may propose sign-offs
+  "tasksEnabled": true }             // boolean; false: task routes refuse, no prompt mentions docs/tasks
 ```
 
 `PATCH /settings` is a **partial, allowlisted** update — body may carry any
 subset of `name` / `defaultAgent` / `fileTransferRoot` / `heartbeatIntervalMs` /
 `aiDefaultModel` / `soul` / `paused` / `maxTurns` / `taskTimeoutMs` /
-`maxBudgetUsd` / `signoffsEnabled`; absent keys are
+`maxBudgetUsd` / `signoffsEnabled` / `tasksEnabled`; absent keys are
 untouched and unknown keys rejected. It echoes the updated subset (the `GET`
 shape). Validation (`400 BAD_REQUEST` on failure): `name` a non-empty string,
 `defaultAgent` either `claude-code` or `codex`, `fileTransferRoot` a string
@@ -879,7 +880,7 @@ shape). Validation (`400 BAD_REQUEST` on failure): `name` a non-empty string,
 `1000`–`60000`, `aiDefaultModel` a valid model, `soul` a string (empty
 clears it), `paused` a boolean, `maxTurns` an integer in `1`–`10000`,
 `taskTimeoutMs` an integer in `60000`–`86400000`, `maxBudgetUsd` a finite
-number in `0`–`10000`, and `signoffsEnabled` a boolean. Peon state
+number in `0`–`10000`, and `signoffsEnabled` and `tasksEnabled` booleans. Peon state
 can also be changed with `PATCH /api/v1/status { "paused": true|false }`; the older
 `POST /api/v1/control/pause | /resume` routes remain aliases. A `name` change shows up in the next
 `register`/`status`; `fileTransferRoot` re-points the file sandbox on the next

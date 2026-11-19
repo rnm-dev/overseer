@@ -7,12 +7,11 @@ import { useT } from "../../shared/i18n";
 import { Markdown } from "../../shared/RichText";
 import { usePeon } from "../fleet/context";
 import type { ProjectDetail } from "../fleet/peonApi";
-import { ProjectPageHeader } from "./ProjectPageHeader";
-import { ProjectTabs } from "./ProjectTabs";
 
-// Project task files (docs/project-task-files.md). Agents in Peon sessions
-// create and move the files; this page only shows them. Peon also has a task
-// write API, but the one write here is the opt-in: set up, or turn off.
+// The Peon's Tasks view (docs/project-task-files.md): the sidebar lists the
+// projects, this pane shows the selected project's board. Agents in Peon
+// sessions create and move the task files; this page only shows them. Peon
+// also has a task write API, but the one write here is the project opt-in.
 
 export interface ProjectTask {
   id: string;
@@ -46,9 +45,21 @@ export function tasksByStatus(board: ProjectTaskBoard): Map<string, ProjectTask[
   return columns;
 }
 
-export function ProjectTasks() {
+export function PeonTasks() {
   const t = useT();
   const { key = "" } = useParams();
+  if (!key) {
+    return (
+      <Card className="grid min-h-60 place-items-center px-6 py-10 text-center">
+        <p className="max-w-sm text-sm text-ink-muted">{t("tasks.pickProject")}</p>
+      </Card>
+    );
+  }
+  return <ProjectTaskBoardView key={key} projectKey={key} />;
+}
+
+function ProjectTaskBoardView({ projectKey: key }: { projectKey: string }) {
+  const t = useT();
   const { peon, base } = usePeon();
   const detail = useApiResource<ProjectDetail>(`${base}/projects/${encodeURIComponent(key)}`);
   const projectId = detail.data?.projectId ?? null;
@@ -76,12 +87,10 @@ export function ProjectTasks() {
   const columns = data?.enabled ? tasksByStatus(data) : null;
 
   return <div className="space-y-3">
-    <ProjectPageHeader />
-    <ProjectTabs />
     <Card className="overflow-hidden">
       <div className="flex flex-wrap items-center gap-3 border-b border-edge bg-surface-raised/40 px-5 py-3">
         <div className="min-w-0 flex-1">
-          <h2 className="font-display text-sm font-bold text-ink">{t("proj.tasks.title")}</h2>
+          <h2 className="font-display text-sm font-bold text-ink">{detail.data?.label || key}</h2>
           <p className="mt-0.5 text-xs text-ink-faint">{t("proj.tasks.hint")}</p>
         </div>
         {peon.online && data?.enabled && (

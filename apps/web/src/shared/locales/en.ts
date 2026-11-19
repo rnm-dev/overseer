@@ -157,8 +157,6 @@ export const en = {
   "proj.tab.overview": "Overview",
   "proj.tab.files": "Files",
   "proj.tab.skills": "Skills",
-  "proj.tab.tasks": "Tasks",
-  "proj.tasks.title": "Tasks",
   "proj.tasks.hint": "One Markdown file per task in docs/tasks/<status>/. Agents in this project's sessions create and move them.",
   "proj.tasks.off": "This project doesn't use task files. Setting them up adds docs/tasks/ with config.yml, a README with the rules, and a folder per status. Agents are then told to keep tasks there.",
   "proj.tasks.setup": "Set up tasks",
@@ -818,6 +816,12 @@ export const en = {
   "peon.settings.signoffs": "Sign-offs",
   "peon.settings.signoffsHint": "Sessions started by another app or a trigger ask a person before important steps and wait in Sign-offs. Off: they never ask and decide on their own.",
   "peon.settings.signoffsNeedsUpdate": "This Peon is too old for this setting. Update it below to change it.",
+  "tasks.tab": "Tasks",
+  "tasks.noProjects": "No projects on this Peon yet.",
+  "tasks.pickProject": "Pick a project on the left to see its task board.",
+  "peon.settings.tasks": "Project tasks",
+  "peon.settings.tasksHint": "Projects can keep tasks as Markdown files in docs/tasks/ and show them as a board under Tasks. Off: the Tasks view is hidden and agents are not told about task files.",
+  "peon.settings.tasksNeedsUpdate": "This Peon is too old for this setting. Update it below to change it.",
 } as const;
 
 export type MessageKey = keyof typeof en;

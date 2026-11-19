@@ -74,7 +74,7 @@ interface CandidateProject {
 const PROJECT_TASKS_POINTER = `This project tracks tasks as files in docs/tasks/. Read docs/tasks/README.md before
 creating, updating, or moving a task.`;
 
-function buildProjectContext(project: ProjectRecord): string {
+function buildProjectContext(project: ProjectRecord, tasksEnabled: boolean): string {
   const guidance = `This session belongs to the Peon project ${project.label} (${project.key}). Its working
 directory is ${project.dir}. Project documentation lives in ${project.dir}/docs. When project
 context, architecture, setup, workflows, or operational details are relevant, read
@@ -98,7 +98,7 @@ valid only when they still resolve within docs/; external https:// links are all
 finishing a documentation change, verify that every modified local cross-reference resolves to
 an existing file inside docs/.`;
 
-  const withTasks = projectTasksEnabled(project.dir) ? `${guidance}\n\n${PROJECT_TASKS_POINTER}` : guidance;
+  const withTasks = tasksEnabled && projectTasksEnabled(project.dir) ? `${guidance}\n\n${PROJECT_TASKS_POINTER}` : guidance;
   try {
     const index = readProjectDoc(project.dir, PROJECT_DOCS_INDEX);
     const content = index.content.trim();
@@ -122,6 +122,8 @@ export function buildSystemPrompt(
   soul?: string,
   currentUser?: string,
   allowSessionSpawning = false,
+  // The Peon-level switch; a project's own opt-in only counts while it is on.
+  tasksEnabled = true,
 ): string {
   let prompt = expectsOutcome
     ? `${BASE_SYSTEM_PROMPT}\n\n${OUTCOME_CONTRACT_APPEND}`
@@ -136,7 +138,7 @@ identity (for example, as the assignee when they ask you to assign a task to the
   if (peonSoul) {
     prompt += `\n\nPeon soul (Markdown):\n${peonSoul}`;
   }
-  if (project) prompt += `\n\n${buildProjectContext(project)}`;
+  if (project) prompt += `\n\n${buildProjectContext(project, tasksEnabled)}`;
   if (candidates.length === 0) return prompt;
 
   const list = candidates.map((project) => `- ${project.key}: ${project.label} (dir: ${project.dir})`).join("\n");

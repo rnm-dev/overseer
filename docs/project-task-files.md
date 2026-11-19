@@ -10,16 +10,32 @@ web only shows them; the one thing it writes is the opt-in. A small write API
 (create, edit, move) exists for other callers, but nothing in the product uses
 it yet and agents are not pointed at it.
 
+## The Peon switch
+
+`tasksEnabled` (default `true`) is a daemon setting, on the Peon's General
+settings next to sign-offs. Off, every task route on the Peon refuses with
+`409 TASKS_DISABLED`, no session prompt mentions `docs/tasks`, even in an
+opted-in project, and the web hides the Tasks view. Task files on disk are
+untouched. Overseer reads it for every member through
+`GET /workspaces/:wsId/peons/:id/tasks-enabled` (`{ enabled }`); a Peon too
+old to report it counts as off.
+
+## Where it shows
+
+The Peon sidebar has a **Tasks** icon between Projects and Sign-offs. Its
+sidebar lists the Peon's projects; picking one opens that project's board in
+the main pane (`/peons/:peonId/tasks/:key`). There is no per-project Tasks tab.
+
 ## Opt-in
 
-`docs/tasks/config.yml` is the switch. A `docs/tasks/` folder without it is
+Within a Peon that has tasks on, `docs/tasks/config.yml` is the project's switch. A `docs/tasks/` folder without it is
 just a folder: the board stays off and agents are told nothing.
 
-- **Set up** (Tasks tab, `POST .../tasks/setup`) writes `config.yml` with the
+- **Set up** (the board, `POST .../tasks/setup`) writes `config.yml` with the
   four default statuses, `README.md` with the rules, and a folder per status
   with a `.gitkeep`. A `README.md` the project already has is kept. Refused
   with `409 TASKS_ALREADY_ENABLED` when already on.
-- **Turn off** (Tasks tab, `DELETE .../tasks/config`) parks `config.yml` as
+- **Turn off** (the board, `DELETE .../tasks/config`) parks `config.yml` as
   `.config.yml.off`. Task files, folders and the README stay, and setting up
   again restores the parked statuses. If `config.yml` was deleted by hand
   instead, setup takes the statuses from the folders already there (defaults
@@ -93,8 +109,9 @@ in status order wins) and a file without valid front matter (`INVALID_FILE`).
   2,000-file cap it is a noticeable synchronous pause.
 - Overseer: `/workspaces/:wsId/peons/:id/projects/:projectId/tasks[...]`
   relays to Peon.
-- Web: `apps/web/src/features/projects/ProjectTasks.tsx`, the project
-  **Tasks** tab: a column per status, cards that expand to the description.
+- Web: `apps/web/src/features/tasks/` — `PeonTasks.tsx` (the board: a column
+  per status, cards that expand to the description) and
+  `TaskProjectSidebarList.tsx`; the tab itself is in `fleet/PeonDetail.tsx`.
 - Prompt pointer: `apps/peon/src/daemon/sessions/sessionPrompts.ts`.
 
 ## Not yet

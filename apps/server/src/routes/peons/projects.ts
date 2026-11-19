@@ -370,6 +370,17 @@ export function registerProjectRoutes(router: express.Router): void {
       : undefined;
     res.json({ enabled: value === true });
   }));
+  // The same for project tasks: the Tasks view exists only while the Peon has
+  // them switched on, and a Peon too old to report the switch has no task
+  // routes at all, so it counts as off.
+  router.get(`${wp}/tasks-enabled`, withWorkspacePeon(async (_req, res, c) => {
+    res.setHeader("Cache-Control", "no-store");
+    const result = await callPeon(connOfRecord(c.record), "GET", "/settings", { actor: c.operator.email, timeoutMs: 10_000 });
+    const value = result.ok && result.json && typeof result.json === "object"
+      ? (result.json as { tasksEnabled?: unknown }).tasksEnabled
+      : undefined;
+    res.json({ enabled: value === true });
+  }));
   router.get(`${wp}/settings`, withWorkspacePeon(async (_req, res, c) => {
     if (!ownerOnly(res, c.role)) return;
     relay(await callPeon(connOfRecord(c.record), "GET", "/settings", { actor: c.operator.email }), res);

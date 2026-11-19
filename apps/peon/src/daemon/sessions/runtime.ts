@@ -668,6 +668,7 @@ function launchProcess(
     currentSettings.ai.soul,
     author,
     record.parentSessionId === null && record.spawnDepth === 0,
+    currentSettings.tasksEnabled !== false,
   );
   // The sign-off rule only when this Peon has sign-offs switched on.
   if (record.origin === "trigger" && settings.get().signoffsEnabled !== false) systemPromptAppend += `\n\n${SIGNOFF_TRIGGER_APPEND}`;

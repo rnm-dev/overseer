@@ -35,6 +35,10 @@ export interface DaemonSettings {
   // offered signoff_propose and its prompt carries no sign-off rule; sign-offs
   // already recorded can still be decided.
   signoffsEnabled: boolean;
+  // Project task files (docs/project-task-files.md). Off: the task board and
+  // its API refuse, and no session prompt mentions docs/tasks, even in a
+  // project that opted in. Task files on disk are untouched.
+  tasksEnabled: boolean;
   // Shared secret a "overseer" (fleet control plane) presents as
   // `Authorization: Bearer <token>` to reach this peon's machine-facing
   // fleet profile of `/api/v1/*` (src/daemon/agentApi.ts). Empty (default)

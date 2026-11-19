@@ -23,6 +23,9 @@ export interface SessionProjectReader {
 export interface AttachProjectRoutesOptions {
   projectService: ProjectService;
   sessionProjectReader: SessionProjectReader;
+  // The Peon-level task switch (settings.tasksEnabled). Off: every task route
+  // refuses with 409 TASKS_DISABLED, so no client can read or write task files.
+  tasksEnabled?: () => boolean;
 }
 
 function failProjectService(res: express.Response, error: unknown): void {
@@ -94,6 +97,7 @@ function projectListRows(projectService: ProjectService, sessionProjectReader: S
 
 export function attachProjectRoutes(router: express.Router, options: AttachProjectRoutesOptions): void {
   const { projectService, sessionProjectReader } = options;
+  const tasksEnabled = options.tasksEnabled ?? (() => true);
   const digest = (req: express.Request): string => {
     const value = req.headers["peon-project-digest"];
     if (typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value)) {
@@ -153,6 +157,11 @@ export function attachProjectRoutes(router: express.Router, options: AttachProje
     } catch (error) {
       failProjectService(res, error);
     }
+  });
+
+  router.use("/projects/by-id/:projectId/tasks", (_req, res, next) => {
+    if (tasksEnabled()) return next();
+    fail(res, 409, "TASKS_DISABLED", "project tasks are switched off on this Peon");
   });
 
   router.get("/projects/by-id/:projectId/tasks", (req, res) => {

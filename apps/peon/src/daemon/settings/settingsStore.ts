@@ -81,6 +81,7 @@ const DEFAULT_SETTINGS: DaemonSettings = {
   name: "",
   autoResumeInterrupted: true,
   signoffsEnabled: true,
+  tasksEnabled: true,
   overseerToken: "",
   fileTransferRoot: "",
   overseerUrl: "",

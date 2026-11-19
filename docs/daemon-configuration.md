@@ -12,7 +12,8 @@ negotiation, compatibility selector, or fallback path.
 The remotely manageable daemon document contains exactly `name`,
 `defaultAgent`, `fileTransferRoot`, `heartbeatIntervalMs`, `aiDefaultModel`,
 `aiDefaultReasoningEffort`, `soul`, `maxTurns`, `taskTimeoutMs`, and
-`maxBudgetUsd`, `signoffsEnabled` (a boolean, see [sign-offs](signoffs.md#the-switch)). Credentials, enrollment identity, URLs,
+`maxBudgetUsd`, `signoffsEnabled` (a boolean, see [sign-offs](signoffs.md#the-switch)),
+`tasksEnabled` (a boolean, see [project task files](project-task-files.md#the-peon-switch)). Credentials, enrollment identity, URLs,
 bind addresses, executable paths and `paused` are rejected rather than ignored.
 The independent status route remains the authority for pausing the daemon.
 

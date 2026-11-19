@@ -584,7 +584,7 @@ export function createAgentRouter(options: AgentRouterOptions = {}): express.Rou
   });
 
   // --- projects ------------------------------------------------------------
-  attachProjectRoutes(router, { projectService, sessionProjectReader });
+  attachProjectRoutes(router, { projectService, sessionProjectReader, tasksEnabled: () => settings.get().tasksEnabled !== false });
 
   attachFleetProjectFileRoutes(router, {
     fileAccessService,

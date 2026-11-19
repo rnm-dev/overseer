@@ -236,3 +236,52 @@ test("non-Latin titles keep a readable file name", () => {
   enableProjectTasks(dir);
   assert.equal(createProjectTask(dir, { title: "Исправить вход!" }).path, "tasks/todo/T-1-исправить-вход.md");
 });
+
+// The Peon-level switch (settings.tasksEnabled).
+
+test("tasksEnabled defaults on and is a boolean in fleet and daemon configuration patches", async () => {
+  const { SettingsService } = await import("../settings/settingsService.js");
+  const { SettingsStore } = await import("../settings/settingsStore.js");
+  const service = new SettingsService(new SettingsStore(path.join(project(), "settings.json")));
+  assert.equal(service.getFleetSettingsView().tasksEnabled, true);
+  assert.equal(service.patchFleetSettings({ tasksEnabled: false }).view.tasksEnabled, false);
+  assert.equal(service.patchDaemonConfiguration({ tasksEnabled: true }).view.tasksEnabled, true);
+  assert.throws(() => service.patchFleetSettings({ tasksEnabled: "no" }), (error: unknown) => (error as { code?: string }).code === "BAD_REQUEST");
+});
+
+test("with tasks switched off on the Peon, an opted-in project gets no pointer", () => {
+  const dir = project();
+  enableProjectTasks(dir);
+  const record = { projectId: "p", key: "p", label: "P", dir, lastSyncedAt: 1 };
+  assert.doesNotMatch(buildSystemPrompt(false, [], "/tmp/previews", record, undefined, undefined, false, false), /docs\/tasks/);
+  assert.match(buildSystemPrompt(false, [], "/tmp/previews", record, undefined, undefined, false, true), /docs\/tasks\/README\.md/);
+});
+
+test("every task route refuses with TASKS_DISABLED while the switch is off", async () => {
+  const express = (await import("express")).default;
+  const { attachProjectRoutes } = await import("../http/fleet/projects.js");
+  let enabled = false;
+  const calls: string[] = [];
+  const projectService = new Proxy({}, { get: (_t, name) => () => { calls.push(String(name)); return { enabled: true, statuses: [], tasks: [], problems: [] }; } });
+  const app = express();
+  app.use(express.json());
+  const router = express.Router();
+  attachProjectRoutes(router, { projectService: projectService as never, sessionProjectReader: { list: () => [] }, tasksEnabled: () => enabled });
+  app.use(router);
+  const server = app.listen(0);
+  try {
+    const port = (server.address() as { port: number }).port;
+    const url = (suffix: string) => `http://127.0.0.1:${port}/projects/by-id/p1/tasks${suffix}`;
+    for (const [method, suffix] of [["GET", ""], ["POST", ""], ["POST", "/setup"], ["DELETE", "/config"], ["PATCH", "/T-1"], ["POST", "/T-1/move"]]) {
+      const res = await fetch(url(suffix), { method, headers: { "content-type": "application/json" }, body: method === "GET" || method === "DELETE" ? undefined : "{}" });
+      assert.equal(res.status, 409, `${method} ${suffix}`);
+      assert.equal(((await res.json()) as { code: string }).code, "TASKS_DISABLED");
+    }
+    assert.deepEqual(calls, []);
+    enabled = true;
+    assert.equal((await fetch(url(""))).status, 200);
+    assert.deepEqual(calls, ["tasksById"]);
+  } finally {
+    server.close();
+  }
+});
