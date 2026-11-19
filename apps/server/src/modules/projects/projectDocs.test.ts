@@ -55,4 +55,5 @@ test("project task routes use the stable-ID URL", () => {
   assert.deepEqual(methods(`${base}/:taskId`), { patch: true });
   assert.deepEqual(methods(`${base}/:taskId/move`), { post: true });
   assert.deepEqual(methods("/workspaces/:wsId/peons/:id/tasks-enabled"), { get: true });
+  assert.deepEqual(methods("/workspaces/:wsId/peons/:id/task-projects"), { get: true });
 });

@@ -159,6 +159,15 @@ export function attachProjectRoutes(router: express.Router, options: AttachProje
     }
   });
 
+  router.get("/tasks/projects", (_req, res) => {
+    if (!tasksEnabled()) return fail(res, 409, "TASKS_DISABLED", "project tasks are switched off on this Peon");
+    try {
+      res.json(projectService.taskProjects());
+    } catch (error) {
+      failProjectService(res, error);
+    }
+  });
+
   router.use("/projects/by-id/:projectId/tasks", (_req, res, next) => {
     if (tasksEnabled()) return next();
     fail(res, 409, "TASKS_DISABLED", "project tasks are switched off on this Peon");

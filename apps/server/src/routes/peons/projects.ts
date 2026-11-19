@@ -373,6 +373,21 @@ export function registerProjectRoutes(router: express.Router): void {
   // The same for project tasks: the Tasks view exists only while the Peon has
   // them switched on, and a Peon too old to report the switch has no task
   // routes at all, so it counts as off.
+  // The projects that opted in to task files, narrowed to the ones the caller
+  // may open; the Tasks sidebar lists only these.
+  router.get(`${wp}/task-projects`, withWorkspacePeon(async (_req, res, c) => {
+    res.setHeader("Cache-Control", "no-store");
+    const result = await callPeon(connOfRecord(c.record), "GET", "/tasks/projects", { actor: c.operator.email, timeoutMs: 10_000 });
+    if (!result.ok || !result.json || typeof result.json !== "object") return relay(result, res);
+    const rows = Array.isArray((result.json as { projects?: unknown }).projects) ? (result.json as { projects: unknown[] }).projects : [];
+    const projects: { projectId: string; key: string }[] = [];
+    for (const row of rows) {
+      const { projectId, key } = (row ?? {}) as { projectId?: unknown; key?: unknown };
+      if (typeof projectId !== "string" || typeof key !== "string") continue;
+      if (await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, key, projectId)) projects.push({ projectId, key });
+    }
+    res.json({ projects });
+  }));
   router.get(`${wp}/tasks-enabled`, withWorkspacePeon(async (_req, res, c) => {
     res.setHeader("Cache-Control", "no-store");
     const result = await callPeon(connOfRecord(c.record), "GET", "/settings", { actor: c.operator.email, timeoutMs: 10_000 });

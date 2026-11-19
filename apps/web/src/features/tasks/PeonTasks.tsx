@@ -6,6 +6,7 @@ import { Button, Card } from "../../shared/ui";
 import { useT } from "../../shared/i18n";
 import { Markdown } from "../../shared/RichText";
 import { usePeon } from "../fleet/context";
+import { TASK_PROJECTS_CHANGED } from "./TaskProjectSidebarList";
 import type { ProjectDetail } from "../fleet/peonApi";
 
 // The Peon's Tasks view (docs/project-task-files.md): the sidebar lists the
@@ -75,6 +76,7 @@ function ProjectTaskBoardView({ projectKey: key }: { projectKey: string }) {
     setError(null);
     try {
       board.setData(await api<ProjectTaskBoard>(enable ? `${tasksPath}/setup` : `${tasksPath}/config`, { method: enable ? "POST" : "DELETE" }));
+      window.dispatchEvent(new Event(TASK_PROJECTS_CHANGED));
     } catch (err) {
       setError(err instanceof ApiError && err.status === 403 ? t("proj.tasks.forbidden") : err instanceof Error ? err.message : t("error.loadFailed"));
       await board.reload();

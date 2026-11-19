@@ -285,3 +285,23 @@ test("every task route refuses with TASKS_DISABLED while the switch is off", asy
     server.close();
   }
 });
+
+test("the Tasks sidebar route lists only opted-in projects, and refuses while switched off", async () => {
+  const express = (await import("express")).default;
+  const { attachProjectRoutes } = await import("../http/fleet/projects.js");
+  let enabled = true;
+  const projectService = { taskProjects: () => ({ projects: [{ projectId: "p1", key: "one" }] }) };
+  const app = express();
+  const router = express.Router();
+  attachProjectRoutes(router, { projectService: projectService as never, sessionProjectReader: { list: () => [] }, tasksEnabled: () => enabled });
+  app.use(router);
+  const server = app.listen(0);
+  try {
+    const url = `http://127.0.0.1:${(server.address() as { port: number }).port}/tasks/projects`;
+    assert.deepEqual(await (await fetch(url)).json(), { projects: [{ projectId: "p1", key: "one" }] });
+    enabled = false;
+    assert.equal((await fetch(url)).status, 409);
+  } finally {
+    server.close();
+  }
+});

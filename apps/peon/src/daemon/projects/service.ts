@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { projectDocumentation, readProjectDoc } from "./docs.js";
 import { listProjectSkills } from "./skills.js";
-import { createProjectTask, disableProjectTasks, enableProjectTasks, moveProjectTask, projectTaskBoard, updateProjectTask } from "./tasks.js";
+import { createProjectTask, disableProjectTasks, enableProjectTasks, moveProjectTask, projectTaskBoard, projectTasksEnabled, updateProjectTask } from "./tasks.js";
 import type { ProjectSessionContract } from "../sessions/index.js";
 import {
   slugify,
@@ -103,6 +103,15 @@ export class ProjectService {
 
   documentById(projectId: string, docPath: string) {
     return readProjectDoc(this.requireProjectId(projectId).dir, docPath);
+  }
+
+  // The projects that opted in to task files, for the Tasks sidebar.
+  taskProjects() {
+    return {
+      projects: this.projects.list()
+        .filter((record) => !record.archivedAt && projectTasksEnabled(record.dir))
+        .map((record) => ({ projectId: record.projectId, key: record.key })),
+    };
   }
 
   tasksById(projectId: string) {
