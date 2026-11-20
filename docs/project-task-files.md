@@ -23,19 +23,22 @@ old to report it counts as off.
 ## Where it shows
 
 The Peon sidebar has a **Tasks** icon between Projects and Sign-offs. Its
-sidebar lists only the projects that set up task files (Peon
-`GET /tasks/projects`, relayed as `GET .../peons/:id/task-projects` and
-narrowed to the projects the caller may open); picking one opens its board in
-the main pane (`/peons/:peonId/tasks/:key`). **Add** in the sidebar header
-lists the other projects; picking one sets its tasks up. There is no
-per-project Tasks tab.
+sidebar is two lists. **With tasks** — the projects whose `config.yml` exists,
+each with its count of open tasks (not in the last status) — comes first, in
+full strength with an accent board chip. **Without tasks** follows, quieter,
+with a dashed icon and a **Set up** pill on hover; it folds away and the
+browser remembers that. Picking any project opens its board in the main pane
+(`/peons/:peonId/tasks/:key`). The data is Peon `GET /tasks/projects`
+(`projectId`, `key`, `total`, `open`), relayed as `GET .../peons/:id/task-projects`
+and narrowed to the projects the caller may open. There is no per-project Tasks
+tab.
 
 ## Opt-in
 
 Within a Peon that has tasks on, `docs/tasks/config.yml` is the project's switch. A `docs/tasks/` folder without it is
 just a folder: the board stays off and agents are told nothing.
 
-- **Set up** (Add in the Tasks sidebar, `POST .../tasks/setup`) writes `config.yml` with the
+- **Set up** (the Set up pill in the Tasks sidebar, or the board; `POST .../tasks/setup`) writes `config.yml` with the
   four default statuses, `README.md` with the rules, and a folder per status
   with a `.gitkeep`. A `README.md` the project already has is kept. Refused
   with `409 TASKS_ALREADY_ENABLED` when already on.

@@ -171,7 +171,6 @@ export function PeonDetail() {
   const [sideTab, setSideTab] = useState<"lists" | "tasks" | "signoffs">(() =>
     location.pathname.includes("/signoffs/") ? "signoffs" : /\/tasks(\/|$)/.test(location.pathname) ? "tasks" : "lists");
   const signoffTab = sideTab === "signoffs";
-  const [addingTaskProject, setAddingTaskProject] = useState(false);
   const tasksTab = sideTab === "tasks";
   useEffect(() => {
     if ((!signoffsEnabled && signoffTab) || (!tasksEnabled && tasksTab)) setSideTab("lists");
@@ -499,19 +498,7 @@ export function PeonDetail() {
           <h2 className="min-w-0 flex-1 truncate font-display text-[0.72rem] font-semibold uppercase tracking-[0.14em] text-ink">
             {t(signoffTab ? "signoffs.tab" : tasksTab ? "tasks.tab" : sessionListMode === "flat" ? "peon.tab.sessions" : "sidebar.tab.projects")}
           </h2>
-          {tasksTab ? (
-            <button
-              type="button"
-              title={t("tasks.addProject")}
-              aria-label={t("tasks.addProject")}
-              aria-pressed={addingTaskProject}
-              className={newButtonClass(addingTaskProject)}
-              onClick={() => setAddingTaskProject((open) => !open)}
-            >
-              <Plus size={14} aria-hidden />
-              <span>{t("tasks.add")}</span>
-            </button>
-          ) : signoffTab ? null : sessionListMode === "flat" ? (
+          {signoffTab || tasksTab ? null : sessionListMode === "flat" ? (
             <NavLink
               to={newSessionTo}
               end
@@ -537,7 +524,7 @@ export function PeonDetail() {
         </div>
         <div ref={sessionScrollNode} className="min-h-0 flex-1 overflow-y-auto pb-24 [scrollbar-gutter:stable]">
           {tasksTab ? (
-            <TaskProjectSidebarList base={base} projects={sidebarProjects} error={Boolean(projectError)} adding={addingTaskProject} onAdded={() => setAddingTaskProject(false)} />
+            <TaskProjectSidebarList base={base} projects={sidebarProjects} error={Boolean(projectError)} />
           ) : signoffTab ? (
             <SignoffSidebarList
               signoffs={workspaceSignoffs.signoffs}

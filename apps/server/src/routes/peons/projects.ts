@@ -380,11 +380,14 @@ export function registerProjectRoutes(router: express.Router): void {
     const result = await callPeon(connOfRecord(c.record), "GET", "/tasks/projects", { actor: c.operator.email, timeoutMs: 10_000 });
     if (!result.ok || !result.json || typeof result.json !== "object") return relay(result, res);
     const rows = Array.isArray((result.json as { projects?: unknown }).projects) ? (result.json as { projects: unknown[] }).projects : [];
-    const projects: { projectId: string; key: string }[] = [];
+    const projects: { projectId: string; key: string; total?: number; open?: number }[] = [];
+    const count = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : undefined;
     for (const row of rows) {
-      const { projectId, key } = (row ?? {}) as { projectId?: unknown; key?: unknown };
+      const { projectId, key, total, open } = (row ?? {}) as { projectId?: unknown; key?: unknown; total?: unknown; open?: unknown };
       if (typeof projectId !== "string" || typeof key !== "string") continue;
-      if (await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, key, projectId)) projects.push({ projectId, key });
+      if (!(await canAccessProject(c.workspaceId, c.userId, c.role, c.record.peonId, key, projectId))) continue;
+      // Counts are absent on a Peon from before they were reported.
+      projects.push({ projectId, key, total: count(total), open: count(open) });
     }
     res.json({ projects });
   }));

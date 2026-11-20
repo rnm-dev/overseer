@@ -105,12 +105,22 @@ export class ProjectService {
     return readProjectDoc(this.requireProjectId(projectId).dir, docPath);
   }
 
-  // The projects that opted in to task files, for the Tasks sidebar.
+  // The projects that opted in to task files, for the Tasks sidebar, with
+  // how many tasks each has and how many are open (not in the last status).
   taskProjects() {
     return {
       projects: this.projects.list()
         .filter((record) => !record.archivedAt && projectTasksEnabled(record.dir))
-        .map((record) => ({ projectId: record.projectId, key: record.key })),
+        .map((record) => {
+          const board = projectTaskBoard(record.dir);
+          const last = board.statuses[board.statuses.length - 1];
+          return {
+            projectId: record.projectId,
+            key: record.key,
+            total: board.tasks.length,
+            open: board.tasks.filter((task) => task.status !== last).length,
+          };
+        }),
     };
   }
 
